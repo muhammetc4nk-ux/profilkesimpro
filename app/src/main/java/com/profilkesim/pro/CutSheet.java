@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
 
 /** Reads cutting tables from the positioned words of a single photo. */
 final class CutSheet {
- private static final Pattern INLINE_CODE = Pattern.compile("(?i)(?<![\\p{L}\\d])[A-Z]{1,5}-?[0-9]{3,}(?![\\p{L}\\d])");
+ private static final Pattern INLINE_CODE = Pattern.compile("(?i)(?<![\\p{L}\\d])[A-Z]{1,5}(?:[-.]\\s*)?[0-9]{3,}(?![\\p{L}\\d])");
  private static final Pattern CODE_CELL = Pattern.compile("[A-Z0-9]+(?:[-./ ][A-Z0-9]+)*");
  private static final Pattern FORM_METADATA = Pattern.compile(
   "\\b(?:RAL|RENK|ANTRASIT|MILIMETRE|OLCU BIRIMI|PROFIL BOYU|STOK BOYU|SISTEM|SISTEMLERI|"
@@ -58,7 +58,7 @@ final class CutSheet {
 
  static final class Row {
   final String name, code;
-  final int length, quantity;
+  final int length, quantity; // lengths are tenths of a millimetre
   final Bounds identity;
   Bounds section, lengthCell, quantityCell;
 
@@ -82,8 +82,8 @@ final class CutSheet {
   Column(Field field, Bounds box, String label) {
    this.field = field;
    this.box = box;
-   needsCutLabel = field == Field.NAME ? !label.startsWith("PROFIL")
-    : field == Field.LENGTH && !label.startsWith("KESIM") && !label.startsWith("PARCA ");
+   needsCutLabel = field == Field.NAME || field == Field.CODE ? !label.startsWith("PROFIL")
+    : field == Field.LENGTH && !label.startsWith("KESIM") && !label.startsWith("PARCA ") && !label.startsWith("CUT ");
   }
  }
 
@@ -108,31 +108,31 @@ final class CutSheet {
  static List<Row> read(List<Word> words, int width, int height, CutTableGrid.Pixels pixels, TableOcrRegion region) {
   List<Line> lines = linesFrom(words);
   List<Row> result = new ArrayList<>();
-  int consumedThrough = 0;
+  int consumedThrough = -1;
   for (int i = 0; i < lines.size(); i++) {
    Line line = lines.get(i);
    if (line.baseline.y() <= consumedThrough) continue;
    Header header = findHeader(line.words, region != null);
-   if (header == null && i + 1 < lines.size()) {
-    Line next = lines.get(i + 1);
-    int gap = next.baseline.y() - line.baseline.y();
-    if (gap <= Math.max(line.baseline.height(), next.baseline.height())) {
-     List<Word> heading = new ArrayList<>(line.words);
-     heading.addAll(next.words);
-     Collections.sort(heading, (first, second) -> Integer.compare(first.box.left, second.box.left));
-     header = findHeader(heading, region != null);
+   if (header == null) {
+    List<Word> lower = new ArrayList<>();
+    for (int j = i + 1; j < Math.min(i + 3, lines.size()) && header == null; j++) {
+     Line next = lines.get(j);
+     int gap = next.baseline.y() - line.baseline.y();
+     if (gap > Math.max(line.baseline.height(), next.baseline.height()) * 2.1f) break;
+     lower.addAll(next.words);
+     header = splitHeader(line.words, lower, region != null);
     }
    }
    if (header == null) continue;
-   CutTableGrid grid = region == null ? CutTableGrid.find(pixels, width, height, header.name.box,
+   CutTableGrid grid = region == null ? CutTableGrid.find(pixels, width, height, header.identityColumn().box,
     header.length.box, header.quantity.box, header.bottom, header.textHeight) : region.grid();
    if (region != null) {
     if (header.bottom > region.dataTop() + header.textHeight
-      || grid.cellLeft(header.name.box.x()) != grid.left
+      || grid.cellLeft(header.identityColumn().box.x()) != grid.left
       || grid.cellLeft(header.length.box.x()) == grid.cellLeft(header.quantity.box.x())) continue;
     header.bottom = Math.max(header.bottom, region.dataTop());
    }
-   int firstColumnLeft = header.name.box.left;
+   int firstColumnLeft = header.identityColumn().box.left;
    if (header.section != null) firstColumnLeft = Math.min(firstColumnLeft, header.section.box.left);
    if (header.code != null) firstColumnLeft = Math.min(firstColumnLeft, header.code.box.left);
    int left = grid == null ? Math.max(0, firstColumnLeft - header.textHeight * 5) : grid.left;
@@ -145,7 +145,7 @@ final class CutSheet {
    }
    List<Row> table = new ArrayList<>();
    int lastY = header.bottom;
-   for (Line body : linesFrom(inside)) {
+   for (Line body : tableLines(inside, pixels, grid, width, header)) {
     String label = identity(join(body.words));
     if (table.isEmpty() && label.matches("MM|MILIMETRE(?: MM)?")) continue;
     int maxGap = Math.max(header.textHeight * 5, (int) (height * .09f));
@@ -168,6 +168,42 @@ final class CutSheet {
    consumedThrough = grid == null || table.isEmpty() ? lastY : bottom - 1;
   }
   return result;
+ }
+
+ private static List<Line> tableLines(List<Word> words, CutTableGrid.Pixels pixels, CutTableGrid grid,
+                                     int width, Header header) {
+  if (grid == null || pixels == null) return linesFrom(words);
+  List<Integer> rules = grid.rowRules(pixels, width, header.bottom, header.textHeight);
+  if (rules.size() < 3) return linesFrom(words);
+  List<Line> rows = new ArrayList<>();
+  for (int i = 1; i < rules.size(); i++) {
+   int start = rules.get(i - 1), end = rules.get(i);
+   Line row = null;
+   for (Word word : words) {
+    if (word.box.y() <= start || word.box.y() >= end) continue;
+    if (row == null) row = new Line(word);
+    else row.words.add(word);
+   }
+   if (row != null) {
+    List<Line> textLines = linesFrom(row.words);
+    int lengths = 0, quantities = 0;
+    for (Line textLine : textLines) {
+     Row entry = header.readRow(textLine.words, grid);
+     if (entry == null) continue;
+     if (entry.length > 0) lengths++;
+     if (entry.quantity >= 0) quantities++;
+    }
+    if (lengths > 1 || quantities > 1) {
+     // A pale or broken rule left more than one actual row inside this band.
+     rows.addAll(textLines);
+     continue;
+    }
+    row.words.clear();
+    for (Line textLine : textLines) row.words.addAll(textLine.words);
+    rows.add(row);
+   }
+  }
+  return rows;
  }
 
  private static List<Line> linesFrom(List<Word> input) {
@@ -211,19 +247,43 @@ final class CutSheet {
     break;
    }
   }
+  return checkedHeader(columns);
+ }
+
+ private static Header splitHeader(List<Word> top, List<Word> bottom, boolean isolated) {
+  List<Word> joined = new ArrayList<>(top);
+  joined.addAll(bottom);
+  for (Word above : top) {
+   for (Word below : bottom) {
+    if (!joined.contains(below)) continue;
+    if (Math.abs(above.box.x() - below.box.x()) > Math.max(above.box.height(), below.box.height()) * 1.8f) continue;
+    String combined = above.text + " " + below.text;
+    if (headerField(identity(combined)) == null) continue;
+    joined.remove(above);
+    joined.remove(below);
+    joined.add(new Word(combined, above.box.union(below.box), Math.min(above.confidence, below.confidence)));
+    break;
+   }
+  }
+  Collections.sort(joined, (a, b) -> Integer.compare(a.box.left, b.box.left));
+  return findHeader(joined, isolated);
+ }
+
+ private static Header checkedHeader(List<Column> columns) {
   Header header = new Header(columns);
-  if (header.name == null || header.length == null || header.quantity == null) return null;
-  if (header.name.needsCutLabel && header.length.needsCutLabel) return null;
-  if (header.name.box.x() >= Math.min(header.length.box.x(), header.quantity.box.x())) return null;
+  Column identity = header.identityColumn();
+  if (identity == null || header.length == null || header.quantity == null) return null;
+  if (header.length.needsCutLabel && (identity.needsCutLabel
+    || identity.box.x() >= Math.min(header.length.box.x(), header.quantity.box.x()))) return null;
   return header;
  }
 
  private static Field headerField(String label) {
   if (label.matches("PROFIL (?:KESITI|KESIT|SEKLI|GORSELI|RESMI|CIZIMI)|KESIT(?: SEKLI| GORSELI)?|SEKIL|GORSEL|RESIM|CIZIM")) return Field.SECTION;
-  if (label.matches("PROFIL (?:KODU|NO)|(?:MALZEME|PARCA) KODU|KOD(?:U)?")) return Field.CODE;
-  if (label.matches("PROFIL(?: ADI| ISMI| CINSI| TURU| TANIMI| KODU ADI| ADI KODU)?|(?:MALZEME|PARCA) (?:ADI|CINSI|TANIMI)|ACIKLAMA")) return Field.NAME;
-  if (label.matches("(?:KESIM|PARCA) (?:OLCU(?:SU)?|BOY(?:U)?|UZUNLUGU)(?: MM)?|(?:OLCU|OLCUSU|BOY|UZUNLUK)(?: MM)?")) return Field.LENGTH;
-  if (label.matches("(?:KESIM |PARCA )?ADET(?:I)?|MIKTAR(?: ADET)?")) return Field.QUANTITY;
+  if (label.matches("(?:PROFIL|PROFILE) (?:KODU|KOD|NO|CODE|REF)|(?:MALZEME|PARCA) KODU|KOD(?:U)?|CODE")) return Field.CODE;
+  if (label.matches("PROFIL(?: ADI| ISMI| CINSI| TURU| TANIMI| KODU ADI| ADI KODU)?|(?:MALZEME|PARCA)(?: ADI| ISMI| CINSI| TANIMI)?|ACIKLAMA|PROFILE(?: NAME)?|DESCRIPTION")) return Field.NAME;
+  if (label.matches("(?:KESIM|KESILECEK|PARCA) (?:OLCU(?:SU)?|BOY(?:U)?|UZUNLUK|UZUNLUGU|EBAT(?:I)?)(?: MM)?|(?:OLCU(?:SU)?|BOY|UZUNLUK|CUT LENGTH|LENGTH)(?: MM)?|L MM")) return Field.LENGTH;
+  if (label.matches("(?:KESIM |PARCA )?ADET(?:I)?(?: PCS)?|MIKTAR(?: ADET)?|SAYI(?:SI)?|QTY|QUANTITY|PCS")) return Field.QUANTITY;
   if (label.matches("(?:SISTEM|BALKON|CAM|HAM|STOK|PROFIL) (?:OLCU\\w*|BOY\\w*|UZUNLUGU|EN|YUKSEKLIK|ADET\\w*)(?: MM)?|"
     + "(?:SON|GENEL )?TOPLAM|(?:SIRA )?NO|BOYUT|AGIRLIK|FIRE|OLCU BIRIMI|BIRIM|RENK|GENISLIK|YUKSEKLIK")) return Field.OTHER;
   return null;
@@ -260,6 +320,8 @@ final class CutSheet {
    }
   }
 
+  Column identityColumn() { return name == null ? code : name; }
+
   Row readRow(List<Word> words, CutTableGrid grid) {
    List<Word> names = new ArrayList<>();
    List<Word> codes = new ArrayList<>();
@@ -267,7 +329,7 @@ final class CutSheet {
    List<Word> quantities = new ArrayList<>();
    int nameLeft = 0, nameRight = Integer.MAX_VALUE;
    for (Column column : columns) {
-    if (column == name) continue;
+    if (name == null || column == name) continue;
     if (column.box.x() < name.box.x()) nameLeft = Math.max(nameLeft, column.box.right);
     if (column.box.x() > name.box.x()) nameRight = Math.min(nameRight, column.box.left);
    }
@@ -287,17 +349,17 @@ final class CutSheet {
      quantities.add(boundedWord(word, quantity, grid));
     } else if (code != null && (grid != null || nearest == code) && fullyInCell(word, code, grid)) {
      codes.add(word);
-    } else if (grid == null ? word.box.left >= nameLeft && word.box.right <= nameRight : fullyInCell(word, name, grid)) {
+    } else if (name != null && (grid == null ? word.box.left >= nameLeft && word.box.right <= nameRight : fullyInCell(word, name, grid))) {
      names.add(word);
     }
    }
    String profileName = join(names);
-   String profileCode = join(codes).toUpperCase(Locale.ROOT);
+   String profileCode = normalizeCode(join(codes));
    if (!CODE_CELL.matcher(profileCode).matches() || profileCode.matches("YOK|KODSUZ|N/A")) profileCode = "";
    if (code == null) {
     Matcher inline = INLINE_CODE.matcher(profileName);
     if (inline.find()) {
-     profileCode = inline.group().toUpperCase(Locale.ROOT);
+     profileCode = normalizeCode(inline.group());
      profileName = (profileName.substring(0, inline.start()) + " " + profileName.substring(inline.end()))
       .replaceAll("^[\\s/|:()–-]+|[\\s/|:()–-]+$", "").replaceAll("\\s+", " ");
     }
@@ -327,24 +389,39 @@ final class CutSheet {
   private boolean fullyInCell(Word word, Column column, CutTableGrid grid) {
    int left = grid == null ? column.left : grid.cellLeft(column.box.x());
    int right = grid == null ? column.right : grid.cellRight(column.box.x());
-   return word.box.left > left && word.box.right < right;
+   return word.box.left >= left && word.box.right <= right;
   }
+ }
+
+ private static String normalizeCode(String code) {
+  return code.trim().toUpperCase(Locale.ROOT).replaceAll("\\s*([./-])\\s*", "$1");
  }
 
  static int number(List<Word> words, boolean quantity) {
   if (words.isEmpty()) return -1;
   for (Word word : words) if (word.confidence < .55f) return -1;
   String raw = join(words).toLowerCase(Locale.ROOT);
-  if (!raw.matches(quantity ? "[0-9]{1,4}(?:\\s*adet)?" : "[0-9]{1,9}(?:\\s*mm)?")) return -1;
-  int value = Integer.parseInt(raw.replaceFirst("\\s*(?:mm|adet)$", ""));
-  return quantity && value > 1000 ? -1 : value;
+  if (quantity) {
+   if (!raw.matches("[0-9]{1,4}(?:\\s*(?:adet|pcs))?")) return -1;
+   int count = Integer.parseInt(raw.replaceFirst("\\s*(?:adet|pcs)$", ""));
+   return count <= 1000 ? count : -1;
+  }
+  if (!raw.matches("[0-9]{1,6}(?:[.,][0-9]{1,2})?(?:\\s*(?:mm|cm|m))?")) return -1;
+  try {
+   java.math.BigDecimal value = new java.math.BigDecimal(raw.replaceFirst("\\s*(?:mm|cm|m)$", "").replace(',', '.'));
+   if (raw.endsWith("cm")) value = value.movePointRight(1);
+   if (raw.endsWith("m") && !raw.endsWith("mm") && !raw.endsWith("cm")) value = value.movePointRight(3);
+   return ShopDimensions.tenths(value.stripTrailingZeros().toPlainString(), "Kesim boyu");
+  } catch (IllegalArgumentException error) {
+   return -1;
+  }
  }
 
  private static void setSections(List<Row> rows, Header header, int width, int bottomLimit, CutTableGrid grid,
                                  int tableLeft) {
   if (width <= 0) return;
   Column section = header.section;
-  int identityLeft = header.name.box.left;
+  int identityLeft = header.identityColumn().box.left;
   if (header.code != null) identityLeft = Math.min(identityLeft, header.code.box.left);
   for (Row row : rows) identityLeft = Math.min(identityLeft, row.identity.left);
   for (int i = 0; i < rows.size(); i++) {
@@ -355,12 +432,10 @@ final class CutSheet {
    int bottom = Math.min(bottomLimit, y + textHeight * 2);
    if (i > 0) top = Math.max(top, (rows.get(i - 1).identity.y() + y) / 2);
    if (i + 1 < rows.size()) bottom = Math.min(bottom, (rows.get(i + 1).identity.y() + y) / 2);
-   if (grid != null) {
-    int cellTop = Math.max(top, y - textHeight);
-    int cellBottom = Math.min(bottom, y + textHeight);
-    row.lengthCell = cellBounds(grid, header.length.box.x(), cellTop, cellBottom, textHeight);
-    row.quantityCell = cellBounds(grid, header.quantity.box.x(), cellTop, cellBottom, textHeight);
-   }
+   int cellTop = Math.max(top, y - textHeight);
+   int cellBottom = Math.min(bottom, y + textHeight);
+   row.lengthCell = cellBounds(grid, header.length, width, cellTop, cellBottom, textHeight);
+   row.quantityCell = cellBounds(grid, header.quantity, width, cellTop, cellBottom, textHeight);
    int left, right;
    if (section != null) {
     left = Math.max(0, section.box.x() - textHeight * 3);
@@ -373,7 +448,7 @@ final class CutSheet {
     if (row.identity.left >= section.box.x()) right = Math.min(right, row.identity.left);
    } else if (grid != null) {
     int inset = Math.max(2, textHeight / 10);
-    left = grid.cellLeft(header.name.box.x()) + inset;
+    left = grid.cellLeft(header.identityColumn().box.x()) + inset;
     right = Math.min(row.identity.left, identityLeft) - inset;
     top += inset;
     bottom -= inset;
@@ -388,10 +463,10 @@ final class CutSheet {
   }
  }
 
- private static Bounds cellBounds(CutTableGrid grid, int x, int top, int bottom, int textHeight) {
-  int inset = Math.max(4, textHeight / 7);
-  int left = grid.cellLeft(x) + inset;
-  int right = grid.cellRight(x) - inset;
+ private static Bounds cellBounds(CutTableGrid grid, Column column, int width, int top, int bottom, int textHeight) {
+  int inset = Math.max(2, textHeight / 9);
+  int left = Math.max(0, grid == null ? column.left : grid.cellLeft(column.box.x()) + inset);
+  int right = Math.min(width, grid == null ? column.right : grid.cellRight(column.box.x()) - inset);
   if (right <= left || bottom - top <= 2 * inset) return null;
   return new Bounds(left, top + inset, right, bottom - inset);
  }

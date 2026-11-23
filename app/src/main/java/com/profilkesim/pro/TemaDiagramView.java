@@ -2,7 +2,9 @@ package com.profilkesim.pro;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.LinearGradient;
 import android.graphics.Paint;
+import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.view.View;
 
@@ -11,14 +13,25 @@ final class TemaDiagramView extends View {
  private final TemaJoinery.Plan plan;
  private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
  private final float density;
+ private final int accent;
+ private final Typeface typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL);
+ private Shader metal, fixedGlass, openingGlass;
 
- TemaDiagramView(Context context, TemaJoinery.Order order, TemaJoinery.Plan plan) {
+ TemaDiagramView(Context context, TemaJoinery.Order order, TemaJoinery.Plan plan, int accent) {
   super(context);
   this.order = order;
   this.plan = plan;
+  this.accent = accent;
   density = getResources().getDisplayMetrics().density;
   setContentDescription("Numaralı doğrama şeması, " + plan.columns.size() + " sütun ve "
    + plan.rows.size() + " sıra");
+ }
+
+ @Override protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
+  metal = new LinearGradient(0, 0, width, height, new int[]{accent, 0xff608c9f, 0xffb499ff, accent},
+   null, Shader.TileMode.CLAMP);
+  fixedGlass = new LinearGradient(0, 0, width, height, 0xff315d70, 0xff162c43, Shader.TileMode.CLAMP);
+  openingGlass = new LinearGradient(0, 0, width, height, 0xff4e436a, 0xff234951, Shader.TileMode.CLAMP);
  }
 
  @Override protected void onDraw(Canvas canvas) {
@@ -27,8 +40,14 @@ final class TemaDiagramView extends View {
   float scale = Math.min((getWidth() - 2 * margin) / order.width, (getHeight() - 2 * margin) / order.height);
   float width = order.width * scale, height = order.height * scale;
   float left = (getWidth() - width) / 2f, top = (getHeight() - height) / 2f;
-  paint.setColor(0xff83d2d3);
+  paint.setColor(0x1238cfe0);
+  paint.setStrokeWidth(density / 2f);
+  for (float x = margin; x < getWidth() - margin; x += 18f * density) canvas.drawLine(x, margin, x, getHeight() - margin, paint);
+  for (float y = margin; y < getHeight() - margin; y += 18f * density) canvas.drawLine(margin, y, getWidth() - margin, y, paint);
+  paint.setColor(0xffffffff);
+  paint.setShader(metal);
   canvas.drawRect(left, top, left + width, top + height, paint);
+  paint.setShader(null);
   float y = top + order.frameFace * scale;
   for (int row = 0; row < plan.rows.size(); row++) {
    float x = left + order.frameFace * scale;
@@ -37,10 +56,12 @@ final class TemaDiagramView extends View {
     float paneWidth = plan.columns.get(col) * scale;
     int index = row * plan.columns.size() + col;
     boolean sash = plan.panes.get(index).sash;
-    paint.setColor(sash ? 0xff225d70 : 0xff1f3d52);
+    paint.setColor(0xffffffff);
+    paint.setShader(sash ? openingGlass : fixedGlass);
     canvas.drawRect(x, y, x + paneWidth, y + paneHeight, paint);
+    paint.setShader(null);
     if (sash) {
-     paint.setColor(0xff659ca7);
+     paint.setColor(0xffc2a7ff);
      paint.setStrokeWidth(density);
      canvas.drawLine(x + paneWidth, y, x, y + paneHeight / 2f, paint);
      canvas.drawLine(x, y + paneHeight / 2f, x + paneWidth, y + paneHeight, paint);
@@ -68,7 +89,7 @@ final class TemaDiagramView extends View {
  private void drawLabel(Canvas canvas, String value, float x, float y, float size) {
   paint.setColor(0xffe8f8f8);
   paint.setTextAlign(Paint.Align.CENTER);
-  paint.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+  paint.setTypeface(typeface);
   paint.setTextSize(size);
   canvas.drawText(value, x, y, paint);
  }

@@ -28,19 +28,26 @@ final class LedTrace extends View {
  }
 
  void setActive(boolean active) {
-  if (active && animator == null) {
+  if (active) animate(ValueAnimator.INFINITE, 10600);
+  else if (animator != null) {
+   animator.cancel();
+   animator = null;
+  }
+ }
+
+ void lightUp() { animate(0, 2200); }
+
+ private void animate(int repeats, int duration) {
+  if (animator == null) {
    animator = ValueAnimator.ofFloat(0f, 1f);
-   animator.setDuration(10600);
+   animator.setDuration(duration);
    animator.setInterpolator(new LinearInterpolator());
-   animator.setRepeatCount(ValueAnimator.INFINITE);
+   animator.setRepeatCount(repeats);
    animator.addUpdateListener(animation -> {
     phase = (float) animation.getAnimatedValue();
     invalidate();
    });
    animator.start();
-  } else if (!active && animator != null) {
-   animator.cancel();
-   animator = null;
   }
  }
 
@@ -75,6 +82,7 @@ final class LedTrace extends View {
   }
   trace(canvas, length, phase, .14f, 0xff83f5e8);
   trace(canvas, length, (phase + .53f) % 1f, .085f, 0xffffcf8e);
+  trace(canvas, length, (phase + .81f) % 1f, .06f, 0xffb6a3ff);
  }
 
  private void trace(Canvas canvas, float length, float position, float span, int color) {

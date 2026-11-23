@@ -18,10 +18,10 @@ public final class PhotoCutPlanTest {
 
   List<MainActivity.ProfileCutPlan> plans = plans(photos);
   assertEquals(1, plans.size());
-  List<CutPacking.Bar> bars = plans.get(0).pack(4);
+  List<CutPacking.Bar> bars = plans.get(0).pack(40);
   assertEquals(1, bars.size());
-  assertEquals(Arrays.asList(4200, 1700), bars.get(0).pieces);
-  assertEquals(96, plans.get(0).stock - bars.get(0).used);
+  assertEquals(Arrays.asList(42000, 17000), bars.get(0).pieces);
+  assertEquals(960, plans.get(0).stock - bars.get(0).used);
  }
 
  @Test public void groupsCodeFreeNamesAndKeepsDistinctCodesSeparate() {
@@ -31,9 +31,9 @@ public final class PhotoCutPlanTest {
 
   List<MainActivity.ProfileCutPlan> plans = plans(photos);
   assertEquals(3, plans.size());
-  assertEquals(Arrays.asList(2100, 2100, 2100), plans.get(0).pieces);
-  assertEquals(Arrays.asList(3000), plans.get(1).pieces);
-  assertEquals(Arrays.asList(2200), plans.get(2).pieces);
+  assertEquals(Arrays.asList(21000, 21000, 21000), plans.get(0).pieces);
+  assertEquals(Arrays.asList(30000), plans.get(1).pieces);
+  assertEquals(Arrays.asList(22000), plans.get(2).pieces);
  }
 
  @Test public void rejectsMissingQuantitiesInAnyPhoto() {
@@ -43,6 +43,14 @@ public final class PhotoCutPlanTest {
 
   IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> plans(photos));
   assertTrue(error.getMessage().contains("Fotoğraf 2 kesim adedi"));
+ }
+
+ @Test public void preservesDecimalCutsAndKerfThroughStockPlacement() {
+  Map<Integer, List<MainActivity.CutRow>> photos = new LinkedHashMap<>();
+  photos.put(1, Arrays.asList(row("T.3101", "Kasa", "2997,8", "2")));
+  MainActivity.ProfileCutPlan plan = plans(photos).get(0);
+  assertEquals(1, plan.pack(44).size());
+  assertEquals(60000, plan.pack(44).get(0).used);
  }
 
  private static List<MainActivity.ProfileCutPlan> plans(Map<Integer, List<MainActivity.CutRow>> photos) {

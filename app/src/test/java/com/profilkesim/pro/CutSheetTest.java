@@ -22,12 +22,12 @@ public final class CutSheetTest {
   assertEquals(2, rows.size());
   assertEquals("B15083", rows.get(0).code);
   assertEquals("Yan dikme", rows.get(0).name);
-  assertEquals(1250, rows.get(0).length);
+  assertEquals(12500, rows.get(0).length);
   assertEquals(2, rows.get(0).quantity);
   CutSheet.Row codeFree = rows.get(1);
   assertEquals("", codeFree.code);
   assertEquals("42×36 Tek ray", codeFree.name);
-  assertEquals(850, codeFree.length);
+  assertEquals(8500, codeFree.length);
   assertEquals(4, codeFree.quantity);
   assertNotNull(codeFree.section);
   assertTrue(codeFree.section.right < codeFree.identity.left);
@@ -51,7 +51,7 @@ public final class CutSheetTest {
   assertEquals(-1, rows.get(1).quantity);
   assertEquals(-1, rows.get(2).length);
   assertEquals(-1, rows.get(2).quantity);
-  assertEquals(900, rows.get(3).length);
+  assertEquals(9000, rows.get(3).length);
   assertEquals(3, rows.get(3).quantity);
   assertEquals(-1, rows.get(4).quantity);
  }
@@ -73,7 +73,7 @@ public final class CutSheetTest {
   CutSheet.Row rowTwo = CutSheet.read(second, 800, 300).get(0);
   assertEquals("B15082", rowOne.code);
   assertEquals("Kasa", rowOne.name);
-  assertEquals(1100, rowOne.length);
+  assertEquals(11000, rowOne.length);
   assertEquals(2, rowOne.quantity);
   assertEquals(-1, rowTwo.length);
   assertEquals(5, rowTwo.quantity);
@@ -109,7 +109,7 @@ public final class CutSheetTest {
   List<CutSheet.Row> rows = CutSheet.read(words, width, height, pixels, region);
   assertEquals(3, rows.size());
   assertEquals("Üst kasa", rows.get(0).name);
-  assertEquals(3160, rows.get(0).length);
+  assertEquals(31600, rows.get(0).length);
   assertEquals(2, rows.get(0).quantity);
   assertEquals("", rows.get(0).code);
   assertNotNull(rows.get(0).section);
@@ -129,6 +129,25 @@ public final class CutSheetTest {
   List<CutSheet.Word> metadata = new ArrayList<>(header());
   metadata.addAll(Arrays.asList(word("Antrasit 7016 RAL", 225, 110), word("6000", 500, 110), word("4", 620, 110)));
   assertTrue(CutSheet.read(metadata, 800, 300).isEmpty());
+ }
+
+ @Test public void readsSplitHeadersWithCodeOnlyAndDecimalUnits() {
+  List<CutSheet.Word> sheet = Arrays.asList(
+   word("Profil", 230, 61), word("Kesim", 500, 61), word("Miktar", 620, 72),
+   word("kodu", 230, 80), word("boyu", 500, 80),
+   word("T.3001", 235, 119), word("125,05 cm", 500, 119), word("2", 620, 119),
+   word("Toplam", 235, 150), word("2501", 500, 150), word("3", 620, 150));
+  List<CutSheet.Row> rows = CutSheet.read(sheet, 800, 185);
+  assertEquals(1, rows.size());
+  assertEquals("T.3001", rows.get(0).code);
+  assertEquals(12505, rows.get(0).length);
+  assertEquals(2, rows.get(0).quantity);
+ }
+
+ @Test public void keepsFractionalMillimetresAndFlagsUncertainCharacters() {
+  assertEquals(8505, CutSheet.number(Arrays.asList(word("850,5", 500, 150), word("mm", 550, 150)), false));
+  assertEquals(-1, CutSheet.number(Arrays.asList(word("8S0,5", 500, 150)), false));
+  assertEquals(-1, CutSheet.number(Arrays.asList(word("1,5", 620, 150)), true));
  }
 
  private static List<CutSheet.Word> header() {

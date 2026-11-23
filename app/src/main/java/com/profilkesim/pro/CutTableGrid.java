@@ -90,6 +90,25 @@ final class CutTableGrid {
   return right;
  }
 
+ List<Integer> rowRules(Pixels pixels, int width, int top, int textHeight) {
+  List<Integer> rules = new ArrayList<>();
+  rules.add(top);
+  int[] colors = new int[width];
+  int left = this.left + 2, right = this.right - 2;
+  int minRow = Math.max(8, textHeight);
+  boolean previousRule = false;
+  for (int y = top + 1; y < bottom; y++) {
+   pixels.readRow(y, colors);
+   int ink = 0;
+   for (int x = left; x < right; x += 2) if (dark(colors[x])) ink++;
+   boolean line = ink * 2 > (right - left) * .78f;
+   if (line && !previousRule && y - rules.get(rules.size() - 1) >= minRow) rules.add(y);
+   previousRule = line;
+  }
+  if (bottom - rules.get(rules.size() - 1) >= minRow) rules.add(bottom);
+  return rules;
+ }
+
  private static boolean darkNear(int[] colors, int x) {
   for (int i = Math.max(0, x - 2); i < Math.min(colors.length, x + 3); i++) {
    if (dark(colors[i])) return true;

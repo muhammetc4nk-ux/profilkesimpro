@@ -111,6 +111,48 @@ public final class TemaJoineryTest {
   assertThrows(IllegalArgumentException.class, () -> DrawingDimensions.scaled(490, 0, 2200, 1400));
  }
 
+ @Test public void fixedAndOpeningBeadsUseTheirOwnSeatsAndQuantities() {
+  TemaJoinery.Order order = order(20000, 15000, 490);
+  order.quantity = 2;
+  order.vertical = 1;
+  order.mullionFace = 490;
+  order.sashFace = 660;
+  order.sashGap = 50;
+  order.openingSashes = Collections.singleton(2);
+  order.adapterCode = "T.3107";
+  order.fixedBead = new TemaJoinery.Bead("T.3112", 220, 0, TemaJoinery.Corner.MITER);
+  order.sashBead = new TemaJoinery.Bead("T.3111", 170, 5, TemaJoinery.Corner.HORIZONTAL_FULL);
+  TemaJoinery.Plan plan = TemaJoinery.calculate(order);
+  assertCut(plan, "T.3112", "Sabit cam çıtası yatay", 9265, 45, 4);
+  assertCut(plan, "T.3112", "Sabit cam çıtası dikey", 14020, 45, 4);
+  assertCut(plan, "T.3107", "Kanat adaptörü yatay", 9265, 45, 4);
+  assertCut(plan, "T.3111", "Kanat cam çıtası yatay", 7855, 90, 4);
+  assertCut(plan, "T.3111", "Kanat cam çıtası dikey", 12270, 90, 4);
+  assertEquals(4, plan.mullionEnds);
+ }
+
+ @Test public void readsLabelledDrawingPairsAndRecordCountsWithoutInferringLayout() {
+  DrawingDimensions drawing = DrawingDimensions.read("Dış ölçüler: 2000 × 1500 mm\nDikey orta kayıt adedi: 2\nYatay kayıt: 0\nSabit bölme: 1\nCam boyu 700 mm");
+  assertEquals(20000, drawing.width);
+  assertEquals(15000, drawing.height);
+  assertEquals(2, drawing.vertical);
+  assertEquals(0, drawing.horizontal);
+  assertEquals(1, drawing.fixed);
+  assertEquals(-1, DrawingDimensions.read("Kasa dış ölçüsü 1900 x 1500\nDış en 2000 mm").width);
+  assertEquals(-1, DrawingDimensions.read("Kanat 1200 × 900 mm\nCam eni 700 mm").width);
+ }
+
+ private static void assertCut(TemaJoinery.Plan plan, String code, String role, int length, int angle, int count) {
+  for (TemaJoinery.Cut cut : plan.cuts) {
+   if (!cut.code.equals(code) || !cut.role.equals(role)) continue;
+   assertEquals(length, cut.length);
+   assertEquals(angle, cut.angle);
+   assertEquals(count, cut.quantity);
+   return;
+  }
+  fail(role + " cut missing");
+ }
+
  private static TemaJoinery.Order order(int width, int height, int face) {
   TemaJoinery.Order order = new TemaJoinery.Order();
   order.width = width;

@@ -13,7 +13,7 @@ final class ShopDimensions {
 
  static int tenths(String text, String label) {
   try {
-   String value = text.trim().replace(',', '.');
+   String value = (text == null ? "" : text.trim()).replace(',', '.');
    if (!value.matches("[+-]?[0-9]+(?:\\.[0-9]{1,2})?")) throw new NumberFormatException();
    BigDecimal mm = new BigDecimal(value);
    if (mm.abs().compareTo(LIMIT) > 0) throw new NumberFormatException();

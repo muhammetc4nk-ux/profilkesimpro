@@ -17,11 +17,27 @@ final class TemaJoinery {
   int frameFace, mullionFace, sashFace;
   int vertical, horizontal, joint;
   int frameGlass, mullionGlass, sashGlass, sashGap;
+  boolean glassSizesVerified;
+  Bead fixedBead, sashBead;
+  String adapterCode;
   Corner corner = Corner.MITER;
   Corner sashCorner = Corner.MITER;
   Continuous continuous = Continuous.VERTICAL;
   List<Integer> columnOpenings = Collections.emptyList(), rowOpenings = Collections.emptyList();
   Set<Integer> openingSashes = Collections.emptySet();
+ }
+
+ static final class Bead {
+  final String code;
+  final int face, edgeAdjustment;
+  final Corner corner;
+
+  Bead(String code, int face, int edgeAdjustment, Corner corner) {
+   this.code = code;
+   this.face = face;
+   this.edgeAdjustment = edgeAdjustment;
+   this.corner = corner;
+  }
  }
 
  static final class Cut {
@@ -176,15 +192,20 @@ final class TemaJoinery {
   int width = plan.columns.get(x), height = plan.rows.get(y);
   boolean sash = o.openingSashes.contains(number);
   if (sash) {
+   if (o.adapterCode != null) {
+    addRectangle(plan, o.adapterCode, "Kanat adaptörü", width, height, 0, Corner.MITER, o.quantity);
+   }
    width -= 2 * o.sashGap;
    height -= 2 * o.sashGap;
    if (width <= 2 * o.sashFace || height <= 2 * o.sashFace) {
     throw new IllegalArgumentException(number + ". hücrede kanat profili cam açıklığına sığmıyor.");
    }
    addRectangle(plan, o.sashCode, "Kanat", width, height, o.sashFace, o.sashCorner, o.quantity);
+   addBead(plan, o.sashBead, "Kanat cam çıtası", width - 2 * o.sashFace, height - 2 * o.sashFace, o.quantity);
    width += 2 * (o.sashGlass - o.sashFace);
    height += 2 * (o.sashGlass - o.sashFace);
   } else {
+   addBead(plan, o.fixedBead, "Sabit cam çıtası", width, height, o.quantity);
    width += (x == 0 ? o.frameGlass : o.mullionGlass)
     + (x == plan.columns.size() - 1 ? o.frameGlass : o.mullionGlass);
    height += (y == 0 ? o.frameGlass : o.mullionGlass)
@@ -193,5 +214,16 @@ final class TemaJoinery {
   if (width <= 0 || height <= 0) throw new IllegalArgumentException(number + ". hücrenin net cam ölçüsünü kontrol edin.");
   plan.panes.add(new Pane(number, width, height, sash));
   plan.glassArea = plan.glassArea.add(ShopDimensions.area(width, height, o.quantity));
+ }
+
+ private static void addBead(Plan plan, Bead bead, String role, int width, int height, int quantity) {
+  if (bead == null) return;
+  // Long points are measured on the seating line, independently of glass overlap.
+  width += 2 * bead.edgeAdjustment;
+  height += 2 * bead.edgeAdjustment;
+  if (width <= 2 * bead.face || height <= 2 * bead.face) {
+   throw new IllegalArgumentException(role + " seçilen açıklığa sığmıyor. Çıta oturma ölçüsünü kontrol edin.");
+  }
+  addRectangle(plan, bead.code, role, width, height, bead.face, bead.corner, quantity);
  }
 }
