@@ -51,7 +51,7 @@ public class MainActivity extends Activity {
   setContentView(root);
   TextView brand=text("muhammet can . K",12);
   brand.setTextColor(Color.WHITE);brand.setGravity(Gravity.CENTER);
-  brand.setBackgroundColor(navy);
+  brand.setBackground(rgbPanel(0xff0e1933, 0xff233953, 0xff3ab6c9));
   root.addView(brand,new LinearLayout.LayoutParams(-1,dp(44)));
   
 brand.setText("✦ MUHAMMET CAN . K ✦");
@@ -106,34 +106,44 @@ pulse.start();
   body.setPadding(dp(14),dp(12),dp(14),dp(20));scroll.addView(body);
   TextView h=text(title,23);h.setTypeface(null,Typeface.BOLD);
   h.setTextColor(Color.WHITE);
-  h.setBackground(gradient(0xff102740, 0xff175865, 0xff4ce5de));
-  h.setElevation(dp(4));body.addView(h);
+  h.setShadowLayer(dp(5), 0, 0, 0xff20a4dc);
+  h.setElevation(dp(4));
+  addTextPanel(h, 0xff121c37, 0xff164e61, 0xff4ce5de);
   reveal(body, 0);
  }
  void note(String s){
-  TextView t=text(s,14);t.setBackground(box(0xeeffffff));body.addView(t);
+  TextView t = text(s, 14);
+  t.setTextColor(0xffdff5ff);
+  addTextPanel(t, 0xff14223a, 0xff243f5f, 0xff4f7b9b);
  }
  void button(String s,Runnable r){
   Button b=new Button(this);b.setText(s);b.setAllCaps(false);
   b.setTextColor(Color.WHITE);
   b.setBackground(new android.graphics.drawable.RippleDrawable(
    android.content.res.ColorStateList.valueOf(0x66a1fff3),
-   gradient(0xff11365c, 0xff087e89, 0xff57e8de), null));
+   rgbPanel(0xff1d2853, 0xff086a76, 0xff5bc9cf), null));
+  b.setShadowLayer(dp(4), 0, 0, 0xff389dbd);
+  b.setPadding(dp(12), 0, dp(12), 0);
   b.setElevation(dp(4));
   LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(54));
   p.setMargins(0,dp(6),0,dp(6));body.addView(b,p);
-  b.setOnClickListener(v->r.run());
+  if (body.getChildCount() < 10) reveal(b, body.getChildCount() * 24);
+  b.setOnClickListener(v -> r.run());
  }
  EditText input(String hint,String val){
   TextView label=text(hint,15);label.setTypeface(null,Typeface.BOLD);
-  label.setBackground(box(0xeeffffff));body.addView(label);
+  label.setTextColor(0xfff0f9ff);
+  addTextPanel(label, 0xff19253f, 0xff254965, 0xff627ea7);
   EditText e=new EditText(this);e.setText(val);e.setHint(hint);
   e.setTextSize(17);e.setPadding(dp(12),dp(12),dp(12),dp(12));
-  e.setBackground(gradient(0xfff8ffff, 0xffe4f4ff, 0xff8fc6db));
+  e.setTextColor(0xffeffaff);
+  e.setHintTextColor(0xffb8cde1);
+  e.setBackground(rgbPanel(0xff162440, 0xff223c59, 0xff5684a4));
   e.setOnFocusChangeListener((view, focused) -> {
    e.setBackground(focused
-    ? gradient(0xfff0fffb, 0xffc8f6ee, 0xff0ba294)
-    : gradient(0xfff8ffff, 0xffe4f4ff, 0xff8fc6db));
+    ? rgbPanel(0xff123649, 0xff175865, 0xff56ffe1)
+    : rgbPanel(0xff162440, 0xff223c59, 0xff5684a4));
+   e.setShadowLayer(focused ? dp(4) : 0, 0, 0, 0xff4eeacc);
    e.animate().translationZ(dp(focused ? 5 : 0)).setDuration(180).start();
   });
   LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(55));
@@ -142,7 +152,9 @@ pulse.start();
  int val(EditText e){return Integer.parseInt(e.getText().toString().trim());}
  void result(String s){
   TextView t=text(s,16);t.setTextIsSelectable(true);
-  t.setBackground(box(0xf8ffffff));body.addView(t);
+  t.setTextColor(0xffeffaff);
+  addTextPanel(t, 0xff14233e, 0xff285575, 0xff4ecade);
+  reveal(t, 0);
  }
  void bad(){Toast.makeText(this,"Ölçü veya adet hatalı",Toast.LENGTH_LONG).show();}
  @Override public void onCreate(Bundle b){super.onCreate(b);home();}
@@ -232,6 +244,7 @@ pulse.start();
  ArrayList<CutRow> parseSheet(Text doc,Bitmap bmp){
   ArrayList<CutRow> rows=new ArrayList<>();
   HashSet<String> seen=new HashSet<>();
+  HashMap<CutRow, Rect> anchors = new HashMap<>();
   Pattern codes=Pattern.compile(
    "[B8]\\s*1\\s*5\\s*0\\s*[0-9]{2}",Pattern.CASE_INSENSITIVE);
   for(Text.TextBlock block:doc.getTextBlocks())
@@ -241,24 +254,71 @@ pulse.start();
     if(!match.find())continue;
     String code=match.group().replaceAll("\\s+","")
      .replaceFirst("^8","B");
-    if(!seen.add(code))continue;
-    Rect r=line.getBoundingBox();if(r==null)continue;
-    int cy=r.centerY();Bitmap icon=null;
-    try{
-     int x=(int)(bmp.getWidth()*.07);
-     int w=(int)(bmp.getWidth()*.16);
-     int h=Math.max(32,r.height()*3);
-     int y=Math.max(0,cy-h/2);
-     h=Math.min(h,bmp.getHeight()-y);
-     if(w>0&&h>0)icon=Bitmap.createBitmap(bmp,x,y,w,h);
-    }catch(Exception ignored){}
-    rows.add(new CutRow(
-     code,profileName(code),-1,-1,icon,cy));
+    Rect rect = line.getBoundingBox();
+    if (rect == null || !seen.add(code)) continue;
+    CutRow row = new CutRow(code, profileName(code), -1, -1, null, rect.centerY());
+    rows.add(row);
+    anchors.put(row, rect);
    }
-  Collections.sort(rows,(a,b)->Integer.compare(a.y,b.y));
+  Collections.sort(rows, (a, b) -> Integer.compare(a.y, b.y));
+  cropProfileIcons(bmp, rows, anchors);
   return rows;
  }
  
+ void cropProfileIcons(Bitmap bitmap, List<CutRow> rows, Map<CutRow, Rect> anchors) {
+  if (bitmap == null || rows.isEmpty()) return;
+  int width = bitmap.getWidth(), height = bitmap.getHeight();
+  ArrayList<Integer> gaps = new ArrayList<>();
+  for (int i = 1; i < rows.size(); i++) {
+   int gap = rows.get(i).y - rows.get(i - 1).y;
+   if (gap > 0) gaps.add(gap);
+  }
+  Collections.sort(gaps);
+  int typicalGap = gaps.isEmpty() ? 0 : gaps.get((gaps.size() - 1) / 2);
+  for (int i = 0; i < rows.size(); i++) {
+   CutRow row = rows.get(i);
+   Rect anchor = anchors.get(row);
+   int half = Math.max(16, Math.max(anchor.height(), (int) (typicalGap * .60f)));
+   int top = Math.max(0, row.y - half);
+   int bottom = Math.min(height, row.y + half);
+   if (i > 0) top = Math.max(top, row.y - (row.y - rows.get(i - 1).y) / 2);
+   if (i + 1 < rows.size()) bottom = Math.min(bottom, row.y + (rows.get(i + 1).y - row.y) / 2);
+   int inset = Math.min(Math.max(0, (bottom - top) / 24), 6);
+   top += inset;
+   bottom -= inset;
+   int left = (int) (width * .035f);
+   int right = (int) (width * .23f);
+   if (anchor.left >= width * .14f && anchor.left <= width * .36f) {
+    right = anchor.left - Math.max(1, width / 100);
+   }
+   if (right > left && bottom > top) {
+    row.icon = Bitmap.createBitmap(bitmap, left, top, right - left, bottom - top);
+   }
+  }
+ }
+
+ void profileHeading(LinearLayout card, String name, Bitmap icon) {
+  LinearLayout heading = new LinearLayout(this);
+  heading.setGravity(Gravity.CENTER_VERTICAL);
+  card.addView(heading, new LinearLayout.LayoutParams(-1, -2));
+  if (icon != null) {
+   ImageView preview = new ImageView(this);
+   preview.setImageBitmap(icon);
+   preview.setScaleType(ImageView.ScaleType.FIT_CENTER);
+   preview.setPadding(dp(5), dp(5), dp(5), dp(5));
+   preview.setBackground(rgbPanel(0xffe5fbff, 0xffd4eafa, 0xff398ea0));
+   preview.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+   LinearLayout.LayoutParams iconSize = new LinearLayout.LayoutParams(dp(104), dp(72));
+   iconSize.setMarginEnd(dp(12));
+   heading.addView(preview, iconSize);
+  }
+  TextView label = text(name, 16);
+  label.setTextColor(Color.WHITE);
+  label.setTypeface(null, Typeface.BOLD);
+  label.setPadding(0, dp(5), 0, dp(5));
+  heading.addView(label, new LinearLayout.LayoutParams(0, -2, 1f));
+ }
+
 void readColumns(Bitmap bmp) {
     if (bmp == null || detected.isEmpty()) {
         showDetected();
@@ -565,21 +625,8 @@ void scanCells(
    if(r.mm<0||r.qty<0)
     note("OKUNAMADI: "+r.code+
      " için ölçü veya adet elle girilmeli.");
-   LinearLayout line=new LinearLayout(this);
-   line.setOrientation(0);
-   line.setGravity(Gravity.CENTER_VERTICAL);
-   line.setBackground(box(0xf5ffffff));
-   body.addView(line);
-   if(r.icon!=null){
-    ImageView iv=new ImageView(this);
-    iv.setImageBitmap(r.icon);
-    iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
-    line.addView(iv,
-     new LinearLayout.LayoutParams(dp(95),dp(75)));
-   }
-   TextView title=text(r.code+"\n"+r.name,14);
-   line.addView(title,
-    new LinearLayout.LayoutParams(0,dp(85),1));
+   LinearLayout profile = planCard(body, 0xff121f38, 0xff244361, 0xff5685a4);
+   profileHeading(profile, r.code + "\n" + r.name, r.icon);
    if(r.mm>0&&r.mm<300)
     note("UYARI: "+r.code+" için "+r.mm+
      " mm okundu. Son rakam eksik olabilir; föyden doğrulayın!");
@@ -621,9 +668,9 @@ if (r.mm == 0 && r.qty == 0) {
   CheckBox confirmed=new CheckBox(this);
   confirmed.setText(
    "Fotoğraftaki TÜM profil kodlarını, kesim ölçülerini (mm) ve adetleri tek tek karşılaştırdım, doğruladım.");
-  confirmed.setTextColor(navy);
-  confirmed.setBackground(box(0xf5ffffff));
-  body.addView(confirmed);
+  confirmed.setTextColor(0xffeffaff);
+  confirmed.setButtonTintList(android.content.res.ColorStateList.valueOf(0xff5af4ca));
+  addTextPanel(confirmed, 0xff15283b, 0xff244d5a, 0xff51cfc0);
   button("Kontrol edilen kesim planını ve kalanları hesapla",()->{
    if(!confirmed.isChecked()){
     Toast.makeText(this,
@@ -634,7 +681,9 @@ if (r.mm == 0 && r.qty == 0) {
     int length=val(stock),kerf=val(saw);
     if(length<=0||kerf<0)throw new Exception();
     TreeMap<String,ArrayList<Integer>> groups=new TreeMap<>();
-    for(EditText[] e:edits){
+    HashMap<String, Bitmap> profileIcons = new HashMap<>();
+    for (int rowIndex = 0; rowIndex < edits.size(); rowIndex++) {
+     EditText[] e = edits.get(rowIndex);
      String name=e[0].getText().toString().trim();
      String ms=e[1].getText().toString().trim();
      String qs=e[2].getText().toString().trim();
@@ -646,6 +695,8 @@ if (r.mm == 0 && r.qty == 0) {
       throw new Exception();
      if(!groups.containsKey(name))
       groups.put(name,new ArrayList<>());
+     Bitmap icon = list.get(rowIndex).icon;
+     if (icon != null) profileIcons.putIfAbsent(name, icon);
      for(int j=0;j<q;j++)
       groups.get(name).add(m);
     }
@@ -691,7 +742,7 @@ if (r.mm == 0 && r.qty == 0) {
      }
      if (bins.isEmpty()) continue;
      LinearLayout group = planCard(plans, 0xff172b44, 0xff254662, 0xff597d9b);
-     planLabel(group, entry.getKey(), 17, Color.WHITE).setTypeface(null, Typeface.BOLD);
+     profileHeading(group, entry.getKey(), profileIcons.get(entry.getKey()));
      allPieces += parts.size();
      for (int i = 0; i < bins.size(); i++) {
       int waste = length - used.get(i);
@@ -723,6 +774,31 @@ if (r.mm == 0 && r.qty == 0) {
   return background;
  }
 
+ android.graphics.drawable.Drawable rgbPanel(int start, int end, int edge) {
+  int[] spectrum = {0xfffa5f8b, 0xffa975ff, 0xff54cdfd, 0xff43f0ab, 0xffffca6d};
+  GradientDrawable frame = new GradientDrawable(GradientDrawable.Orientation.TL_BR, spectrum);
+  frame.setCornerRadius(dp(18));
+  GradientDrawable surface = gradient(start, end, edge);
+  GradientDrawable strip = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, spectrum);
+  strip.setCornerRadius(dp(3));
+  android.graphics.drawable.LayerDrawable layers = new android.graphics.drawable.LayerDrawable(
+   new android.graphics.drawable.Drawable[]{frame, surface, strip});
+  layers.setPaddingMode(android.graphics.drawable.LayerDrawable.PADDING_MODE_STACK);
+  layers.setLayerInset(1, dp(2), dp(2), dp(2), dp(2));
+  layers.setLayerInset(2, dp(14), dp(3), dp(14), 0);
+  layers.setLayerHeight(2, dp(2));
+  layers.setLayerGravity(2, Gravity.TOP | Gravity.FILL_HORIZONTAL);
+  return layers;
+ }
+
+ void addTextPanel(TextView view, int start, int end, int edge) {
+  view.setBackground(rgbPanel(start, end, edge));
+  view.setPadding(dp(14), dp(12), dp(14), dp(12));
+  LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+  params.setMargins(0, dp(7), 0, dp(3));
+  body.addView(view, params);
+ }
+
  void reveal(android.view.View view, int delay) {
   view.setAlpha(0f);
   view.setTranslationY(dp(10));
@@ -734,7 +810,7 @@ if (r.mm == 0 && r.qty == 0) {
   LinearLayout card = new LinearLayout(this);
   card.setOrientation(LinearLayout.VERTICAL);
   card.setPadding(dp(14), dp(12), dp(14), dp(12));
-  card.setBackground(gradient(start, end, border));
+  card.setBackground(rgbPanel(start, end, border));
   card.setElevation(dp(3));
   LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
   params.setMargins(0, dp(10), 0, 0);
@@ -911,6 +987,7 @@ if (r.mm == 0 && r.qty == 0) {
      planBar(body, i + 1, bins.get(i), length, saw, length - used.get(i), i < 12);
     }
     button("Yeni kesim planı", () -> opt());
+    button("Ana menü", () -> home());
    }catch(Exception ex){bad();}
   });
   button("Ana menü",()->home());
