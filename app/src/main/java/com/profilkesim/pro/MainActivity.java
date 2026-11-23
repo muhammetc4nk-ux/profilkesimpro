@@ -572,5 +572,195 @@ public class MainActivity extends Activity {
                     out.append("\n");
                 }
 
+                
                 out.append("TOPLAM HAM PROFİL: ")
+                    .append(allBars).append(" boy\n")
+                    .append("TOPLAM KALAN/FİRE: ")
+                    .append(allWaste).append(" mm\n");
+
+                page("Kesim optimizasyon sonucu");
+                result(out.toString());
+
+                note("Kalan parça tekrar kullanılabiliyorsa hurda/fire sayılmayabilir.");
+                button("Ana menü", () -> home());
+
+            } catch (Exception e) {
+                bad();
+            }
+        });
+
+        button("Yeni fotoğraf çek / seç", () -> photo());
+        button("Ana menü", () -> home());
+    }
+
+    void opt() {
+        page("Profil kesim optimizasyonu");
+        note("Her satıra 1250x3 biçiminde kesim ölçüsü ve adet girin.");
+
+        EditText stock = input("HAM PROFİL BOYU (mm)", "6000");
+        EditText kerf = input("TESTERE PAYI (mm / parça)", "3");
+        EditText cuts = input("KESİM ÖLÇÜSÜ x ADET", "1250x3\n850x4");
+
+        cuts.setSingleLine(false);
+        cuts.setMinLines(4);
+        cuts.getLayoutParams().height = dp(140);
+
+        button("Kesim planı oluştur", () -> {
+            try {
+                int length = val(stock), saw = val(kerf);
+                if (length <= 0 || saw < 0) throw new Exception();
+
+                ArrayList<Integer> pieces = new ArrayList<>();
+
+                for (String line : cuts.getText().toString().split("[\\n,;]+")) {
+                    String[] a = line.trim()
+                        .toLowerCase(Locale.ROOT)
+                        .replace(" ", "")
+                        .split("[x×*]");
+
+                    if (a[0].isEmpty()) continue;
+
+                    int size = Integer.parseInt(a[0]);
+                    int qty = a.length > 1 ? Integer.parseInt(a[1]) : 1;
+
+                    if (size <= 0 || qty < 1 || qty > 1000 ||
+                        size + saw > length || pieces.size() + qty > 3000)
+                        throw new Exception();
+
+                    for (int i = 0; i < qty; i++) pieces.add(size);
+                }
+
+                if (pieces.isEmpty()) throw new Exception();
+
+                Collections.sort(pieces, Collections.reverseOrder());
+
+                ArrayList<ArrayList<Integer>> bins = new ArrayList<>();
+                ArrayList<Integer> used = new ArrayList<>();
+                long total = 0;
+
+                for (int size : pieces) {
+                    total += size;
+                    int target = -1;
+
+                    for (int i = 0; i < used.size(); i++) {
+                        if (used.get(i) + size + saw <= length) {
+                            target = i;
+                            break;
+                        }
+                    }
+
+                    if (target < 0) {
+                        target = bins.size();
+                        bins.add(new ArrayList<>());
+                        used.add(0);
+                    }
+
+                    bins.get(target).add(size);
+                    used.set(target, used.get(target) + size + saw);
+                }
+
+                StringBuilder out = new StringBuilder(
+                    "Gerekli profil: " + bins.size() + " boy\n" +
+                    "Parça: " + pieces.size() + " adet\n" +
+                    "Net kesim: " + total + " mm\n" +
+                    "Kalan: " +
+                    ((long) bins.size() * length - total -
+                    (long) pieces.size() * saw) + " mm\n\n"
+                );
+
+                for (int i = 0; i < bins.size(); i++) {
+                    out.append("Boy ").append(i + 1)
+                        .append(": ").append(bins.get(i))
+                        .append("\nKalan: ")
+                        .append(length - used.get(i))
+                        .append(" mm\n\n");
+                }
+
+                result(out.toString());
+            } catch (Exception e) {
+                bad();
+            }
+        });
+
+        button("Ana menü", () -> home());
+    }
+
+    void glass() {
+        page("Cam alan hesabı");
+
+        EditText w = input("CAM ENİ (mm)", "870");
+        EditText h = input("CAM YÜKSEKLİĞİ (mm)", "1265");
+        EditText n = input("CAM ADEDİ", "1");
+
+        button("Hesapla", () -> {
+            try {
+                int a = val(w), b = val(h), c = val(n);
+                if (a <= 0 || b <= 0 || c <= 0) throw new Exception();
+
+                result(String.format(Locale.US,
+                    "Tek cam: %.3f m²\nToplam: %.3f m²",
+                    a * b / 1000000.0,
+                    a * b * c / 1000000.0));
+            } catch (Exception e) {
+                bad();
+            }
+        });
+
+        button("Ana menü", () -> home());
+    }
+
+    void panels() {
+        page("Kanat bölme hesabı");
+        note("Sistem payları hariç teorik eşit bölme.");
+
+        EditText w = input("AÇIKLIK ENİ (mm)", "4100");
+        EditText n = input("KANAT ADEDİ", "6");
+        EditText ded = input("TOPLAM DÜŞÜM (mm)", "0");
+
+        button("Hesapla", () -> {
+            try {
+                int a = val(w), b = val(n), c = val(ded);
+                if (a <= 0 || b <= 0 || c < 0 || c >= a)
+                    throw new Exception();
+
+                result(String.format(Locale.US,
+                    "Teorik kanat eni: %.1f mm",
+                    (a - c) / (double) b));
+            } catch (Exception e) {
+                bad();
+            }
+        });
+
+        button("Ana menü", () -> home());
+    }
+
+    void system(String s) {
+        page(s);
+        note("Ön ölçülendirme. Gerçek profil ve cam kesim payları için üretici kataloğu gereklidir.");
+
+        EditText w = input("AÇIKLIK ENİ (mm)", "3000");
+        EditText h = input("AÇIKLIK YÜKSEKLİĞİ (mm)", "2200");
+        EditText n = input("KANAT / BÖLÜM ADEDİ", "4");
+
+        button("Ön hesapla", () -> {
+            try {
+                int a = val(w), b = val(h), c = val(n);
+                if (a <= 0 || b <= 0 || c <= 0)
+                    throw new Exception();
+
+                result(String.format(Locale.US,
+                    "Sistem: %s\nAlan: %.2f m²\n" +
+                    "Teorik bölüm eni: %.1f mm\n\n" +
+                    "Bunlar nihai imalat kesim ölçüsü değildir.",
+                    s, a * b / 1000000.0,
+                    a / (double) c));
+            } catch (Exception e) {
+                bad();
+            }
+        });
+
+        button("Ana menü", () -> home());
+    }
+}
+
          
