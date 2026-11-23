@@ -53,84 +53,195 @@ public class MainActivity extends Activity {
   t.setTextColor(navy);t.setPadding(dp(12),dp(12),dp(12),dp(12));return t;
  }
  private static final int MUSIC_RATE = 22050;
- private boolean homeVisible, musicResumed, musicMuted, loadingMusic, ownsAudioFocus;
- private short[] homeSamples;
- private android.media.AudioTrack homeTrack;
- private android.media.AudioManager audioManager;
+ private static final int PICK_MUSIC = 43;
+ private static final String MUSIC_MUTED = "home_music_muted";
+ private static final String MUSIC_URI = "home_music_uri";
+ private static final String MUSIC_SETTINGS = "MainActivity";
  private Button musicButton;
- private final android.media.AudioManager.OnAudioFocusChangeListener musicFocus = change -> {
-  if (change == android.media.AudioManager.AUDIOFOCUS_LOSS) {
-   stopHomeMusic();
-  } else if (homeTrack != null) {
-   if (change == android.media.AudioManager.AUDIOFOCUS_GAIN && musicResumed && homeVisible && !musicMuted) {
-    homeTrack.play();
-   } else if (change < 0) {
-    homeTrack.pause();
-   }
-  }
- };
+ private final android.content.SharedPreferences.OnSharedPreferenceChangeListener musicSettingsChanged =
+  (preferences, key) -> {
+   if (MUSIC_MUTED.equals(key)) updateMusicButton();
+  };
 
  private void updateMusicButton() {
   if (musicButton == null) return;
-  musicButton.setText(musicMuted ? "Sesi aç" : "Sustur");
-  musicButton.setContentDescription(musicMuted ? "Ana ekran müziğini aç" : "Ana ekran müziğini sustur");
+  boolean muted = getPreferences(MODE_PRIVATE).getBoolean(MUSIC_MUTED, false);
+  musicButton.setText(muted ? "Sesi aç" : "Sustur");
+  musicButton.setContentDescription(muted ? "Müziği aç" : "Müziği sustur");
  }
 
- private void syncHomeMusic() {
-  if (!homeVisible || !musicResumed || musicMuted) {
-   stopHomeMusic();
-   return;
+ private void updateMusicService() {
+  Intent command = new Intent(this, MusicService.class);
+  if (getPreferences(MODE_PRIVATE).getBoolean(MUSIC_MUTED, false)) {
+   stopService(command);
+  } else if (android.os.Build.VERSION.SDK_INT >= 26) {
+   startForegroundService(command);
+  } else {
+   startService(command);
   }
-  if (homeTrack != null || audioManager == null) return;
-  if (homeSamples == null) {
-   if (loadingMusic) return;
-   loadingMusic = true;
-   new Thread(() -> {
-    short[] samples = composeHomeMusic();
-    runOnUiThread(() -> {
-     loadingMusic = false;
-     if (isDestroyed() || isFinishing()) return;
-     homeSamples = samples;
-     syncHomeMusic();
-    });
-   }, "home-music").start();
-   return;
-  }
-  if (audioManager.requestAudioFocus(musicFocus, android.media.AudioManager.STREAM_MUSIC,
-      android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-      != android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED) return;
-  ownsAudioFocus = true;
-  try {
-   homeTrack = new android.media.AudioTrack.Builder()
-    .setAudioAttributes(new android.media.AudioAttributes.Builder()
-     .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-     .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build())
-    .setAudioFormat(new android.media.AudioFormat.Builder()
-     .setEncoding(android.media.AudioFormat.ENCODING_PCM_16BIT)
-     .setSampleRate(MUSIC_RATE)
-     .setChannelMask(android.media.AudioFormat.CHANNEL_OUT_MONO).build())
-    .setBufferSizeInBytes(homeSamples.length * 2)
-    .setTransferMode(android.media.AudioTrack.MODE_STATIC)
-    .build();
-   if (homeTrack.write(homeSamples, 0, homeSamples.length) != homeSamples.length
-       || homeTrack.setLoopPoints(0, homeSamples.length, -1) != android.media.AudioTrack.SUCCESS) {
-    stopHomeMusic();
+ }
+
+ public static final class MusicService extends android.app.Service {
+  private static final String CHANNEL = "profile_music";
+  private static final String MUTE_ACTION = "com.profilkesim.pro.MUTE_MUSIC";
+  private static final int NOTIFICATION = 31;
+  private android.media.AudioManager audio;
+  private android.media.MediaPlayer player;
+  private java.io.File generatedTrack;
+  private String currentSource;
+  private int revision;
+  private boolean destroyed, prepared, focused, focusRequested;
+
+  private final android.media.AudioManager.OnAudioFocusChangeListener focusListener = change -> {
+   if (change == android.media.AudioManager.AUDIOFOCUS_LOSS) {
+    stopSelf();
     return;
    }
-   homeTrack.play();
-  } catch (IllegalArgumentException | IllegalStateException ignored) {
-   stopHomeMusic();
-  }
- }
+   focused = change == android.media.AudioManager.AUDIOFOCUS_GAIN;
+   applyPlayback();
+  };
 
- private void stopHomeMusic() {
-  if (homeTrack != null) {
-   homeTrack.release();
-   homeTrack = null;
+  @Override public android.os.IBinder onBind(Intent intent) { return null; }
+
+  @Override public int onStartCommand(Intent intent, int flags, int startId) {
+   android.content.SharedPreferences settings = getSharedPreferences(MUSIC_SETTINGS, MODE_PRIVATE);
+   if (intent != null && MUTE_ACTION.equals(intent.getAction())) {
+    settings.edit().putBoolean(MUSIC_MUTED, true).apply();
+    stopSelf();
+    return START_NOT_STICKY;
+   }
+   startForeground(NOTIFICATION, playbackNotification());
+   if (settings.getBoolean(MUSIC_MUTED, false)) {
+    stopSelf();
+    return START_NOT_STICKY;
+   }
+   String source = settings.getString(MUSIC_URI, "");
+   if (source.equals(currentSource)) return START_NOT_STICKY;
+   currentSource = source;
+   releaseTrack();
+   int request = ++revision;
+   if (source.isEmpty()) {
+    new Thread(() -> generateDefaultTrack(request), "profile-music").start();
+   } else {
+    prepareTrack(Uri.parse(source));
+   }
+   return START_NOT_STICKY;
   }
-  if (ownsAudioFocus) {
-   ownsAudioFocus = false;
-   audioManager.abandonAudioFocus(musicFocus);
+
+  private android.app.Notification playbackNotification() {
+   android.app.NotificationManager manager = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+   android.app.Notification.Builder notification;
+   if (android.os.Build.VERSION.SDK_INT >= 26) {
+    manager.createNotificationChannel(new android.app.NotificationChannel(CHANNEL,
+     "ProfilKesimPro müzik", android.app.NotificationManager.IMPORTANCE_LOW));
+    notification = new android.app.Notification.Builder(this, CHANNEL);
+   } else {
+    notification = new android.app.Notification.Builder(this);
+   }
+   Intent open = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+   int pendingFlags = android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE;
+   android.app.PendingIntent openApp = android.app.PendingIntent.getActivity(this, 0, open, pendingFlags);
+   Intent mute = new Intent(this, MusicService.class).setAction(MUTE_ACTION);
+   android.app.PendingIntent muteAction = android.app.PendingIntent.getService(this, 1, mute, pendingFlags);
+   return notification.setSmallIcon(android.R.drawable.ic_media_play)
+    .setContentTitle("ProfilKesimPro").setContentText("Arka plan müziği")
+    .setContentIntent(openApp).setOngoing(true).setOnlyAlertOnce(true)
+    .addAction(new android.app.Notification.Action.Builder(android.R.drawable.ic_media_pause,
+     "Sustur", muteAction).build()).build();
+  }
+
+  private void generateDefaultTrack(int request) {
+   java.io.File file = null;
+   try {
+    short[] samples = composeHomeMusic();
+    file = java.io.File.createTempFile("profile-music-", ".wav", getCacheDir());
+    java.nio.ByteBuffer wav = java.nio.ByteBuffer.allocate(44 + samples.length * 2)
+     .order(java.nio.ByteOrder.LITTLE_ENDIAN);
+    wav.putInt(0x46464952).putInt(36 + samples.length * 2).putInt(0x45564157);
+    wav.putInt(0x20746d66).putInt(16).putShort((short) 1).putShort((short) 1);
+    wav.putInt(MUSIC_RATE).putInt(MUSIC_RATE * 2).putShort((short) 2).putShort((short) 16);
+    wav.putInt(0x61746164).putInt(samples.length * 2);
+    for (short sample : samples) wav.putShort(sample);
+    try (java.io.FileOutputStream stream = new java.io.FileOutputStream(file)) {
+     stream.write(wav.array());
+    }
+    java.io.File track = file;
+    new android.os.Handler(getMainLooper()).post(() -> {
+     if (destroyed || request != revision) {
+      track.delete();
+      return;
+     }
+     generatedTrack = track;
+     prepareTrack(Uri.fromFile(track));
+    });
+   } catch (java.io.IOException e) {
+    if (file != null) file.delete();
+    new android.os.Handler(getMainLooper()).post(() -> {
+     if (!destroyed && request == revision) playbackError();
+    });
+   }
+  }
+
+  private void prepareTrack(Uri source) {
+   try {
+    player = new android.media.MediaPlayer();
+    player.setAudioAttributes(new android.media.AudioAttributes.Builder()
+     .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+     .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build());
+    player.setWakeMode(this, android.os.PowerManager.PARTIAL_WAKE_LOCK);
+    player.setDataSource(this, source);
+    player.setOnErrorListener((failed, what, extra) -> {
+     if (failed == player && !destroyed) playbackError();
+     return true;
+    });
+    player.setOnPreparedListener(ready -> {
+     if (ready != player || destroyed) return;
+     prepared = true;
+     ready.setLooping(true);
+     audio = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
+     if (!focusRequested && audio != null) {
+      focusRequested = audio.requestAudioFocus(focusListener, android.media.AudioManager.STREAM_MUSIC,
+       android.media.AudioManager.AUDIOFOCUS_GAIN) == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+      focused = focusRequested;
+     }
+     if (focusRequested) applyPlayback();
+     else stopSelf();
+    });
+    player.prepareAsync();
+   } catch (java.io.IOException | RuntimeException e) {
+    playbackError();
+   }
+  }
+
+  private void applyPlayback() {
+   if (player == null || !prepared) return;
+   if (focused) player.start();
+   else if (player.isPlaying()) player.pause();
+  }
+
+  private void playbackError() {
+   Toast.makeText(this, "Müzik açılamadı. Ana ekrandan ses dosyasını yeniden seçin.", Toast.LENGTH_LONG).show();
+   stopSelf();
+  }
+
+  private void releaseTrack() {
+   prepared = false;
+   if (player != null) {
+    player.release();
+    player = null;
+   }
+   if (generatedTrack != null) {
+    generatedTrack.delete();
+    generatedTrack = null;
+   }
+  }
+
+  @Override public void onDestroy() {
+   destroyed = true;
+   releaseTrack();
+   if (focusRequested && audio != null) audio.abandonAudioFocus(focusListener);
+   stopForeground(true);
+   super.onDestroy();
   }
  }
 
@@ -188,21 +299,15 @@ public class MainActivity extends Activity {
  }
 
  void page(String title){
-  page(title, false);
- }
-
- void page(String title, boolean isHome){
   savePhotoReview = null;
-  homeVisible = isHome;
   musicButton = null;
-  if (!isHome) stopHomeMusic();
   root=new LinearLayout(this);root.setOrientation(1);
   root.setBackgroundResource(R.drawable.cambalkon);
   setContentView(root);
   TextView brand=text("muhammet can . K",12);
   brand.setTextColor(Color.WHITE);brand.setGravity(Gravity.CENTER);
   brand.setBackground(rgbPanel(0xff0e1933, 0xff233953, 0xff3ab6c9));
-  if (isHome) {
+  {
    LinearLayout masthead = new LinearLayout(this);
    masthead.setGravity(Gravity.CENTER_VERTICAL);
    masthead.setBackground(rgbPanel(0xff0e1933, 0xff233953, 0xff3ab6c9));
@@ -222,14 +327,12 @@ public class MainActivity extends Activity {
    root.addView(masthead, new LinearLayout.LayoutParams(-1, dp(56)));
    updateMusicButton();
    musicButton.setOnClickListener(view -> {
-    musicMuted = !musicMuted;
-    getPreferences(MODE_PRIVATE).edit().putBoolean("home_music_muted", musicMuted).apply();
+    android.content.SharedPreferences settings = getPreferences(MODE_PRIVATE);
+    boolean muted = !settings.getBoolean(MUSIC_MUTED, false);
+    settings.edit().putBoolean(MUSIC_MUTED, muted).apply();
     updateMusicButton();
-    syncHomeMusic();
+    updateMusicService();
    });
-   syncHomeMusic();
-  } else {
-   root.addView(brand, new LinearLayout.LayoutParams(-1, dp(44)));
   }
   
 brand.setText("✦ MUHAMMET CAN . K ✦");
@@ -337,21 +440,22 @@ pulse.start();
  void bad(){Toast.makeText(this,"Ölçü veya adet hatalı",Toast.LENGTH_LONG).show();}
  @Override public void onCreate(Bundle state) {
   super.onCreate(state);
-  audioManager = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
   setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC);
-  musicMuted = getPreferences(MODE_PRIVATE).getBoolean("home_music_muted", false);
+  getPreferences(MODE_PRIVATE).registerOnSharedPreferenceChangeListener(musicSettingsChanged);
   home();
  }
  @Override protected void onResume() {
   super.onResume();
-  musicResumed = true;
-  syncHomeMusic();
+  updateMusicButton();
+  updateMusicService();
  }
  @Override protected void onPause() {
   if (savePhotoReview != null) savePhotoReview.run();
-  musicResumed = false;
-  stopHomeMusic();
   super.onPause();
+ }
+ @Override protected void onDestroy() {
+  getPreferences(MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(musicSettingsChanged);
+  super.onDestroy();
  }
  @Override public void onBackPressed(){
   if (photoBatchRunning) {
@@ -362,8 +466,15 @@ pulse.start();
   home();
  }
  void home(){
-  page("Profil Kesim Pro", true);
+  page("Profil Kesim Pro");
   note("Cam balkon ve doğrama hesaplama • Ölçüler mm");
+  button("Müzik dosyası seç", () -> {
+   Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+   picker.addCategory(Intent.CATEGORY_OPENABLE);
+   picker.setType("audio/*");
+   picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+   startActivityForResult(picker, PICK_MUSIC);
+  });
   button("Fotoğraftan kesim listesi oku",()->photo());
   button("Profil kesim optimizasyonu",()->opt());
   button("Cam alanı ve adet hesabı",()->glass());
@@ -415,6 +526,19 @@ pulse.start();
 
  @Override protected void onActivityResult(int request, int result, Intent data) {
   super.onActivityResult(request, result, data);
+  if (request == PICK_MUSIC) {
+   if (result == RESULT_OK && data != null && data.getData() != null) {
+    Uri uri = data.getData();
+    try {
+     getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+     getPreferences(MODE_PRIVATE).edit().putString(MUSIC_URI, uri.toString()).apply();
+     updateMusicService();
+    } catch (SecurityException e) {
+     Toast.makeText(this, "Bu ses dosyası kaydedilemedi. Başka bir dosya seçin.", Toast.LENGTH_LONG).show();
+    }
+   }
+   return;
+  }
   if (result != RESULT_OK || photoBatchRunning) return;
   LinkedHashSet<Uri> selected = new LinkedHashSet<>();
   if (request == TAKE_PHOTO && cameraUri != null) {
