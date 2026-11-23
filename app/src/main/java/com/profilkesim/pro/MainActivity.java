@@ -380,7 +380,7 @@ public class MainActivity extends Activity {
    return;
   }
   page("Fotoğraflardan kesim listesi");
-  note("Bir veya daha fazla Albert Genau föyü ekleyin. Uygulama aynı profil koduna ait parçaları birlikte optimize eder.");
+  note("Bir veya daha fazla kesim föyü ekleyin. Aynı profil kodu olan parçalar, kod yoksa aynı profil adına göre birlikte hesaplanır.");
   if (!photoBatchWarning.isEmpty()) note(photoBatchWarning);
   addPhotoButtons(() -> {});
   button("Elle satır ekle", () -> showDetected());
@@ -522,7 +522,7 @@ public class MainActivity extends Activity {
    return;
   }
   if (pass >= 4 || (pass >= 0 && bitmap == null)) {
-   failed.accept(sawText ? "profil kodu bulunamadı" : "metin okunamadı");
+   failed.accept(sawText ? "profil adı veya kodu bulunamadı" : "metin okunamadı");
    return;
   }
   int rotation = pass < 0 ? 0 : 90 * pass;
@@ -540,7 +540,9 @@ public class MainActivity extends Activity {
     recognizer.close();
     return;
    }
-   ArrayList<CutRow> rows = parseSheet(doc);
+   int width = bitmap == null ? 0 : (rotation % 180 == 0 ? bitmap.getWidth() : bitmap.getHeight());
+   SheetLayout layout = new SheetLayout(doc, width);
+   ArrayList<CutRow> rows = parseSheet(doc, layout);
    if (rows.isEmpty()) {
     recognizePhoto(fileImage, bitmap, pass + 1, recognizer, sawText || !doc.getText().trim().isEmpty(), failed, finished);
     return;
@@ -558,7 +560,7 @@ public class MainActivity extends Activity {
      android.util.Log.w("ProfilKesimOCR", "Profile preview crop failed", e);
     }
    }
-   readColumns(oriented, doc, rows, recognizer, () -> finished.accept(rows));
+   readColumns(oriented, layout, rows, recognizer, () -> finished.accept(rows));
   }).addOnFailureListener(e -> {
    android.util.Log.w("ProfilKesimOCR", "Text recognition pass failed: " + pass, e);
    recognizePhoto(fileImage, bitmap, pass + 1, recognizer, sawText, failed, finished);
@@ -587,7 +589,7 @@ public class MainActivity extends Activity {
    + "){4})|8" + CODE_SEPARATOR + "([1IL|]" + CODE_SEPARATOR + "[5S]" + CODE_SEPARATOR
    + "[0OQ]" + CODE_SEPARATOR + OCR_DIGIT + CODE_SEPARATOR + OCR_DIGIT + "))(?![A-Z0-9])");
 
- ArrayList<CutRow> parseSheet(Text document) {
+ ArrayList<CutRow> parseSheet(Text document, SheetLayout layout) {
   ArrayList<CutRow> rows = new ArrayList<>();
   for (Text.TextBlock block : document.getTextBlocks()) {
    for (Text.Line line : block.getLines()) {
@@ -601,6 +603,7 @@ public class MainActivity extends Activity {
     if (!elementMatched) addProfileCodes(line.getText(), bounds, rows);
    }
   }
+  addNamedProfileRows(document, layout, rows);
   Collections.sort(rows, (a, b) -> Integer.compare(a.y, b.y));
   return rows;
  }
@@ -632,6 +635,150 @@ public class MainActivity extends Activity {
   return matched;
  }
 
+ private static final Pattern PROFILE_TERMS = Pattern.compile(
+  "\\b(PROFIL(I|LERI)?|KASA|KANAT|RAY(I)?|DIKME|CITA|KAPAK|KUSAK|KAYIT|FITIL|"
+   + "BIRLESIM|CEKTIRME|KARSILIK|PERDE|LAMEL|ESIK|AYAR|KILIT|KIZAK|BORU|KUTU|OMEGA|KOSEN?BENT)\\b");
+ private static final Pattern SHEET_TEXT = Pattern.compile(
+  "\\b(FOY(U)?|LISTE(SI)?|SAYFA|SIPARIS|MUSTERI|TARIH|GENEL TOPLAM|"
+   + "KESIM PLANI|PROJE NO|PROFIL KODU|PROFIL ADI|PROFIL ISMI|KULLANILACAK)\\b");
+ private static final Pattern TRAILING_CUT = Pattern.compile(
+  "\\s+([0-9]{1,4})(?:\\s*MM)?(?:\\s*[xX×]\\s*|\\s+)([0-9]{1,3})(?:\\s+ADET)?\\s*$",
+  Pattern.CASE_INSENSITIVE);
+
+ private static String profileIdentity(String name) {
+  String upper = java.text.Normalizer.normalize(name, java.text.Normalizer.Form.NFD)
+   .replaceAll("\\p{M}+", "").toUpperCase(Locale.ROOT);
+  return upper.replaceAll("(?<=\\d)\\s*[X×*]\\s*(?=\\d)", "X")
+   .replaceAll("[^A-Z0-9]+", " ").trim();
+ }
+
+ static final class SheetLayout {
+  final List<Text.Element> words = new ArrayList<>();
+  Rect nameHeader, measureHeader, quantityHeader;
+  int width;
+
+  SheetLayout(Text document, int imageWidth) {
+   width = imageWidth;
+   for (Text.TextBlock block : document.getTextBlocks()) {
+    for (Text.Line line : block.getLines()) {
+     if (imageWidth == 0 && line.getBoundingBox() != null) width = Math.max(width, line.getBoundingBox().right);
+     header(line.getText(), line.getBoundingBox(), true);
+     for (Text.Element element : line.getElements()) {
+      words.add(element);
+      header(element.getText(), element.getBoundingBox(), false);
+     }
+    }
+   }
+  }
+
+  private void header(String text, Rect bounds, boolean line) {
+   if (bounds == null) return;
+   String label = profileIdentity(text);
+   if (line && label.matches("PROFIL (ADI|ISMI|CINSI|TURU|TANIMI)|MALZEME (ADI|CINSI|TANIMI)|ACIKLAMA|PARCA ADI")) {
+    if (nameHeader == null || bounds.top < nameHeader.top) nameHeader = bounds;
+   }
+   if (label.matches("OLCU( MM)?|KESIM (OLCUSU|BOYU)( MM)?|UZUNLUK( MM)?|BOY MM")) {
+    if (measureHeader == null || bounds.top < measureHeader.top) measureHeader = bounds;
+   }
+   if (label.matches("MIKTAR( ADET)?|ADET|KESIM ADEDI|ADEDI")) {
+    if (quantityHeader == null || bounds.top < quantityHeader.top) quantityHeader = bounds;
+   }
+  }
+
+  boolean hasNumericColumns() {
+   if (measureHeader == null || quantityHeader == null) return false;
+   int distance = quantityHeader.centerX() - measureHeader.centerX();
+   int tolerance = Math.max(16, Math.max(measureHeader.height(), quantityHeader.height()) * 2);
+   return distance > 0 && Math.abs(measureHeader.centerY() - quantityHeader.centerY()) <= tolerance;
+  }
+
+  int numberBeside(Rect row, Rect column, int max) {
+   int radius = Math.max(3, (quantityHeader.centerX() - measureHeader.centerX() - 1) / 2);
+   int value = -1;
+   int best = Integer.MAX_VALUE;
+   for (Text.Element element : words) {
+    Rect bounds = element.getBoundingBox();
+    if (bounds == null) continue;
+    int dx = Math.abs(bounds.centerX() - column.centerX());
+    int dy = Math.abs(bounds.centerY() - row.centerY());
+    if (dx > radius || dy > Math.max(4, row.height() / 2)) continue;
+    String token = element.getText().trim().replace('O', '0').replace('o', '0');
+    if (!token.matches("[0-9]{1,4}")) continue;
+    int candidate = Integer.parseInt(token);
+    int score = dx + 3 * dy;
+    if (candidate <= max && score < best) {
+     best = score;
+     value = candidate;
+    }
+   }
+   return value;
+  }
+ }
+
+ void addNamedProfileRows(Text document, SheetLayout layout, List<CutRow> rows) {
+  for (Text.TextBlock block : document.getTextBlocks()) {
+   for (Text.Line line : block.getLines()) {
+    Rect bounds = line.getBoundingBox();
+    if (bounds == null) continue;
+    if (layout.nameHeader != null && bounds.centerY() <= layout.nameHeader.bottom) continue;
+    if (layout.hasNumericColumns() && bounds.centerY() <= layout.measureHeader.bottom) continue;
+    String name = line.getText().trim();
+    int size = -1, quantity = -1;
+    Rect nameBounds = bounds;
+    if (layout.hasNumericColumns()) {
+     int nameRight = layout.measureHeader.centerX()
+      - (layout.quantityHeader.centerX() - layout.measureHeader.centerX()) / 2;
+     if (bounds.left >= nameRight) continue;
+     StringBuilder visibleName = new StringBuilder();
+     Rect visibleBounds = new Rect();
+     for (Text.Element element : line.getElements()) {
+      Rect word = element.getBoundingBox();
+      if (word == null || word.centerX() >= nameRight) continue;
+      if (visibleName.length() > 0) visibleName.append(' ');
+      visibleName.append(element.getText());
+      visibleBounds.union(word);
+     }
+     if (visibleName.length() > 0) {
+      name = visibleName.toString();
+      nameBounds = visibleBounds;
+     }
+     size = layout.numberBeside(nameBounds, layout.measureHeader, 6500);
+     quantity = layout.numberBeside(nameBounds, layout.quantityHeader, 100);
+    } else {
+     Matcher tail = TRAILING_CUT.matcher(name);
+     if (tail.find() && bounds.width() >= layout.width * .20f) {
+      int candidateLength = Integer.parseInt(tail.group(1));
+      int candidateQuantity = Integer.parseInt(tail.group(2));
+      if (candidateLength <= 6500 && candidateQuantity <= 100) {
+       size = candidateLength;
+       quantity = candidateQuantity;
+       name = name.substring(0, tail.start()).trim();
+      }
+     }
+    }
+    String identity = profileIdentity(name);
+    if (!identity.matches(".*[A-Z].*") || identity.matches("PROFIL|MALZEME|ACIKLAMA|OLCU MM|KESIM|TOPLAM")
+        || SHEET_TEXT.matcher(identity).find()) continue;
+    boolean namedPart = PROFILE_TERMS.matcher(identity).find();
+    if (!namedPart && (size < 0 || quantity < 0)) continue;
+    if (layout.width > 0 && nameBounds.left > layout.width * .58f) continue;
+    boolean occupied = false;
+    for (CutRow existing : rows) {
+     int tolerance = Math.max(4, Math.min(existing.photoBounds.height(), nameBounds.height()) / 2);
+     if (Math.abs(existing.y - nameBounds.centerY()) <= tolerance) {
+      occupied = true;
+      break;
+     }
+    }
+    if (!occupied) {
+     CutRow row = new CutRow("", name, size, quantity, null, nameBounds.centerY());
+     row.photoBounds = nameBounds;
+     rows.add(row);
+    }
+   }
+  }
+ }
+
  void cropProfileIcons(Bitmap bitmap, List<CutRow> rows) {
   if (bitmap == null || rows.isEmpty()) return;
   int width = bitmap.getWidth(), height = bitmap.getHeight();
@@ -655,7 +802,10 @@ public class MainActivity extends Activity {
    bottom -= inset;
    int left = (int) (width * .035f);
    int right = (int) (width * .23f);
-   if (anchor.left >= width * .14f && anchor.left <= width * .36f) {
+   if (row.code.isEmpty()) {
+    if (anchor.left < width * .10f) continue;
+    right = Math.min((int) (width * .30f), anchor.left - Math.max(1, width / 100));
+   } else if (anchor.left >= width * .14f && anchor.left <= width * .36f) {
     right = anchor.left - Math.max(1, width / 100);
    }
    if (right > left && bottom > top) {
@@ -686,23 +836,17 @@ public class MainActivity extends Activity {
   heading.addView(label, new LinearLayout.LayoutParams(0, -2, 1f));
  }
 
-void readColumns(Bitmap bmp, Text doc, List<CutRow> rows,
+void readColumns(Bitmap bmp, SheetLayout layout, List<CutRow> rows,
                  com.google.mlkit.vision.text.TextRecognizer recognizer, Runnable done) {
     if (bmp == null) {
         done.run();
         return;
     }
-    float measureX = bmp.getWidth() * 0.60f;
-    float quantityX = bmp.getWidth() * 0.72f;
-    for (Text.TextBlock block : doc.getTextBlocks()) {
-        for (Text.Line line : block.getLines()) {
-            String word = line.getText().toUpperCase(Locale.ROOT)
-                .replace("Ü", "U").replace("İ", "I").replace("Ö", "O").trim();
-            Rect rect = line.getBoundingBox();
-            if (rect == null) continue;
-            if (word.equals("OLCU") || word.equals("OLCU (MM)")) measureX = rect.centerX();
-            if (word.equals("MIKTAR") || word.equals("ADET")) quantityX = rect.centerX();
-        }
+    float measureX = layout.measureHeader == null ? bmp.getWidth() * .60f : layout.measureHeader.centerX();
+    float quantityX = layout.quantityHeader == null ? bmp.getWidth() * .72f : layout.quantityHeader.centerX();
+    if (measureX >= quantityX) {
+        measureX = bmp.getWidth() * .60f;
+        quantityX = bmp.getWidth() * .72f;
     }
     scanCells(bmp, measureX, quantityX, 0, rows, recognizer, done);
 }
@@ -730,6 +874,10 @@ void scanCells(
     boolean quantity = index % 2 == 1;
 
     CutRow row = rows.get(rowIndex);
+    if (row.code.isEmpty() && (quantity ? row.qty : row.mm) >= 0) {
+        scanCells(bmp, measureX, quantityX, index + 1, rows, recognizer, done);
+        return;
+    }
 
     // Satırın üst ve alt sınırlarını hesapla
     int top;
@@ -981,6 +1129,13 @@ void scanCells(
   if (!photoBatchWarning.isEmpty()) note(photoBatchWarning);
 
   ArrayList<CutRow> rows = new ArrayList<>(detected);
+  Map<String, String> codesByName = new HashMap<>();
+  for (CutRow row : rows) {
+   if (row.code.isEmpty()) continue;
+   String identity = profileIdentity(row.name);
+   String existing = codesByName.get(identity);
+   codesByName.put(identity, existing == null || existing.equals(row.code) ? row.code : "");
+  }
   ArrayList<EditText[]> fields = new ArrayList<>();
   Map<String, List<EditText>> stocks = new HashMap<>();
   Runnable saveDraft = () -> {
@@ -1002,8 +1157,8 @@ void scanCells(
 
   for (CutRow row : rows) {
    LinearLayout profile = planCard(body, 0xff121f38, 0xff244361, 0xff5685a4);
-   profileHeading(profile, row.code + "\n" + row.name, row.icon);
-   addProfileStockInput(profile, row.code, stocks);
+   profileHeading(profile, row.code.isEmpty() ? row.name : row.code + "\n" + row.name, row.icon);
+   addProfileStockInput(profile, profileStockKey(row, codesByName), stocks);
    planLabel(profile, "Fotoğraf " + row.photo, 13, 0xffbdd7ee);
    String[] values = row.draft != null ? row.draft : new String[]{
     row.mm < 0 ? "" : String.valueOf(row.mm), row.qty < 0 ? "" : String.valueOf(row.qty)};
@@ -1045,16 +1200,18 @@ void scanCells(
     TreeMap<String, ProfileCutPlan> plans = new TreeMap<>();
     for (CutRow row : rows) {
      String[] values = row.draft;
-     String context = row.code + " · Fotoğraf " + row.photo;
+     String label = row.code.isEmpty() ? row.name : row.code + " " + row.name;
+     String key = profileStockKey(row, codesByName);
+     String context = label + " · Fotoğraf " + row.photo;
      int quantity = cutNumber(values[1], context + " kesim adedi");
      if (quantity == 0) continue;
      int size = cutNumber(values[0], context + " kesim ölçüsü");
-     int stock = cutNumber(stockDrafts.get(row.code), row.code + " stok boyu");
+     int stock = cutNumber(stockDrafts.get(key), label + " stok boyu");
      validateCut(size, quantity, stock, kerf, context);
-     ProfileCutPlan plan = plans.get(row.code);
+     ProfileCutPlan plan = plans.get(key);
      if (plan == null) {
-      plan = new ProfileCutPlan(row.code + " " + row.name, stock, row.icon);
-      plans.put(row.code, plan);
+      plan = new ProfileCutPlan(label, stock, row.icon);
+      plans.put(key, plan);
      }
      if (plan.icon == null) plan.icon = row.icon;
      for (int i = 0; i < quantity; i++) plan.pieces.add(size);
@@ -1072,7 +1229,7 @@ void scanCells(
       if (plan == null || plan.stock != stock) {
        plan = null;
        for (ProfileCutPlan candidate : plans.values()) {
-        if (candidate.name.equalsIgnoreCase(manualName) && candidate.stock == stock) {
+        if (profileIdentity(candidate.name).equals(profileIdentity(manualName)) && candidate.stock == stock) {
          plan = candidate;
          break;
         }
@@ -1109,6 +1266,13 @@ void scanCells(
    savePhotoReview.run();
    home();
   });
+ }
+
+ String profileStockKey(CutRow row, Map<String, String> codesByName) {
+  if (!row.code.isEmpty()) return row.code;
+  String identity = profileIdentity(row.name);
+  String known = codesByName.get(identity);
+  return known == null || known.isEmpty() ? "NAME:" + identity : known;
  }
 
  void addProfileStockInput(LinearLayout card, String code, Map<String, List<EditText>> stocks) {
