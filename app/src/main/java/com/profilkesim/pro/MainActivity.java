@@ -25,11 +25,18 @@ import java.util.*;
 
 public class MainActivity extends Activity {
  LinearLayout root,body;
- EditText recognized;
- Uri cameraUri; Bitmap sourceBitmap;
- ArrayList<CutRow> detected=new ArrayList<>();
+ Uri cameraUri;
+ final ArrayList<CutRow> detected = new ArrayList<>();
+ final Map<String, String> stockDrafts = new HashMap<>();
+ String[] extraDraft = {"", "", "", "6000", "3"};
+ int photoNumber, photosRead;
+ boolean photoBatchRunning;
+ Runnable savePhotoReview;
+ String photoBatchWarning = "";
  static class CutRow {
   String code,name;int mm,qty,y;Bitmap icon;
+  int photo;
+  String[] draft;
   CutRow(String c,String n,int m,int q,Bitmap b,int cy){
    code=c;name=n;mm=m;qty=q;icon=b;y=cy;
   }
@@ -185,6 +192,7 @@ public class MainActivity extends Activity {
  }
 
  void page(String title, boolean isHome){
+  savePhotoReview = null;
   homeVisible = isHome;
   musicButton = null;
   if (!isHome) stopHomeMusic();
@@ -340,11 +348,19 @@ pulse.start();
   syncHomeMusic();
  }
  @Override protected void onPause() {
+  if (savePhotoReview != null) savePhotoReview.run();
   musicResumed = false;
   stopHomeMusic();
   super.onPause();
  }
- @Override public void onBackPressed(){home();}
+ @Override public void onBackPressed(){
+  if (photoBatchRunning) {
+   Toast.makeText(this, "Fotoğraflar okunuyor, lütfen bekleyin.", Toast.LENGTH_SHORT).show();
+   return;
+  }
+  if (savePhotoReview != null) savePhotoReview.run();
+  home();
+ }
  void home(){
   page("Profil Kesim Pro", true);
   note("Cam balkon ve doğrama hesaplama • Ölçüler mm");
@@ -357,61 +373,139 @@ pulse.start();
    "PVC","Sineklik","Duşakabin","ASAŞ RST116 Hebeschiebe"
   })button(s,()->system(s));
  }
- void photo(){
-  page("Fotoğraftan kesim listesi");
-  note("Albert Genau kesim föyü: kod, profil adı, ÖLÇÜ (mm), MİKTAR (adet) ve soldaki kesit çizimini okumaya çalışır. Net ve düz fotoğraf çekin. Sonuçları imalattan önce kontrol edin.");
-  button("Galeriden fotoğraf seç",()->{
-   Intent i=new Intent(Intent.ACTION_GET_CONTENT);
-   i.setType("image/*");startActivityForResult(i,PICK_IMAGE);
+ void photo() {
+  if (!detected.isEmpty()) {
+   showDetected();
+   return;
+  }
+  page("Fotoğraflardan kesim listesi");
+  note("Bir veya daha fazla Albert Genau föyü ekleyin. Uygulama aynı profil koduna ait parçaları birlikte optimize eder.");
+  if (!photoBatchWarning.isEmpty()) note(photoBatchWarning);
+  addPhotoButtons(() -> {});
+  button("Elle satır ekle", () -> showDetected());
+  button("Ana menü", () -> home());
+ }
+
+ void addPhotoButtons(Runnable saveDraft) {
+  button("Galeriden fotoğraf ekle", () -> {
+   saveDraft.run();
+   Intent picker = new Intent(Intent.ACTION_GET_CONTENT);
+   picker.setType("image/*");
+   picker.addCategory(Intent.CATEGORY_OPENABLE);
+   picker.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+   startActivityForResult(picker, PICK_IMAGE);
   });
-  button("Tam çözünürlüklü fotoğraf çek",()->{
-   try{
-    ContentValues v=new ContentValues();
-    v.put(MediaStore.Images.Media.DISPLAY_NAME,
-     "profil_foy_"+System.currentTimeMillis()+".jpg");
-    v.put(MediaStore.Images.Media.MIME_TYPE,"image/jpeg");
-    cameraUri=getContentResolver().insert(
-     MediaStore.Images.Media.EXTERNAL_CONTENT_URI,v);
-    if(cameraUri==null)throw new Exception("Fotoğraf dosyası oluşturulamadı");
-    Intent i=new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-    i.putExtra(MediaStore.EXTRA_OUTPUT,cameraUri);
-    i.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION|
-     Intent.FLAG_GRANT_READ_URI_PERMISSION);
-    startActivityForResult(i,TAKE_PHOTO);
-   }catch(Exception e){
-    Toast.makeText(this,"Kamera açılamadı: "+e.getMessage(),
-     Toast.LENGTH_LONG).show();
+  button("Kameradan fotoğraf ekle", () -> {
+   saveDraft.run();
+   try {
+    ContentValues values = new ContentValues();
+    values.put(MediaStore.Images.Media.DISPLAY_NAME, "profil_foy_" + System.currentTimeMillis() + ".jpg");
+    values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+    cameraUri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+    if (cameraUri == null) throw new IllegalStateException("Fotoğraf dosyası oluşturulamadı");
+    Intent camera = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+    camera.putExtra(MediaStore.EXTRA_OUTPUT, cameraUri);
+    camera.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+    startActivityForResult(camera, TAKE_PHOTO);
+   } catch (Exception e) {
+    Toast.makeText(this, "Kamera açılamadı: " + e.getMessage(), Toast.LENGTH_LONG).show();
    }
   });
-  recognized=input("Okunan ham metin (kontrol amaçlı)","");
-  recognized.setSingleLine(false);recognized.setMinLines(5);
-  recognized.getLayoutParams().height=dp(160);
-  button("Okunan profil satırlarını göster",()->showDetected());
-  button("Ana menü",()->home());
  }
- @Override protected void onActivityResult(int request,int result,Intent data){
-  super.onActivityResult(request,result,data);
-  if(result!=RESULT_OK)return;
-  try{
-   Uri uri=request==TAKE_PHOTO?cameraUri:
-    (data==null?null:data.getData());
-   if(uri==null)throw new Exception("Fotoğraf seçilemedi");
-   sourceBitmap=MediaStore.Images.Media.getBitmap(getContentResolver(),uri);
-   InputImage image=InputImage.fromFilePath(this,uri);
-   Toast.makeText(this,"Fotoğraf okunuyor...",Toast.LENGTH_SHORT).show();
-   TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-    .process(image).addOnSuccessListener(t->{
-     detected=parseSheet(t,sourceBitmap);
-     if(recognized!=null)recognized.setText(t.getText());
-     readColumns(sourceBitmap);
-    }).addOnFailureListener(e->
-     Toast.makeText(this,"Okuma hatası: "+e.getMessage(),
-      Toast.LENGTH_LONG).show());
-  }catch(Exception e){
-   Toast.makeText(this,"Fotoğraf açılamadı: "+e.getMessage(),
-    Toast.LENGTH_LONG).show();
+
+ @Override protected void onActivityResult(int request, int result, Intent data) {
+  super.onActivityResult(request, result, data);
+  if (result != RESULT_OK || photoBatchRunning) return;
+  LinkedHashSet<Uri> selected = new LinkedHashSet<>();
+  if (request == TAKE_PHOTO && cameraUri != null) {
+   selected.add(cameraUri);
+  } else if (request == PICK_IMAGE && data != null) {
+   android.content.ClipData clips = data.getClipData();
+   if (clips != null) {
+    for (int i = 0; i < clips.getItemCount(); i++) {
+     Uri uri = clips.getItemAt(i).getUri();
+     if (uri != null) selected.add(uri);
+    }
+   }
+   if (data.getData() != null) selected.add(data.getData());
   }
+  if (selected.isEmpty()) return;
+  photoBatchRunning = true;
+  page("Fotoğraflar okunuyor");
+  TextView progress = text("", 16);
+  progress.setTextColor(Color.WHITE);
+  addTextPanel(progress, 0xff14233e, 0xff285575, 0xff4ecade);
+  readPhotoBatch(new ArrayList<>(selected), 0, new ArrayList<>(), progress,
+   TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS));
  }
+
+ void readPhotoBatch(List<Uri> photos, int index, List<Integer> failures, TextView progress,
+                     com.google.mlkit.vision.text.TextRecognizer recognizer) {
+  if (isDestroyed() || isFinishing()) {
+   recognizer.close();
+   return;
+  }
+  if (index == photos.size()) {
+   recognizer.close();
+   photoBatchRunning = false;
+   photoBatchWarning = failures.isEmpty() ? "" : "Profil okunamayan fotoğraflar: " + failures
+    + ". Bu fotoğrafları yeniden ekleyin veya eksik parçaları elle girin.";
+   showDetected();
+   return;
+  }
+  int number = ++photoNumber;
+  progress.setText("Fotoğraf " + (index + 1) + " / " + photos.size() + " okunuyor…");
+  Runnable next = () -> readPhotoBatch(photos, index + 1, failures, progress, recognizer);
+  Runnable failed = () -> {
+   failures.add(number);
+   next.run();
+  };
+  new Thread(() -> {
+   Bitmap bitmap;
+   try {
+    if (android.os.Build.VERSION.SDK_INT >= 28) {
+     bitmap = android.graphics.ImageDecoder.decodeBitmap(
+      android.graphics.ImageDecoder.createSource(getContentResolver(), photos.get(index)),
+      (decoder, info, source) -> decoder.setAllocator(android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE));
+    } else {
+     bitmap = MediaStore.Images.Media.getBitmap(getContentResolver(), photos.get(index));
+    }
+   } catch (Exception e) {
+    runOnUiThread(failed);
+    return;
+   }
+   runOnUiThread(() -> {
+    if (isDestroyed() || isFinishing()) {
+     recognizer.close();
+     return;
+    }
+    try {
+     recognizer.process(InputImage.fromBitmap(bitmap, 0)).addOnSuccessListener(doc -> {
+      ArrayList<CutRow> rows;
+      try {
+       rows = parseSheet(doc, bitmap);
+      } catch (RuntimeException e) {
+       failed.run();
+       return;
+      }
+      if (rows.isEmpty()) {
+       failed.run();
+       return;
+      }
+      readColumns(bitmap, doc, rows, recognizer, () -> {
+       for (CutRow row : rows) row.photo = number;
+       detected.addAll(rows);
+       photosRead++;
+       next.run();
+      });
+     }).addOnFailureListener(e -> failed.run());
+    } catch (RuntimeException e) {
+     failed.run();
+    }
+   });
+  }, "photo-decoder").start();
+ }
+
  String profileName(String code){
   switch(code){
    case "B15082":return "42×123 Kasa üst profili";
@@ -505,69 +599,46 @@ pulse.start();
   heading.addView(label, new LinearLayout.LayoutParams(0, -2, 1f));
  }
 
-void readColumns(Bitmap bmp) {
-    if (bmp == null || detected.isEmpty()) {
-        showDetected();
-        return;
-    }
-
-    TextRecognition.getClient(
-        TextRecognizerOptions.DEFAULT_OPTIONS
-    ).process(InputImage.fromBitmap(bmp, 0))
-    .addOnSuccessListener(doc -> {
-
-        // Varsayılan sütun merkezleri
-        float measureX = bmp.getWidth() * 0.60f;
-        float quantityX = bmp.getWidth() * 0.72f;
-
-        // Föydeki gerçek başlıkları bul
-        for (Text.TextBlock block : doc.getTextBlocks()) {
-            for (Text.Line line : block.getLines()) {
-                String word = line.getText()
-                    .toUpperCase(Locale.ROOT)
-                    .replace("Ü", "U")
-                    .replace("İ", "I")
-                    .replace("Ö", "O")
-                    .trim();
-
-                Rect rect = line.getBoundingBox();
-                if (rect == null) continue;
-
-                if (word.equals("OLCU")) {
-                    measureX = rect.centerX();
-                }
-
-                if (word.equals("MIKTAR")) {
-                    quantityX = rect.centerX();
-                }
-            }
+void readColumns(Bitmap bmp, Text doc, List<CutRow> rows,
+                 com.google.mlkit.vision.text.TextRecognizer recognizer, Runnable done) {
+    float measureX = bmp.getWidth() * 0.60f;
+    float quantityX = bmp.getWidth() * 0.72f;
+    for (Text.TextBlock block : doc.getTextBlocks()) {
+        for (Text.Line line : block.getLines()) {
+            String word = line.getText().toUpperCase(Locale.ROOT)
+                .replace("Ü", "U").replace("İ", "I").replace("Ö", "O").trim();
+            Rect rect = line.getBoundingBox();
+            if (rect == null) continue;
+            if (word.equals("OLCU")) measureX = rect.centerX();
+            if (word.equals("MIKTAR")) quantityX = rect.centerX();
         }
-
-        scanCells(bmp, measureX, quantityX, 0);
-
-    }).addOnFailureListener(e -> showDetected());
+    }
+    scanCells(bmp, measureX, quantityX, 0, rows, recognizer, done);
 }
 
 void scanCells(
     Bitmap bmp,
     float measureX,
     float quantityX,
-    int index
+    int index,
+    List<CutRow> rows,
+    com.google.mlkit.vision.text.TextRecognizer recognizer,
+    Runnable done
 ) {
-    if (index >= detected.size() * 2) {
-        for (CutRow row : detected) {
+    if (index >= rows.size() * 2) {
+        for (CutRow row : rows) {
             if (row.mm == 0 && row.qty < 0) {
                 row.qty = 0;
             }
         }
-        showDetected();
+        done.run();
         return;
     }
 
     int rowIndex = index / 2;
     boolean quantity = index % 2 == 1;
 
-    CutRow row = detected.get(rowIndex);
+    CutRow row = rows.get(rowIndex);
 
     // Satırın üst ve alt sınırlarını hesapla
     int top;
@@ -576,13 +647,13 @@ void scanCells(
     if (rowIndex == 0) {
         top = row.y - 35;
     } else {
-        top = (detected.get(rowIndex - 1).y + row.y) / 2;
+        top = (rows.get(rowIndex - 1).y + row.y) / 2;
     }
 
-    if (rowIndex == detected.size() - 1) {
+    if (rowIndex == rows.size() - 1) {
         bottom = row.y + 35;
     } else {
-        bottom = (row.y + detected.get(rowIndex + 1).y) / 2;
+        bottom = (row.y + rows.get(rowIndex + 1).y) / 2;
     }
 
     top = Math.max(0, top);
@@ -607,7 +678,7 @@ void scanCells(
     int height = bottom - top;
 
     if (width < 5 || height < 5) {
-        scanCells(bmp, measureX, quantityX, index + 1);
+        scanCells(bmp, measureX, quantityX, index + 1, rows, recognizer, done);
         return;
     }
 
@@ -623,9 +694,7 @@ void scanCells(
             true
         );
 
-        TextRecognition.getClient(
-            TextRecognizerOptions.DEFAULT_OPTIONS
-        ).process(InputImage.fromBitmap(enlarged, 0))
+        recognizer.process(InputImage.fromBitmap(enlarged, 0))
         .addOnSuccessListener(result -> {
 
             String raw = result.getText()
@@ -671,18 +740,18 @@ void scanCells(
             }
 
             scanCells(
-                bmp, measureX, quantityX, index + 1
+                bmp, measureX, quantityX, index + 1, rows, recognizer, done
             );
 
         }).addOnFailureListener(e -> {
             scanCells(
-                bmp, measureX, quantityX, index + 1
+                bmp, measureX, quantityX, index + 1, rows, recognizer, done
             );
         });
 
     } catch (Exception e) {
         scanCells(
-            bmp, measureX, quantityX, index + 1
+            bmp, measureX, quantityX, index + 1, rows, recognizer, done
         );
     }
 }
@@ -800,154 +869,235 @@ void scanCells(
         finished.run();
     }
 }
- void showDetected(){
-  page("Profil kesim föyü – kontrol");
-  note("DİKKAT: OCR rakam eksiltebilir! Örneğin 2040 mm, 204 mm okunabilir. Her profilin KESİM ÖLÇÜSÜ ve ADEDİNİ orijinal föyle tek tek karşılaştırın. Onay verilmeden hesap yapılmaz. 0 adet kesime katılmaz.");
-  ArrayList<EditText[]> edits=new ArrayList<>();
-  ArrayList<CutRow> list=new ArrayList<>(detected);
-  if(list.isEmpty())note(
-   "Otomatik profil kodu bulunamadı. Fotoğrafı daha yakından ve düz çekin veya aşağıdan elle satır ekleyin.");
-  for(CutRow r:list){
-   if(r.mm<0||r.qty<0)
-    note("OKUNAMADI: "+r.code+
-     " için ölçü veya adet elle girilmeli.");
-   LinearLayout profile = planCard(body, 0xff121f38, 0xff244361, 0xff5685a4);
-   profileHeading(profile, r.code + "\n" + r.name, r.icon);
-   if(r.mm>0&&r.mm<300)
-    note("UYARI: "+r.code+" için "+r.mm+
-     " mm okundu. Son rakam eksik olabilir; föyden doğrulayın!");
-   EditText name=input(
-    "PROFİL KODU VE ADI",r.code+" "+r.name);
-   
-EditText mm = input(
-    "KESİM ÖLÇÜSÜ (mm)",
-    r.mm < 0 ? "" : String.valueOf(r.mm));
+ static final int DEFAULT_PROFILE_STOCK = 6000;
 
-EditText qty = input(
-    "KESİM ADEDİ",
-    r.qty < 0 ? "" : String.valueOf(r.qty));
+ static final class ProfileCutPlan {
+  final String name;
+  final int stock;
+  final ArrayList<Integer> pieces = new ArrayList<>();
+  Bitmap icon;
 
-if (r.mm < 0) {
-    mm.setHint("OKUNAMADI - ölçüyü girin");
-    mm.setError("Kesim ölçüsü okunamadı");
-}
-
-if (r.qty < 0) {
-    qty.setHint("OKUNAMADI - adedi girin");
-    qty.setError("Kesim adedi okunamadı");
-}
-
-if (r.mm == 0 && r.qty == 0) {
-    note(r.code + " - 0 mm / 0 adet: Kesim yapılmayacak.");
-}
-
-   edits.add(new EditText[]{name,mm,qty});
+  ProfileCutPlan(String name, int stock, Bitmap icon) {
+   this.name = name;
+   this.stock = stock;
+   this.icon = icon;
   }
-  note("Eksik veya yanlış okunan satırları aşağıya ekleyebilirsiniz.");
-  EditText extraName=input("Ek profil kodu / adı","");
-  EditText extraMm=input("Ek kesim ölçüsü (mm)","");
-  EditText extraQty=input("Ek kesim adedi","");
-  EditText stock=input(
-   "STOK BOYU (mm) – ham profil uzunluğu","6000");
-  EditText saw=input(
-   "TESTERE PAYI (mm) – her parça için ayrılan pay","3");
-  CheckBox confirmed=new CheckBox(this);
-  confirmed.setText(
-   "Fotoğraftaki TÜM profil kodlarını, kesim ölçülerini (mm) ve adetleri tek tek karşılaştırdım, doğruladım.");
+ }
+
+ void showDetected() {
+  page("Profil kesim föyleri – kontrol");
+  note(photosRead + " fotoğraf okundu  ·  " + detected.size() + " profil satırı");
+  if (!photoBatchWarning.isEmpty()) note(photoBatchWarning);
+
+  ArrayList<CutRow> rows = new ArrayList<>(detected);
+  ArrayList<EditText[]> fields = new ArrayList<>();
+  TreeMap<String, CutRow> profiles = new TreeMap<>();
+  TreeMap<String, EditText> stocks = new TreeMap<>();
+  Runnable saveDraft = () -> {
+   for (int i = 0; i < fields.size(); i++) rows.get(i).draft = fieldValues(fields.get(i));
+   for (Map.Entry<String, EditText> entry : stocks.entrySet()) {
+    String value = entry.getValue().getText().toString().trim();
+    stockDrafts.put(entry.getKey(), value);
+    try {
+     int length = Integer.parseInt(value);
+     if (length > 0) getPreferences(MODE_PRIVATE).edit().putInt("stock_" + entry.getKey(), length).apply();
+    } catch (NumberFormatException ignored) {}
+   }
+  };
+  addPhotoButtons(() -> {
+   if (savePhotoReview != null) savePhotoReview.run();
+  });
+  if (rows.isEmpty()) note("Henüz profil okunmadı. Fotoğraf ekleyebilir veya aşağıdan elle satır girebilirsiniz.");
+  else note("Kesim ölçüsü ve adedi fotoğrafla karşılaştırın. Her profil türünün stok boyunu listenin altından ayrı ayrı değiştirebilirsiniz.");
+
+  for (CutRow row : rows) {
+   if (!profiles.containsKey(row.code)) profiles.put(row.code, row);
+   LinearLayout profile = planCard(body, 0xff121f38, 0xff244361, 0xff5685a4);
+   profileHeading(profile, row.code + "\n" + row.name, row.icon);
+   planLabel(profile, "Fotoğraf " + row.photo, 13, 0xffbdd7ee);
+   String[] values = row.draft != null ? row.draft : new String[]{row.code + " " + row.name,
+    row.mm < 0 ? "" : String.valueOf(row.mm), row.qty < 0 ? "" : String.valueOf(row.qty)};
+   EditText name = input("PROFİL KODU VE ADI", values[0]);
+   EditText measure = input("KESİM ÖLÇÜSÜ (mm)", values[1]);
+   EditText quantity = input("KESİM ADEDİ", values[2]);
+   if (values[1].trim().isEmpty()) measure.setError("Kesim ölçüsü okunamadı");
+   if (values[2].trim().isEmpty()) quantity.setError("Kesim adedi okunamadı");
+   if (row.mm > 0 && row.mm < 300) note(row.code + " için " + row.mm + " mm okundu. Ölçüyü föyden doğrulayın.");
+   if (row.mm == 0 && row.qty == 0) note(row.code + " · 0 adet, kesime katılmaz.");
+   fields.add(new EditText[]{name, measure, quantity});
+  }
+
+  if (!profiles.isEmpty()) {
+   note("PROFİL TÜRÜNE GÖRE STOK BOYU (mm)");
+   for (CutRow row : profiles.values()) {
+    int saved = getPreferences(MODE_PRIVATE).getInt("stock_" + row.code, DEFAULT_PROFILE_STOCK);
+    String length = stockDrafts.get(row.code);
+    if (length == null) length = String.valueOf(saved);
+    EditText stock = input(row.code + " · " + row.name, length);
+    stock.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+    stocks.put(row.code, stock);
+   }
+  }
+
+  note("Eksik parçaları elle ekle");
+  EditText extraName = input("Ek profil kodu / adı", extraDraft[0]);
+  EditText extraMeasure = input("Ek kesim ölçüsü (mm)", extraDraft[1]);
+  EditText extraQuantity = input("Ek kesim adedi", extraDraft[2]);
+  EditText extraStock = input("Ek profil stok boyu (mm)", extraDraft[3]);
+  EditText saw = input("TESTERE PAYI (mm / parça)", extraDraft[4]);
+  EditText[] extraFields = {extraName, extraMeasure, extraQuantity, extraStock, saw};
+  savePhotoReview = () -> {
+   saveDraft.run();
+   extraDraft = fieldValues(extraFields);
+  };
+
+  CheckBox confirmed = new CheckBox(this);
+  confirmed.setText("Tüm fotoğraflardaki kesim ölçülerini ve adetleri kontrol ettim.");
   confirmed.setTextColor(0xffeffaff);
   confirmed.setButtonTintList(android.content.res.ColorStateList.valueOf(0xff5af4ca));
   addTextPanel(confirmed, 0xff15283b, 0xff244d5a, 0xff51cfc0);
-  button("Kontrol edilen kesim planını ve kalanları hesapla",()->{
-   if(!confirmed.isChecked()){
-    Toast.makeText(this,
-     "Önce fotoğraftaki bütün ölçüleri kontrol edip onaylayın.",
-     Toast.LENGTH_LONG).show();return;
+  button("Tüm fotoğrafları birlikte optimize et", () -> {
+   if (!confirmed.isChecked()) {
+    Toast.makeText(this, "Önce ölçüleri ve adetleri kontrol edip onaylayın.", Toast.LENGTH_LONG).show();
+    return;
    }
-   try{
-    int length=val(stock),kerf=val(saw);
-    if(length<=0||kerf<0)throw new Exception();
-    TreeMap<String,ArrayList<Integer>> groups=new TreeMap<>();
-    HashMap<String, Bitmap> profileIcons = new HashMap<>();
-    for (int rowIndex = 0; rowIndex < edits.size(); rowIndex++) {
-     EditText[] e = edits.get(rowIndex);
-     String name=e[0].getText().toString().trim();
-     String ms=e[1].getText().toString().trim();
-     String qs=e[2].getText().toString().trim();
-     if(ms.isEmpty()||qs.isEmpty())
-      throw new Exception("Okunamayan ölçü/adet var");
-     int m=Integer.parseInt(ms),q=Integer.parseInt(qs);
-     if(q==0)continue;
-     if(m<=0||q<0||q>1000||(long)m+kerf>length)
-      throw new Exception();
-     if(!groups.containsKey(name))
-      groups.put(name,new ArrayList<>());
-     Bitmap icon = list.get(rowIndex).icon;
-     if (icon != null) profileIcons.putIfAbsent(name, icon);
-     for(int j=0;j<q;j++)
-      groups.get(name).add(m);
+   savePhotoReview.run();
+   try {
+    int kerf = val(saw);
+    if (kerf < 0) throw new IllegalArgumentException("Testere payı negatif olamaz.");
+    TreeMap<String, ProfileCutPlan> plans = new TreeMap<>();
+    for (CutRow row : rows) {
+     String[] values = row.draft;
+     String context = row.code + " · Fotoğraf " + row.photo;
+     int quantity = cutNumber(values[2], context + " kesim adedi");
+     if (quantity == 0) continue;
+     int size = cutNumber(values[1], context + " kesim ölçüsü");
+     int stock = cutNumber(stockDrafts.get(row.code), row.code + " stok boyu");
+     validateCut(size, quantity, stock, kerf, context);
+     ProfileCutPlan plan = plans.get(row.code);
+     if (plan == null) {
+      String name = values[0].trim();
+      plan = new ProfileCutPlan(name.isEmpty() ? row.code + " " + row.name : name, stock, row.icon);
+      plans.put(row.code, plan);
+     }
+     if (plan.icon == null) plan.icon = row.icon;
+     for (int i = 0; i < quantity; i++) plan.pieces.add(size);
     }
-    if(!extraName.getText().toString().trim().isEmpty()&&
-     !extraMm.getText().toString().trim().isEmpty()){
-     String n=extraName.getText().toString().trim();
-     int m=val(extraMm),q=val(extraQty);
-     if(m<=0||q<0||q>1000||(long)m+kerf>length)
-      throw new Exception();
-     if(!groups.containsKey(n))
-      groups.put(n,new ArrayList<>());
-     for(int j=0;j<q;j++)
-      groups.get(n).add(m);
-    }
-    if(groups.isEmpty()){
-     Toast.makeText(this,
-      "Önce geçerli ölçü ve adet girin",
-      Toast.LENGTH_LONG).show();return;
-    }
-    LinearLayout plans = new LinearLayout(this);
-    plans.setOrientation(LinearLayout.VERTICAL);
-    int allBars = 0, allPieces = 0;
-    long allWaste = 0, net = 0;
-    for(Map.Entry<String,ArrayList<Integer>> entry:
-     groups.entrySet()){
-     ArrayList<Integer> parts=entry.getValue();
-     Collections.sort(parts,Collections.reverseOrder());
-     ArrayList<ArrayList<Integer>> bins=new ArrayList<>();
-     ArrayList<Integer> used=new ArrayList<>();
-     for(int size:parts){
-      int target=-1;
-      for(int i=0;i<used.size();i++)
-       if((long)used.get(i)+size+kerf<=length){
-        target=i;break;
+
+    String manualName = extraDraft[0].trim();
+    if (!manualName.isEmpty() || !extraDraft[1].trim().isEmpty() || !extraDraft[2].trim().isEmpty()) {
+     if (manualName.isEmpty()) throw new IllegalArgumentException("Ek profilin kodunu veya adını yazın.");
+     int quantity = cutNumber(extraDraft[2], "Ek kesim adedi");
+     if (quantity != 0) {
+      int size = cutNumber(extraDraft[1], "Ek kesim ölçüsü");
+      int stock = cutNumber(extraDraft[3], "Ek profil stok boyu");
+      validateCut(size, quantity, stock, kerf, manualName);
+      ProfileCutPlan plan = plans.get(manualName.toUpperCase(Locale.ROOT));
+      if (plan == null || plan.stock != stock) {
+       plan = null;
+       for (ProfileCutPlan candidate : plans.values()) {
+        if (candidate.name.equalsIgnoreCase(manualName) && candidate.stock == stock) {
+         plan = candidate;
+         break;
+        }
        }
-      if(target<0){
-       target=bins.size();
-       bins.add(new ArrayList<>());
-       used.add(0);
       }
-      bins.get(target).add(size);
-      used.set(target,used.get(target)+size+kerf);
-     }
-     if (bins.isEmpty()) continue;
-     LinearLayout group = planCard(plans, 0xff172b44, 0xff254662, 0xff597d9b);
-     profileHeading(group, entry.getKey(), profileIcons.get(entry.getKey()));
-     allPieces += parts.size();
-     for (int i = 0; i < bins.size(); i++) {
-      int waste = length - used.get(i);
-      allWaste += waste;
-      net += used.get(i) - (long) kerf * bins.get(i).size();
-      planBar(group, i + 1, bins.get(i), length, kerf, waste, allBars < 12);
-      allBars++;
+      if (plan == null) {
+       plan = new ProfileCutPlan(manualName, stock, null);
+       plans.put("~" + manualName, plan);
+      }
+      for (int i = 0; i < quantity; i++) plan.pieces.add(size);
      }
     }
-    page("Kesim optimizasyon sonucu");
-    planSummary(length, kerf, allBars, allPieces, net, allWaste);
-    body.addView(plans);
-    note("Kalan parça tekrar kullanılabiliyorsa gerçek hurda/fire sayılmayabilir. Kesim sırası ve testere payını imalattan önce doğrulayın.");
-    button("Ana menü",()->home());
-   }catch(Exception e){bad();}
+    if (plans.isEmpty()) throw new IllegalArgumentException("En az bir geçerli kesim girin.");
+    showPhotoOptimization(plans.values(), kerf);
+   } catch (IllegalArgumentException e) {
+    String message = e instanceof NumberFormatException ? "Testere payını kontrol edin." : e.getMessage();
+    Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+   }
   });
-  button("Yeni fotoğraf çek / seç",()->photo());
-  button("Ana menü",()->home());
+  if (!rows.isEmpty()) button("Yeni fotoğraf planı başlat", () -> new android.app.AlertDialog.Builder(this)
+   .setMessage("Bu plandaki fotoğraflar ve düzenlenen kesim satırları temizlensin mi? Profil stok boyları saklanır.")
+   .setNegativeButton("Vazgeç", null)
+   .setPositiveButton("Yeni plan", (dialog, which) -> {
+    savePhotoReview.run();
+    detected.clear();
+    stockDrafts.clear();
+    photoNumber = 0;
+    photosRead = 0;
+    photoBatchWarning = "";
+    extraDraft = new String[]{"", "", "", "6000", "3"};
+    photo();
+   }).show());
+  button("Ana menü", () -> {
+   savePhotoReview.run();
+   home();
+  });
  }
+
+ String[] fieldValues(EditText[] fields) {
+  String[] values = new String[fields.length];
+  for (int i = 0; i < fields.length; i++) values[i] = fields[i].getText().toString();
+  return values;
+ }
+
+ int cutNumber(String value, String label) {
+  try {
+   return Integer.parseInt(value.trim());
+  } catch (NumberFormatException e) {
+   throw new IllegalArgumentException(label + ": geçerli bir sayı girin.");
+  }
+ }
+
+ void validateCut(int size, int quantity, int stock, int kerf, String label) {
+  if (size <= 0 || quantity < 0 || quantity > 1000 || stock <= 0) {
+   throw new IllegalArgumentException(label + ": ölçüyü, adedi ve stok boyunu kontrol edin.");
+  }
+  if ((long) size + kerf > stock) {
+   throw new IllegalArgumentException(label + ": kesim ve testere payı " + stock + " mm stoğa sığmıyor.");
+  }
+ }
+
+ void showPhotoOptimization(Collection<ProfileCutPlan> profiles, int kerf) {
+  LinearLayout cards = new LinearLayout(this);
+  cards.setOrientation(LinearLayout.VERTICAL);
+  int allBars = 0, allPieces = 0;
+  long remaining = 0, net = 0;
+  int commonLength = profiles.iterator().next().stock;
+  for (ProfileCutPlan plan : profiles) {
+   if (commonLength != plan.stock) commonLength = 0;
+   Collections.sort(plan.pieces, Collections.reverseOrder());
+   ArrayList<ArrayList<Integer>> bins = new ArrayList<>();
+   ArrayList<Integer> used = new ArrayList<>();
+   for (int size : plan.pieces) {
+    int bin = 0;
+    while (bin < used.size() && (long) used.get(bin) + size + kerf > plan.stock) bin++;
+    if (bin == bins.size()) {
+     bins.add(new ArrayList<>());
+     used.add(0);
+    }
+    bins.get(bin).add(size);
+    used.set(bin, used.get(bin) + size + kerf);
+   }
+   LinearLayout group = planCard(cards, 0xff172b44, 0xff254662, 0xff597d9b);
+   profileHeading(group, plan.name, plan.icon);
+   planLabel(group, "Stok " + plan.stock + " mm  ·  " + plan.pieces.size() + " parça", 14, 0xffd2e8f4);
+   allPieces += plan.pieces.size();
+   for (int i = 0; i < bins.size(); i++) {
+    int waste = plan.stock - used.get(i);
+    remaining += waste;
+    net += used.get(i) - (long) kerf * bins.get(i).size();
+    planBar(group, i + 1, bins.get(i), plan.stock, kerf, waste, allBars < 12);
+    allBars++;
+   }
+  }
+  page("Kesim optimizasyon sonucu");
+  planSummary(commonLength, kerf, allBars, allPieces, net, remaining);
+  body.addView(cards);
+  button("Fotoğrafları ve stok boylarını düzenle", () -> showDetected());
+  button("Ana menü", () -> home());
+ }
+
  static final int CUT_RED = 0xffef4963;
  static final int REMAIN_GREEN = 0xff2ddd9e;
  static final int KERF_GOLD = 0xfff3bf60;
@@ -1016,7 +1166,8 @@ if (r.mm == 0 && r.qty == 0) {
   LinearLayout card = planCard(body, 0xff10233e, 0xff17485a, 0xff46dfdb);
   planLabel(card, bars + " stok profili  ·  " + count + " parça", 23, Color.WHITE)
    .setTypeface(null, Typeface.BOLD);
-  planLabel(card, "Stok " + length + " mm  ·  Testere payı " + kerf + " mm/parça", 14, 0xffd2e8f4);
+  String stockLabel = length > 0 ? "Stok " + length + " mm" : "Profil türüne göre farklı stok boyları";
+  planLabel(card, stockLabel + "  ·  Testere payı " + kerf + " mm/parça", 14, 0xffd2e8f4);
   planLabel(card, "Kesim " + net + " mm", 16, 0xffff8c9d);
   planLabel(card, "Kalan " + remaining + " mm", 16, 0xff6af5c0);
   if (kerf > 0) planLabel(card, "Testere payı " + ((long) kerf * count) + " mm", 14, KERF_GOLD);
@@ -1117,6 +1268,7 @@ if (r.mm == 0 && r.qty == 0) {
 
  void opt(){
   page("Profil kesim optimizasyonu");
+  button("Fotoğraflardan kesim planı oluştur", () -> photo());
   note("Kesimler: Her satır 1250x3 biçiminde. Testere payı parça başına eklenir. Azalan ilk uygun yerleştirme yöntemi kullanılır.");
   EditText stock=input(
    "HAM PROFİL BOYU (mm) – örnek 6000","6000");
