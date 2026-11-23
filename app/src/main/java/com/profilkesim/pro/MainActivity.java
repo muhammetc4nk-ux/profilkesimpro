@@ -221,6 +221,7 @@ public class MainActivity extends Activity {
    shell.addView(backdrop, new FrameLayout.LayoutParams(-1, -1));
    setContentView(shell);
   } else {
+   if (mastheadTrace != null) mastheadTrace.setActive(false);
    shell.removeView(root);
   }
   backdrop.setHome(home);
@@ -280,8 +281,11 @@ public class MainActivity extends Activity {
   InterfaceMotion.buttonFeedback(musicButton);
   masthead.addView(musicButton, new LinearLayout.LayoutParams(-2, dp(48)));
   header.addView(masthead, new FrameLayout.LayoutParams(-1, -2));
-  mastheadTrace = new LedTrace(this);
-  header.addView(mastheadTrace, new FrameLayout.LayoutParams(-1, -1));
+  LedTrace trace = new LedTrace(this);
+  mastheadTrace = trace;
+  header.getOverlay().add(trace);
+  header.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) ->
+   trace.layout(0, 0, right - left, bottom - top));
   LinearLayout.LayoutParams headerSize = new LinearLayout.LayoutParams(-1, -2);
   headerSize.setMargins(dp(10), dp(7), dp(10), dp(4));
   root.addView(header, headerSize);
