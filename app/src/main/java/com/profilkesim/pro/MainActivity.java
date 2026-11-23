@@ -413,8 +413,6 @@ if (r.mm == 0 && r.qty == 0) {
     note(r.code + " - 0 mm / 0 adet: Kesim yapılmayacak.");
 }
 
-    "KESİM ADEDİ",
-    r.qty<0?"":String.valueOf(r.qty));
    edits.add(new EditText[]{name,mm,qty});
   }
   note("Eksik veya yanlış okunan satırları aşağıya ekleyebilirsiniz.");
