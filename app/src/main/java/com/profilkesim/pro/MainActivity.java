@@ -314,44 +314,6 @@ void scanColumn(Bitmap bmp, double left, double right,
         finished.run();
     }
 }
-
-  try{
-   int x=(int)(bmp.getWidth()*left);
-   int w=(int)(bmp.getWidth()*(right-left));
-   if(w<8){finished.run();return;}
-   Bitmap strip=Bitmap.createBitmap(bmp,x,0,w,bmp.getHeight());
-   Bitmap enlarged=Bitmap.createScaledBitmap(
-    strip,w*3,bmp.getHeight()*3,true);
-   TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-    .process(InputImage.fromBitmap(enlarged,0))
-    .addOnSuccessListener(doc->{
-     for(Text.TextBlock block:doc.getTextBlocks())
-      for(Text.Line line:block.getLines()){
-       Rect rect=line.getBoundingBox();
-       if(rect==null)continue;
-       String digits=line.getText().replaceAll("[^0-9]","");
-       if(digits.isEmpty()||
-        digits.length()>(quantity?3:4))continue;
-       int n;
-       try{n=Integer.parseInt(digits);}
-       catch(Exception ex){continue;}
-       if(quantity?(n>100):(n>6500))continue;
-       int cy=rect.centerY()/3;
-       CutRow closest=null;
-       int distance=Integer.MAX_VALUE;
-       for(CutRow row:detected){
-        int d=Math.abs(row.y-cy);
-        if(d<distance){distance=d;closest=row;}
-       }
-       if(closest==null||
-        distance>Math.max(14,bmp.getHeight()/65))continue;
-       if(quantity)closest.qty=n;
-       else closest.mm=n;
-      }
-     finished.run();
-    }).addOnFailureListener(e->finished.run());
-  }catch(Exception e){finished.run();}
- }
  void showDetected(){
   page("Profil kesim föyü – kontrol");
   note("DİKKAT: OCR rakam eksiltebilir! Örneğin 2040 mm, 204 mm okunabilir. Her profilin KESİM ÖLÇÜSÜ ve ADEDİNİ orijinal föyle tek tek karşılaştırın. Onay verilmeden hesap yapılmaz. 0 adet kesime katılmaz.");
