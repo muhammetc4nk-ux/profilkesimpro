@@ -3,7 +3,7 @@
 <application
  android:icon="@drawable/cannuryapi_icon"
  android:label="Profil Kesim Pro"
- android:roundIcon="@drawable/app_icon"
+ android:roundIcon="@drawable/cannuryapi_icon"
  android:theme="@android:style/Theme.Material.Light.NoActionBar"
  android:allowBackup="true"
  android:supportsRtl="true">
