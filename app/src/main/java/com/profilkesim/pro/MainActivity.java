@@ -238,7 +238,184 @@ pulse.start();
   Collections.sort(rows,(a,b)->Integer.compare(a.y,b.y));
   return rows;
  }
- void readColumns(Bitmap bmp){
+ 
+void readColumns(Bitmap bmp) {
+    if (bmp == null || detected.isEmpty()) {
+        showDetected();
+        return;
+    }
+
+    TextRecognition.getClient(
+        TextRecognizerOptions.DEFAULT_OPTIONS
+    ).process(InputImage.fromBitmap(bmp, 0))
+    .addOnSuccessListener(doc -> {
+
+        // Varsayılan sütun merkezleri
+        float measureX = bmp.getWidth() * 0.60f;
+        float quantityX = bmp.getWidth() * 0.72f;
+
+        // Föydeki gerçek başlıkları bul
+        for (Text.TextBlock block : doc.getTextBlocks()) {
+            for (Text.Line line : block.getLines()) {
+                String word = line.getText()
+                    .toUpperCase(Locale.ROOT)
+                    .replace("Ü", "U")
+                    .replace("İ", "I")
+                    .replace("Ö", "O")
+                    .trim();
+
+                Rect rect = line.getBoundingBox();
+                if (rect == null) continue;
+
+                if (word.equals("OLCU")) {
+                    measureX = rect.centerX();
+                }
+
+                if (word.equals("MIKTAR")) {
+                    quantityX = rect.centerX();
+                }
+            }
+        }
+
+        scanCells(bmp, measureX, quantityX, 0);
+
+    }).addOnFailureListener(e -> showDetected());
+}
+
+void scanCells(
+    Bitmap bmp,
+    float measureX,
+    float quantityX,
+    int index
+) {
+    if (index >= detected.size() * 2) {
+        showDetected();
+        return;
+    }
+
+    int rowIndex = index / 2;
+    boolean quantity = index % 2 == 1;
+
+    CutRow row = detected.get(rowIndex);
+
+    // Satırın üst ve alt sınırlarını hesapla
+    int top;
+    int bottom;
+
+    if (rowIndex == 0) {
+        top = row.y - 35;
+    } else {
+        top = (detected.get(rowIndex - 1).y + row.y) / 2;
+    }
+
+    if (rowIndex == detected.size() - 1) {
+        bottom = row.y + 35;
+    } else {
+        bottom = (row.y + detected.get(rowIndex + 1).y) / 2;
+    }
+
+    top = Math.max(0, top);
+    bottom = Math.min(bmp.getHeight(), bottom);
+
+    float centerX = quantity ? quantityX : measureX;
+    int cellWidth = Math.max(
+        20,
+        (int)(bmp.getWidth() * 0.085f)
+    );
+
+    int left = Math.max(
+        0,
+        (int)centerX - cellWidth / 2
+    );
+
+    int width = Math.min(
+        cellWidth,
+        bmp.getWidth() - left
+    );
+
+    int height = bottom - top;
+
+    if (width < 5 || height < 5) {
+        scanCells(bmp, measureX, quantityX, index + 1);
+        return;
+    }
+
+    try {
+        Bitmap cell = Bitmap.createBitmap(
+            bmp, left, top, width, height
+        );
+
+        Bitmap enlarged = Bitmap.createScaledBitmap(
+            cell,
+            width * 4,
+            height * 4,
+            true
+        );
+
+        TextRecognition.getClient(
+            TextRecognizerOptions.DEFAULT_OPTIONS
+        ).process(InputImage.fromBitmap(enlarged, 0))
+        .addOnSuccessListener(result -> {
+
+            String raw = result.getText()
+                .trim()
+                .toUpperCase(Locale.ROOT)
+                .replace("O", "0")
+                .replace("〇", "0");
+
+            java.util.regex.Matcher matcher =
+                Pattern.compile("\\b[0-9]{1,4}\\b")
+                .matcher(raw);
+
+            int number = -1;
+
+            while (matcher.find()) {
+                try {
+                    int candidate = Integer.parseInt(
+                        matcher.group()
+                    );
+
+                    if (quantity) {
+                        if (candidate >= 0 &&
+                            candidate <= 100) {
+                            number = candidate;
+                            break;
+                        }
+                    } else {
+                        if (candidate >= 0 &&
+                            candidate <= 6500) {
+                            number = candidate;
+                            break;
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            if (number >= 0) {
+                if (quantity) {
+                    row.qty = number;
+                } else {
+                    row.mm = number;
+                }
+            }
+
+            scanCells(
+                bmp, measureX, quantityX, index + 1
+            );
+
+        }).addOnFailureListener(e -> {
+            scanCells(
+                bmp, measureX, quantityX, index + 1
+            );
+        });
+
+    } catch (Exception e) {
+        scanCells(
+            bmp, measureX, quantityX, index + 1
+        );
+    }
+}
+
   if(bmp==null||detected.isEmpty()){
    showDetected();return;
   }
