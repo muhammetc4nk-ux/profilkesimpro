@@ -412,9 +412,12 @@ pulse.start();
   b.setOnClickListener(v -> r.run());
  }
  EditText input(String hint,String val){
+  return input(body, hint, val);
+ }
+ EditText input(LinearLayout parent, String hint, String val){
   TextView label=text(hint,15);label.setTypeface(null,Typeface.BOLD);
   label.setTextColor(0xfff0f9ff);
-  addTextPanel(label, 0xff19253f, 0xff254965, 0xff627ea7);
+  addTextPanel(parent, label, 0xff19253f, 0xff254965, 0xff627ea7);
   EditText e=new EditText(this);e.setText(val);e.setHint(hint);
   e.setTextSize(17);e.setPadding(dp(12),dp(12),dp(12),dp(12));
   e.setTextColor(0xffeffaff);
@@ -428,7 +431,7 @@ pulse.start();
    e.animate().translationZ(dp(focused ? 5 : 0)).setDuration(180).start();
   });
   LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(55));
-  p.setMargins(0,dp(6),0,dp(6));body.addView(e,p);return e;
+  p.setMargins(0,dp(6),0,dp(6));parent.addView(e,p);return e;
  }
  int val(EditText e){return Integer.parseInt(e.getText().toString().trim());}
  void result(String s){
@@ -1015,12 +1018,11 @@ void scanCells(
 
   ArrayList<CutRow> rows = new ArrayList<>(detected);
   ArrayList<EditText[]> fields = new ArrayList<>();
-  TreeMap<String, CutRow> profiles = new TreeMap<>();
-  TreeMap<String, EditText> stocks = new TreeMap<>();
+  Map<String, List<EditText>> stocks = new HashMap<>();
   Runnable saveDraft = () -> {
    for (int i = 0; i < fields.size(); i++) rows.get(i).draft = fieldValues(fields.get(i));
-   for (Map.Entry<String, EditText> entry : stocks.entrySet()) {
-    String value = entry.getValue().getText().toString().trim();
+   for (Map.Entry<String, List<EditText>> entry : stocks.entrySet()) {
+    String value = entry.getValue().get(0).getText().toString().trim();
     stockDrafts.put(entry.getKey(), value);
     try {
      int length = Integer.parseInt(value);
@@ -1032,35 +1034,22 @@ void scanCells(
    if (savePhotoReview != null) savePhotoReview.run();
   });
   if (rows.isEmpty()) note("Henüz profil okunmadı. Fotoğraf ekleyebilir veya aşağıdan elle satır girebilirsiniz.");
-  else note("Kesim ölçüsü ve adedi fotoğrafla karşılaştırın. Her profil türünün stok boyunu listenin altından ayrı ayrı değiştirebilirsiniz.");
+  else note("Kesim ölçüsü ve adedi fotoğrafla karşılaştırın. Stok boyunu her profilin adının hemen altından değiştirebilirsiniz.");
 
   for (CutRow row : rows) {
-   if (!profiles.containsKey(row.code)) profiles.put(row.code, row);
    LinearLayout profile = planCard(body, 0xff121f38, 0xff244361, 0xff5685a4);
    profileHeading(profile, row.code + "\n" + row.name, row.icon);
+   addProfileStockInput(profile, row.code, stocks);
    planLabel(profile, "Fotoğraf " + row.photo, 13, 0xffbdd7ee);
-   String[] values = row.draft != null ? row.draft : new String[]{row.code + " " + row.name,
+   String[] values = row.draft != null ? row.draft : new String[]{
     row.mm < 0 ? "" : String.valueOf(row.mm), row.qty < 0 ? "" : String.valueOf(row.qty)};
-   EditText name = input("PROFİL KODU VE ADI", values[0]);
-   EditText measure = input("KESİM ÖLÇÜSÜ (mm)", values[1]);
-   EditText quantity = input("KESİM ADEDİ", values[2]);
-   if (values[1].trim().isEmpty()) measure.setError("Kesim ölçüsü okunamadı");
-   if (values[2].trim().isEmpty()) quantity.setError("Kesim adedi okunamadı");
-   if (row.mm > 0 && row.mm < 300) note(row.code + " için " + row.mm + " mm okundu. Ölçüyü föyden doğrulayın.");
-   if (row.mm == 0 && row.qty == 0) note(row.code + " · 0 adet, kesime katılmaz.");
-   fields.add(new EditText[]{name, measure, quantity});
-  }
-
-  if (!profiles.isEmpty()) {
-   note("PROFİL TÜRÜNE GÖRE STOK BOYU (mm)");
-   for (CutRow row : profiles.values()) {
-    int saved = getPreferences(MODE_PRIVATE).getInt("stock_" + row.code, DEFAULT_PROFILE_STOCK);
-    String length = stockDrafts.get(row.code);
-    if (length == null) length = String.valueOf(saved);
-    EditText stock = input(row.code + " · " + row.name, length);
-    stock.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
-    stocks.put(row.code, stock);
-   }
+   EditText measure = input(profile, "KESİM ÖLÇÜSÜ (mm)", values[0]);
+   EditText quantity = input(profile, "KESİM ADEDİ", values[1]);
+   if (values[0].trim().isEmpty()) measure.setError("Kesim ölçüsü okunamadı");
+   if (values[1].trim().isEmpty()) quantity.setError("Kesim adedi okunamadı");
+   if (row.mm > 0 && row.mm < 300) planLabel(profile, row.mm + " mm okundu. Ölçüyü föyden doğrulayın.", 14, KERF_GOLD);
+   if (row.mm == 0 && row.qty == 0) planLabel(profile, "0 adet, kesime katılmaz.", 14, REMAIN_GREEN);
+   fields.add(new EditText[]{measure, quantity});
   }
 
   note("Eksik parçaları elle ekle");
@@ -1093,15 +1082,14 @@ void scanCells(
     for (CutRow row : rows) {
      String[] values = row.draft;
      String context = row.code + " · Fotoğraf " + row.photo;
-     int quantity = cutNumber(values[2], context + " kesim adedi");
+     int quantity = cutNumber(values[1], context + " kesim adedi");
      if (quantity == 0) continue;
-     int size = cutNumber(values[1], context + " kesim ölçüsü");
+     int size = cutNumber(values[0], context + " kesim ölçüsü");
      int stock = cutNumber(stockDrafts.get(row.code), row.code + " stok boyu");
      validateCut(size, quantity, stock, kerf, context);
      ProfileCutPlan plan = plans.get(row.code);
      if (plan == null) {
-      String name = values[0].trim();
-      plan = new ProfileCutPlan(name.isEmpty() ? row.code + " " + row.name : name, stock, row.icon);
+      plan = new ProfileCutPlan(row.code + " " + row.name, stock, row.icon);
       plans.put(row.code, plan);
      }
      if (plan.icon == null) plan.icon = row.icon;
@@ -1156,6 +1144,32 @@ void scanCells(
   button("Ana menü", () -> {
    savePhotoReview.run();
    home();
+  });
+ }
+
+ void addProfileStockInput(LinearLayout card, String code, Map<String, List<EditText>> stocks) {
+  int saved = getPreferences(MODE_PRIVATE).getInt("stock_" + code, DEFAULT_PROFILE_STOCK);
+  String length = stockDrafts.get(code);
+  if (length == null) length = String.valueOf(saved);
+  EditText stock = input(card, "PROFİL STOK BOYU (mm)", length);
+  stock.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+  List<EditText> peers = stocks.get(code);
+  if (peers == null) {
+   peers = new ArrayList<>();
+   stocks.put(code, peers);
+  }
+  List<EditText> matchingFields = peers;
+  matchingFields.add(stock);
+  stock.addTextChangedListener(new android.text.TextWatcher() {
+   @Override public void beforeTextChanged(CharSequence text, int start, int count, int after) {}
+   @Override public void onTextChanged(CharSequence text, int start, int before, int count) {
+    String value = text.toString();
+    if (value.equals(stockDrafts.put(code, value))) return;
+    for (EditText field : matchingFields) {
+     if (field != stock && !value.contentEquals(field.getText())) field.setText(value);
+    }
+   }
+   @Override public void afterTextChanged(android.text.Editable text) {}
   });
  }
 
@@ -1252,11 +1266,15 @@ void scanCells(
  }
 
  void addTextPanel(TextView view, int start, int end, int edge) {
+  addTextPanel(body, view, start, end, edge);
+ }
+
+ void addTextPanel(LinearLayout parent, TextView view, int start, int end, int edge) {
   view.setBackground(rgbPanel(start, end, edge));
   view.setPadding(dp(14), dp(12), dp(14), dp(12));
   LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
   params.setMargins(0, dp(7), 0, dp(3));
-  body.addView(view, params);
+  parent.addView(view, params);
  }
 
  void reveal(android.view.View view, int delay) {
