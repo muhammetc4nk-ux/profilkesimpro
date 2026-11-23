@@ -53,6 +53,47 @@ public class MainActivity extends Activity {
   brand.setTextColor(Color.WHITE);brand.setGravity(Gravity.CENTER);
   brand.setBackgroundColor(navy);
   root.addView(brand,new LinearLayout.LayoutParams(-1,dp(44)));
+  
+brand.setText("✦ MUHAMMET CAN . K ✦");
+brand.setTextSize(17);
+brand.setTypeface(null, Typeface.BOLD);
+brand.setTextColor(0xffffd76a);
+brand.setLayerType(
+    android.view.View.LAYER_TYPE_SOFTWARE, null
+);
+
+brand.setShadowLayer(
+    dp(12), 0, 0, 0xffffc400
+);
+
+ValueAnimator neon = ValueAnimator.ofArgb(
+    0xffffd76a,
+    0xff00f5ff,
+    0xffffd76a
+);
+
+neon.setDuration(2400);
+neon.setRepeatCount(ValueAnimator.INFINITE);
+neon.setInterpolator(
+    new AccelerateDecelerateInterpolator()
+);
+
+neon.addUpdateListener(animation -> {
+    int color = (int) animation.getAnimatedValue();
+    brand.setTextColor(color);
+    brand.setShadowLayer(dp(12), 0, 0, color);
+});
+
+neon.start();
+
+ObjectAnimator pulse = ObjectAnimator.ofFloat(
+    brand, "scaleX", 1.0f, 1.04f, 1.0f
+);
+
+pulse.setDuration(2400);
+pulse.setRepeatCount(ValueAnimator.INFINITE);
+pulse.start();
+
   ScrollView scroll=new ScrollView(this);root.addView(scroll);
   body=new LinearLayout(this);body.setOrientation(1);
   body.setPadding(dp(14),dp(12),dp(14),dp(20));scroll.addView(body);
