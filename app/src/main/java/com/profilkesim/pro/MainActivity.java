@@ -36,6 +36,7 @@ public class MainActivity extends Activity {
  static class CutRow {
   String code,name;int mm,qty,y;Bitmap icon;
   int photo;
+  Rect photoBounds;
   String[] draft;
   CutRow(String c,String n,int m,int q,Bitmap b,int cy){
    code=c;name=n;mm=m;qty=q;icon=b;y=cy;
@@ -52,9 +53,7 @@ public class MainActivity extends Activity {
   TextView t=new TextView(this);t.setText(s);t.setTextSize(size);
   t.setTextColor(navy);t.setPadding(dp(12),dp(12),dp(12),dp(12));return t;
  }
- private static final int PICK_MUSIC = 43;
  private static final String MUSIC_MUTED = "home_music_muted";
- private static final String MUSIC_URI = "home_music_uri";
  private static final String MUSIC_SETTINGS = "MainActivity";
  private Button musicButton;
  private final android.content.SharedPreferences.OnSharedPreferenceChangeListener musicSettingsChanged =
@@ -86,7 +85,6 @@ public class MainActivity extends Activity {
   private static final int NOTIFICATION = 31;
   private android.media.AudioManager audio;
   private android.media.MediaPlayer player;
-  private String currentSource;
   private boolean destroyed, prepared, focused, focusRequested;
 
   private final android.media.AudioManager.OnAudioFocusChangeListener focusListener = change -> {
@@ -112,15 +110,11 @@ public class MainActivity extends Activity {
     stopSelf();
     return START_NOT_STICKY;
    }
-   String source = settings.getString(MUSIC_URI, "");
-   if (source.equals(currentSource)) return START_NOT_STICKY;
-   currentSource = source;
-   releaseTrack();
-   Uri track = source.isEmpty()
-    ? new Uri.Builder().scheme(android.content.ContentResolver.SCHEME_ANDROID_RESOURCE)
-      .authority(getPackageName()).appendPath(String.valueOf(R.raw.home_music)).build()
-    : Uri.parse(source);
-   prepareTrack(track);
+   if (player == null) {
+    Uri track = new Uri.Builder().scheme(android.content.ContentResolver.SCHEME_ANDROID_RESOURCE)
+     .authority(getPackageName()).appendPath(String.valueOf(R.raw.home_music)).build();
+    prepareTrack(track);
+   }
    return START_NOT_STICKY;
   }
 
@@ -378,20 +372,6 @@ pulse.start();
  void home(){
   page("Profil Kesim Pro");
   note("Cam balkon ve doğrama hesaplama • Ölçüler mm");
-  button("Müzik dosyası seç", () -> {
-   Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-   picker.addCategory(Intent.CATEGORY_OPENABLE);
-   picker.setType("audio/*");
-   picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-   startActivityForResult(picker, PICK_MUSIC);
-  });
-  if (getPreferences(MODE_PRIVATE).contains(MUSIC_URI)) {
-   button("Varsayılan müziğe dön", () -> {
-    getPreferences(MODE_PRIVATE).edit().remove(MUSIC_URI).apply();
-    updateMusicService();
-    home();
-   });
-  }
   button("Fotoğraftan kesim listesi oku",()->photo());
   button("Profil kesim optimizasyonu",()->opt());
   button("Cam alanı ve adet hesabı",()->glass());
@@ -417,10 +397,11 @@ pulse.start();
  void addPhotoButtons(Runnable saveDraft) {
   button("Galeriden fotoğraf ekle", () -> {
    saveDraft.run();
-   Intent picker = new Intent(Intent.ACTION_GET_CONTENT);
+   Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
    picker.setType("image/*");
    picker.addCategory(Intent.CATEGORY_OPENABLE);
    picker.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+   picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
    startActivityForResult(picker, PICK_IMAGE);
   });
   button("Kameradan fotoğraf ekle", () -> {
@@ -433,6 +414,7 @@ pulse.start();
     if (cameraUri == null) throw new IllegalStateException("Fotoğraf dosyası oluşturulamadı");
     Intent camera = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
     camera.putExtra(MediaStore.EXTRA_OUTPUT, cameraUri);
+    camera.setClipData(android.content.ClipData.newRawUri("Kesim föyü", cameraUri));
     camera.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
     startActivityForResult(camera, TAKE_PHOTO);
    } catch (Exception e) {
@@ -443,19 +425,6 @@ pulse.start();
 
  @Override protected void onActivityResult(int request, int result, Intent data) {
   super.onActivityResult(request, result, data);
-  if (request == PICK_MUSIC) {
-   if (result == RESULT_OK && data != null && data.getData() != null) {
-    Uri uri = data.getData();
-    try {
-     getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
-     getPreferences(MODE_PRIVATE).edit().putString(MUSIC_URI, uri.toString()).apply();
-     updateMusicService();
-    } catch (SecurityException e) {
-     Toast.makeText(this, "Bu ses dosyası kaydedilemedi. Başka bir dosya seçin.", Toast.LENGTH_LONG).show();
-    }
-   }
-   return;
-  }
   if (result != RESULT_OK || photoBatchRunning) return;
   LinkedHashSet<Uri> selected = new LinkedHashSet<>();
   if (request == TAKE_PHOTO && cameraUri != null) {
@@ -480,7 +449,7 @@ pulse.start();
    TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS));
  }
 
- void readPhotoBatch(List<Uri> photos, int index, List<Integer> failures, TextView progress,
+ void readPhotoBatch(List<Uri> photos, int index, List<String> failures, TextView progress,
                      com.google.mlkit.vision.text.TextRecognizer recognizer) {
   if (isDestroyed() || isFinishing()) {
    recognizer.close();
@@ -489,7 +458,7 @@ pulse.start();
   if (index == photos.size()) {
    recognizer.close();
    photoBatchRunning = false;
-   photoBatchWarning = failures.isEmpty() ? "" : "Profil okunamayan fotoğraflar: " + failures
+   photoBatchWarning = failures.isEmpty() ? "" : "Okunamayan fotoğraflar: " + android.text.TextUtils.join(", ", failures)
     + ". Bu fotoğrafları yeniden ekleyin veya eksik parçaları elle girin.";
    showDetected();
    return;
@@ -497,54 +466,110 @@ pulse.start();
   int number = ++photoNumber;
   progress.setText("Fotoğraf " + (index + 1) + " / " + photos.size() + " okunuyor…");
   Runnable next = () -> readPhotoBatch(photos, index + 1, failures, progress, recognizer);
-  Runnable failed = () -> {
-   failures.add(number);
+  readPhoto(photos.get(index), number, recognizer, reason -> {
+   failures.add(number + " (" + reason + ")");
    next.run();
-  };
+  }, rows -> {
+   for (CutRow row : rows) row.photo = number;
+   detected.addAll(rows);
+   photosRead++;
+   next.run();
+  });
+ }
+
+ interface PhotoResult<T> { void accept(T result); }
+
+ void readPhoto(Uri uri, int number, com.google.mlkit.vision.text.TextRecognizer recognizer,
+                PhotoResult<String> failed, PhotoResult<List<CutRow>> finished) {
   new Thread(() -> {
-   Bitmap bitmap;
+   Bitmap decoded = null;
+   InputImage original = null;
    try {
-    if (android.os.Build.VERSION.SDK_INT >= 28) {
-     bitmap = android.graphics.ImageDecoder.decodeBitmap(
-      android.graphics.ImageDecoder.createSource(getContentResolver(), photos.get(index)),
-      (decoder, info, source) -> decoder.setAllocator(android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE));
-    } else {
-     bitmap = MediaStore.Images.Media.getBitmap(getContentResolver(), photos.get(index));
-    }
-   } catch (Exception e) {
-    runOnUiThread(failed);
-    return;
+    original = InputImage.fromFilePath(this, uri);
+   } catch (java.io.IOException | RuntimeException e) {
+    android.util.Log.w("ProfilKesimOCR", "URI OCR input unavailable for photo " + number, e);
    }
+   if (android.os.Build.VERSION.SDK_INT >= 28) {
+    try {
+     decoded = android.graphics.ImageDecoder.decodeBitmap(
+      android.graphics.ImageDecoder.createSource(getContentResolver(), uri),
+      (decoder, info, source) -> decoder.setAllocator(android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE));
+    } catch (java.io.IOException | RuntimeException e) {
+     android.util.Log.w("ProfilKesimOCR", "ImageDecoder could not open photo " + number, e);
+    }
+   }
+   if (decoded == null) {
+    try {
+     decoded = MediaStore.Images.Media.getBitmap(getContentResolver(), uri);
+    } catch (java.io.IOException | RuntimeException e) {
+     android.util.Log.w("ProfilKesimOCR", "Legacy bitmap decode failed for photo " + number, e);
+    }
+   }
+   Bitmap bitmap = decoded;
+   InputImage fileImage = original;
    runOnUiThread(() -> {
     if (isDestroyed() || isFinishing()) {
      recognizer.close();
      return;
     }
-    try {
-     recognizer.process(InputImage.fromBitmap(bitmap, 0)).addOnSuccessListener(doc -> {
-      ArrayList<CutRow> rows;
-      try {
-       rows = parseSheet(doc, bitmap);
-      } catch (RuntimeException e) {
-       failed.run();
-       return;
-      }
-      if (rows.isEmpty()) {
-       failed.run();
-       return;
-      }
-      readColumns(bitmap, doc, rows, recognizer, () -> {
-       for (CutRow row : rows) row.photo = number;
-       detected.addAll(rows);
-       photosRead++;
-       next.run();
-      });
-     }).addOnFailureListener(e -> failed.run());
-    } catch (RuntimeException e) {
-     failed.run();
+    if (fileImage == null && bitmap == null) {
+     failed.accept("dosya açılamadı");
+     return;
     }
+    recognizePhoto(fileImage, bitmap, fileImage == null ? 0 : -1, recognizer, false, failed, finished);
    });
   }, "photo-decoder").start();
+ }
+
+ void recognizePhoto(InputImage fileImage, Bitmap bitmap, int pass,
+                     com.google.mlkit.vision.text.TextRecognizer recognizer, boolean sawText,
+                     PhotoResult<String> failed, PhotoResult<List<CutRow>> finished) {
+  if (isDestroyed() || isFinishing()) {
+   recognizer.close();
+   return;
+  }
+  if (pass >= 4 || (pass >= 0 && bitmap == null)) {
+   failed.accept(sawText ? "profil kodu bulunamadı" : "metin okunamadı");
+   return;
+  }
+  int rotation = pass < 0 ? 0 : 90 * pass;
+  com.google.android.gms.tasks.Task<Text> task;
+  try {
+   InputImage input = pass < 0 ? fileImage : InputImage.fromBitmap(bitmap, rotation);
+   task = recognizer.process(input);
+  } catch (RuntimeException e) {
+   android.util.Log.w("ProfilKesimOCR", "Text recognition could not start: " + pass, e);
+   recognizePhoto(fileImage, bitmap, pass + 1, recognizer, sawText, failed, finished);
+   return;
+  }
+  task.addOnSuccessListener(doc -> {
+   if (isDestroyed() || isFinishing()) {
+    recognizer.close();
+    return;
+   }
+   ArrayList<CutRow> rows = parseSheet(doc);
+   if (rows.isEmpty()) {
+    recognizePhoto(fileImage, bitmap, pass + 1, recognizer, sawText || !doc.getText().trim().isEmpty(), failed, finished);
+    return;
+   }
+   Bitmap oriented = bitmap;
+   if (bitmap != null && rotation != 0) {
+    android.graphics.Matrix matrix = new android.graphics.Matrix();
+    matrix.setRotate(rotation);
+    oriented = Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
+   }
+   if (oriented != null) {
+    try {
+     cropProfileIcons(oriented, rows);
+    } catch (RuntimeException e) {
+     android.util.Log.w("ProfilKesimOCR", "Profile preview crop failed", e);
+    }
+   }
+   readColumns(oriented, doc, rows, recognizer, () -> finished.accept(rows));
+  }).addOnFailureListener(e -> {
+   android.util.Log.w("ProfilKesimOCR", "Text recognition pass failed: " + pass, e);
+   recognizePhoto(fileImage, bitmap, pass + 1, recognizer, sawText, failed, finished);
+  });
  }
 
  String profileName(String code){
@@ -562,31 +587,59 @@ pulse.start();
    default:return "Profil (adını kontrol edin)";
   }
  }
- ArrayList<CutRow> parseSheet(Text doc,Bitmap bmp){
-  ArrayList<CutRow> rows=new ArrayList<>();
-  HashSet<String> seen=new HashSet<>();
-  HashMap<CutRow, Rect> anchors = new HashMap<>();
-  Pattern codes=Pattern.compile(
-   "[B8]\\s*1\\s*5\\s*0\\s*[0-9]{2}",Pattern.CASE_INSENSITIVE);
-  for(Text.TextBlock block:doc.getTextBlocks())
-   for(Text.Line line:block.getLines()){
-    Matcher match=codes.matcher(
-     line.getText().toUpperCase(Locale.ROOT));
-    if(!match.find())continue;
-    String code=match.group().replaceAll("\\s+","")
-     .replaceFirst("^8","B");
-    Rect rect = line.getBoundingBox();
-    if (rect == null || !seen.add(code)) continue;
-    CutRow row = new CutRow(code, profileName(code), -1, -1, null, rect.centerY());
-    rows.add(row);
-    anchors.put(row, rect);
+ private static final String CODE_SEPARATOR = "[\\s\\p{Zs}.:/\\-–—]*";
+ private static final String OCR_DIGIT = "[0-9OQIL|SZB]";
+ private static final Pattern PROFILE_CODE = Pattern.compile(
+  "(?<![A-Z0-9])(?:B" + CODE_SEPARATOR + "(" + OCR_DIGIT + "(?:" + CODE_SEPARATOR + OCR_DIGIT
+   + "){4})|8" + CODE_SEPARATOR + "([1IL|]" + CODE_SEPARATOR + "[5S]" + CODE_SEPARATOR
+   + "[0OQ]" + CODE_SEPARATOR + OCR_DIGIT + CODE_SEPARATOR + OCR_DIGIT + "))(?![A-Z0-9])");
+
+ ArrayList<CutRow> parseSheet(Text document) {
+  ArrayList<CutRow> rows = new ArrayList<>();
+  for (Text.TextBlock block : document.getTextBlocks()) {
+   for (Text.Line line : block.getLines()) {
+    Rect bounds = line.getBoundingBox();
+    if (bounds == null) continue;
+    boolean elementMatched = false;
+    for (Text.Element element : line.getElements()) {
+     Rect elementBounds = element.getBoundingBox();
+     if (elementBounds != null && addProfileCodes(element.getText(), elementBounds, rows)) elementMatched = true;
+    }
+    if (!elementMatched) addProfileCodes(line.getText(), bounds, rows);
    }
+  }
   Collections.sort(rows, (a, b) -> Integer.compare(a.y, b.y));
-  cropProfileIcons(bmp, rows, anchors);
   return rows;
  }
- 
- void cropProfileIcons(Bitmap bitmap, List<CutRow> rows, Map<CutRow, Rect> anchors) {
+
+ boolean addProfileCodes(String text, Rect bounds, List<CutRow> rows) {
+  Matcher matches = PROFILE_CODE.matcher(text.toUpperCase(Locale.ROOT));
+  boolean matched = false;
+  while (matches.find()) {
+   String digits = matches.group(1) != null ? matches.group(1) : matches.group(2);
+   if (digits.replaceAll("[^0-9]", "").length() < 2) continue;
+   digits = digits.replaceAll(CODE_SEPARATOR, "").replace('O', '0').replace('Q', '0')
+    .replace('I', '1').replace('L', '1').replace('|', '1').replace('S', '5').replace('Z', '2').replace('B', '8');
+   String code = "B" + digits;
+   matched = true;
+   boolean duplicate = false;
+   for (CutRow existing : rows) {
+    int close = Math.max(3, Math.min(existing.photoBounds.height(), bounds.height()) / 2);
+    if (existing.code.equals(code) && Math.abs(existing.y - bounds.centerY()) <= close) {
+     duplicate = true;
+     break;
+    }
+   }
+   if (!duplicate) {
+    CutRow row = new CutRow(code, profileName(code), -1, -1, null, bounds.centerY());
+    row.photoBounds = bounds;
+    rows.add(row);
+   }
+  }
+  return matched;
+ }
+
+ void cropProfileIcons(Bitmap bitmap, List<CutRow> rows) {
   if (bitmap == null || rows.isEmpty()) return;
   int width = bitmap.getWidth(), height = bitmap.getHeight();
   ArrayList<Integer> gaps = new ArrayList<>();
@@ -598,7 +651,7 @@ pulse.start();
   int typicalGap = gaps.isEmpty() ? 0 : gaps.get((gaps.size() - 1) / 2);
   for (int i = 0; i < rows.size(); i++) {
    CutRow row = rows.get(i);
-   Rect anchor = anchors.get(row);
+   Rect anchor = row.photoBounds;
    int half = Math.max(16, Math.max(anchor.height(), (int) (typicalGap * .60f)));
    int top = Math.max(0, row.y - half);
    int bottom = Math.min(height, row.y + half);
@@ -642,6 +695,10 @@ pulse.start();
 
 void readColumns(Bitmap bmp, Text doc, List<CutRow> rows,
                  com.google.mlkit.vision.text.TextRecognizer recognizer, Runnable done) {
+    if (bmp == null) {
+        done.run();
+        return;
+    }
     float measureX = bmp.getWidth() * 0.60f;
     float quantityX = bmp.getWidth() * 0.72f;
     for (Text.TextBlock block : doc.getTextBlocks()) {
@@ -650,8 +707,8 @@ void readColumns(Bitmap bmp, Text doc, List<CutRow> rows,
                 .replace("Ü", "U").replace("İ", "I").replace("Ö", "O").trim();
             Rect rect = line.getBoundingBox();
             if (rect == null) continue;
-            if (word.equals("OLCU")) measureX = rect.centerX();
-            if (word.equals("MIKTAR")) quantityX = rect.centerX();
+            if (word.equals("OLCU") || word.equals("OLCU (MM)")) measureX = rect.centerX();
+            if (word.equals("MIKTAR") || word.equals("ADET")) quantityX = rect.centerX();
         }
     }
     scanCells(bmp, measureX, quantityX, 0, rows, recognizer, done);
