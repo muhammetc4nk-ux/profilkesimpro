@@ -200,8 +200,121 @@ public class MainActivity extends Activity {
   scanColumn(bmp,.555,.645,false,()->
    scanColumn(bmp,.680,.765,true,()->showDetected()));
  }
- void scanColumn(Bitmap bmp,double left,double right,
-  boolean quantity,Runnable finished){
+ 
+void scanColumn(Bitmap bmp, double left, double right,
+    boolean quantity, Runnable finished) {
+    try {
+        int x = (int)(bmp.getWidth() * left);
+        int w = (int)(bmp.getWidth() * (right - left));
+
+        if (w < 8) {
+            finished.run();
+            return;
+        }
+
+        Bitmap strip = Bitmap.createBitmap(
+            bmp, x, 0, w, bmp.getHeight());
+
+        Bitmap enlarged = Bitmap.createScaledBitmap(
+            strip, w * 4, bmp.getHeight() * 4, true);
+
+        TextRecognition.getClient(
+            TextRecognizerOptions.DEFAULT_OPTIONS
+        ).process(InputImage.fromBitmap(enlarged, 0))
+        .addOnSuccessListener(doc -> {
+
+            HashMap<CutRow, Integer> bestValues =
+                new HashMap<>();
+            HashMap<CutRow, Integer> bestDistances =
+                new HashMap<>();
+
+            for (Text.TextBlock block : doc.getTextBlocks()) {
+                for (Text.Line line : block.getLines()) {
+                    Rect rect = line.getBoundingBox();
+                    if (rect == null) continue;
+
+                    String raw = line.getText()
+                        .trim()
+                        .toUpperCase(Locale.ROOT)
+                        .replace("O", "0")
+                        .replace("〇", "0")
+                        .replace(" ", "");
+
+                    String digits = raw.replaceAll(
+                        "[^0-9]", "");
+
+                    if (digits.isEmpty()) continue;
+
+                    if (digits.length() >
+                        (quantity ? 3 : 4)) continue;
+
+                    int number;
+                    try {
+                        number = Integer.parseInt(digits);
+                    } catch (Exception e) {
+                        continue;
+                    }
+
+                    if (quantity && number > 100)
+                        continue;
+
+                    if (!quantity && number > 6500)
+                        continue;
+
+                    int cy = rect.centerY() / 4;
+
+                    CutRow closest = null;
+                    int distance = Integer.MAX_VALUE;
+
+                    for (CutRow row : detected) {
+                        int d = Math.abs(row.y - cy);
+                        if (d < distance) {
+                            distance = d;
+                            closest = row;
+                        }
+                    }
+
+                    if (closest == null) continue;
+
+                    int tolerance = Math.max(
+                        14, bmp.getHeight() / 65);
+
+                    if (distance > tolerance) continue;
+
+                    Integer oldDistance =
+                        bestDistances.get(closest);
+
+                    if (oldDistance == null ||
+                        distance < oldDistance) {
+                        bestDistances.put(
+                            closest, distance);
+                        bestValues.put(
+                            closest, number);
+                    }
+                }
+            }
+
+            for (CutRow row : detected) {
+                Integer number = bestValues.get(row);
+
+                if (number == null) continue;
+
+                if (quantity) {
+                    row.qty = number;
+                } else {
+                    row.mm = number;
+                }
+            }
+
+            finished.run();
+        })
+        .addOnFailureListener(e -> finished.run());
+
+    } catch (Exception e) {
+        finished.run();
+    }
+}
+
   try{
    int x=(int)(bmp.getWidth()*left);
    int w=(int)(bmp.getWidth()*(right-left));
