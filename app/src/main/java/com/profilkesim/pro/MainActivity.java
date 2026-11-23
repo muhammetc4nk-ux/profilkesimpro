@@ -1,6 +1,5 @@
 package com.profilkesim.pro;
 import android.animation.ValueAnimator;
-import android.graphics.BlurMaskFilter;
 import android.app.Activity;
 import android.os.Bundle;
 import android.content.Intent;
@@ -17,12 +16,16 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
+import android.view.View;
 import android.widget.*;
 import java.util.*;
 
 public class MainActivity extends Activity {
  static final int DEFAULT_PROFILE_STOCK = 6000;
  LinearLayout root,body;
+ private FrameLayout shell;
+ private BalconyBackdrop backdrop;
+ private LedTrace mastheadTrace;
  Uri cameraUri;
  final Map<Integer, List<CutRow>> detected = new LinkedHashMap<>();
  final Map<String, String> stockDrafts = new HashMap<>();
@@ -47,10 +50,6 @@ public class MainActivity extends Activity {
  static final int PICK_IMAGE=41,TAKE_PHOTO=42;
  int navy=0xff173447,teal=0xff087e89;
  int dp(int n){return (int)(n*getResources().getDisplayMetrics().density);}
- GradientDrawable box(int color){
-  GradientDrawable d=new GradientDrawable();
-  d.setColor(color);d.setCornerRadius(dp(12));return d;
- }
  TextView text(String s,int size){
   TextView t=new TextView(this);t.setText(s);t.setTextSize(size);
   t.setTextColor(navy);t.setPadding(dp(12),dp(12),dp(12),dp(12));return t;
@@ -208,23 +207,36 @@ public class MainActivity extends Activity {
   }
  }
 
- void page(String title){
+ void page(String title) {
+  page(title, false);
+ }
+
+ void page(String title, boolean home) {
   savePhotoReview = null;
   musicButton = null;
+  if (shell == null) {
+   shell = new FrameLayout(this);
+   backdrop = new BalconyBackdrop(this);
+   shell.addView(backdrop, new FrameLayout.LayoutParams(-1, -1));
+   setContentView(shell);
+  } else {
+   shell.removeView(root);
+  }
+  backdrop.setHome(home);
   root=new LinearLayout(this);root.setOrientation(1);
-  root.setBackgroundResource(R.drawable.cambalkon);
-  setContentView(root);
+  shell.addView(root, new FrameLayout.LayoutParams(-1, -1));
+  FrameLayout header = new FrameLayout(this);
+  header.setBackground(rgbPanel(0xf9142332, 0xf9193440, 0xff58838c));
   LinearLayout masthead = new LinearLayout(this);
   masthead.setGravity(Gravity.CENTER_VERTICAL);
-  masthead.setMinimumHeight(dp(70));
-  masthead.setBackground(rgbPanel(0xff0e1933, 0xff233953, 0xff3ab6c9));
-  masthead.setPadding(dp(9), dp(7), dp(9), dp(7));
+  masthead.setMinimumHeight(dp(73));
+  masthead.setPadding(dp(12), dp(8), dp(12), dp(8));
 
   ImageView appIcon = new ImageView(this);
   appIcon.setImageResource(R.drawable.cannuryapi_icon);
   appIcon.setScaleType(ImageView.ScaleType.FIT_CENTER);
   appIcon.setPadding(dp(4), dp(4), dp(4), dp(4));
-  appIcon.setBackground(rgbPanel(0xff152747, 0xff194455, 0xff43daca));
+  appIcon.setBackground(rgbPanel(0xff172a36, 0xff194451, 0xff62929b));
   appIcon.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO);
   masthead.addView(appIcon, new LinearLayout.LayoutParams(dp(43), dp(43)));
 
@@ -236,41 +248,25 @@ public class MainActivity extends Activity {
   masthead.addView(identity, identitySize);
 
   TextView brand = text("MUHAMMET CAN . K", 16);
-  brand.setTextColor(0xffffe5a6);
-  brand.setTypeface(null, Typeface.BOLD);
+  brand.setTextColor(0xffffdfa6);
+  brand.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+  brand.setLetterSpacing(.055f);
   brand.setPadding(0, 0, 0, 0);
   identity.addView(brand);
 
   TextView tagline = text("Yeni gelmedik, geri geldik", 12);
-  tagline.setTextColor(0xffaaf6ff);
-  tagline.setTypeface(null, Typeface.BOLD);
+  tagline.setTextColor(0xffa8d6db);
   tagline.setPadding(0, dp(2), 0, 0);
   identity.addView(tagline);
 
-  android.view.View light = new android.view.View(this);
-  GradientDrawable lightColor = box(0xff6af3ff);
+  View light = new View(this);
+  GradientDrawable lightColor = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+   new int[]{0xfff8cc8c, 0xff8cdedb, 0x008cdedb});
+  lightColor.setCornerRadius(dp(2));
   light.setBackground(lightColor);
-  LinearLayout.LayoutParams lightSize = new LinearLayout.LayoutParams(dp(46), dp(2));
-  lightSize.topMargin = dp(3);
+  LinearLayout.LayoutParams lightSize = new LinearLayout.LayoutParams(dp(60), dp(2));
+  lightSize.topMargin = dp(5);
   identity.addView(light, lightSize);
-
-  ValueAnimator neon = ValueAnimator.ofArgb(
-   0xff6af3ff, 0xffff8bdb, 0xffcda6ff, 0xff8bffcf, 0xff6af3ff);
-  neon.setDuration(1360);
-  neon.setRepeatCount(ValueAnimator.INFINITE);
-  neon.setInterpolator(new android.view.animation.LinearInterpolator());
-  neon.addUpdateListener(frame -> {
-   int color = (int) frame.getAnimatedValue();
-   float glow = .5f + .5f * (float) Math.sin(frame.getAnimatedFraction() * 4 * Math.PI);
-   tagline.setTextColor(color);
-   tagline.setShadowLayer(dp(2) + dp(5) * glow, 0, 0, color);
-   lightColor.setColor(color);
-   light.setAlpha(.60f + .40f * glow);
-  });
-  identity.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener() {
-   @Override public void onViewAttachedToWindow(android.view.View view) { neon.start(); }
-   @Override public void onViewDetachedFromWindow(android.view.View view) { neon.cancel(); }
-  });
 
   musicButton = new Button(this);
   musicButton.setAllCaps(false);
@@ -279,9 +275,16 @@ public class MainActivity extends Activity {
   musicButton.setPadding(dp(9), 0, dp(9), 0);
   musicButton.setBackground(new android.graphics.drawable.RippleDrawable(
    android.content.res.ColorStateList.valueOf(0x66a1fff3),
-   rgbPanel(0xff193154, 0xff185467, 0xff54d7e1), null));
+   rgbPanel(0xff172e3b, 0xff1b4651, 0xff5e98a1), null));
+  InterfaceMotion.buttonFeedback(musicButton);
   masthead.addView(musicButton, new LinearLayout.LayoutParams(-2, dp(48)));
-  root.addView(masthead, new LinearLayout.LayoutParams(-1, -2));
+  header.addView(masthead, new FrameLayout.LayoutParams(-1, -2));
+  mastheadTrace = new LedTrace(this);
+  header.addView(mastheadTrace, new FrameLayout.LayoutParams(-1, -1));
+  LinearLayout.LayoutParams headerSize = new LinearLayout.LayoutParams(-1, -2);
+  headerSize.setMargins(dp(10), dp(7), dp(10), dp(4));
+  root.addView(header, headerSize);
+  mastheadTrace.setActive(musicScreenResumed && InterfaceMotion.enabled(this));
   updateMusicButton();
   musicButton.setOnClickListener(view -> {
    android.content.SharedPreferences settings = getPreferences(MODE_PRIVATE);
@@ -291,14 +294,21 @@ public class MainActivity extends Activity {
    updateMusicService();
   });
 
-  ScrollView scroll=new ScrollView(this);root.addView(scroll);
+  ScrollView scroll=new ScrollView(this);
+  scroll.setFillViewport(true);
+  root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
   body=new LinearLayout(this);body.setOrientation(1);
-  body.setPadding(dp(14),dp(12),dp(14),dp(20));scroll.addView(body);
-  TextView h=text(title,23);h.setTypeface(null,Typeface.BOLD);
+  body.setPadding(dp(14),dp(8),dp(14),dp(22));scroll.addView(body);
+  TextView h=text(title,home ? 31 : 24);
+  h.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
   h.setTextColor(Color.WHITE);
-  h.setShadowLayer(dp(5), 0, 0, 0xff20a4dc);
-  h.setElevation(dp(4));
-  addTextPanel(h, 0xff121c37, 0xff164e61, 0xff4ce5de);
+  if (home) {
+   h.setPadding(dp(8), dp(20), dp(8), dp(3));
+   h.setShadowLayer(dp(9), 0, dp(1), 0xff07131d);
+   body.addView(h);
+  } else {
+   addTextPanel(h, 0xff132432, 0xff173b47, 0xff548b95);
+  }
   reveal(body, 0);
  }
  void note(String s){
@@ -306,19 +316,38 @@ public class MainActivity extends Activity {
   t.setTextColor(0xffdff5ff);
   addTextPanel(t, 0xff14223a, 0xff243f5f, 0xff4f7b9b);
  }
- void button(String s,Runnable r){
+ Button button(String s,Runnable r){
   Button b=new Button(this);b.setText(s);b.setAllCaps(false);
   b.setTextColor(Color.WHITE);
   b.setBackground(new android.graphics.drawable.RippleDrawable(
    android.content.res.ColorStateList.valueOf(0x66a1fff3),
-   rgbPanel(0xff1d2853, 0xff086a76, 0xff5bc9cf), null));
-  b.setShadowLayer(dp(4), 0, 0, 0xff389dbd);
+   rgbPanel(0xff152a3b, 0xff1a5360, 0xff64969f), null));
+  b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
   b.setPadding(dp(12), 0, dp(12), 0);
   b.setElevation(dp(4));
+  InterfaceMotion.buttonFeedback(b);
   LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(54));
   p.setMargins(0,dp(6),0,dp(6));body.addView(b,p);
   if (body.getChildCount() < 10) reveal(b, body.getChildCount() * 24);
   b.setOnClickListener(v -> r.run());
+  return b;
+ }
+
+ void homeButton(String label, int iconResource, Runnable action) {
+  Button button = button(label, action);
+  android.graphics.drawable.Drawable icon = getDrawable(iconResource);
+  if (icon != null) {
+   icon = icon.mutate();
+   icon.setTint(0xff9ae9e4);
+   icon.setBounds(0, 0, dp(23), dp(23));
+   button.setCompoundDrawablesRelative(icon, null, null, null);
+  }
+  button.setCompoundDrawablePadding(dp(12));
+  button.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+  button.setTextSize(16);
+  button.setPadding(dp(16), dp(4), dp(16), dp(4));
+  button.setMinHeight(dp(57));
+  button.getLayoutParams().height = -2;
  }
  EditText input(String hint,String val){
   return input(body, hint, val);
@@ -337,7 +366,11 @@ public class MainActivity extends Activity {
     ? rgbPanel(0xff123649, 0xff175865, 0xff56ffe1)
     : rgbPanel(0xff162440, 0xff223c59, 0xff5684a4));
    e.setShadowLayer(focused ? dp(4) : 0, 0, 0, 0xff4eeacc);
-   e.animate().translationZ(dp(focused ? 5 : 0)).setDuration(180).start();
+   if (InterfaceMotion.enabled(this)) {
+    e.animate().translationZ(dp(focused ? 5 : 0)).setDuration(220).setInterpolator(InterfaceMotion.ARRIVE).start();
+   } else {
+    e.setTranslationZ(dp(focused ? 5 : 0));
+   }
   });
   LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(55));
   p.setMargins(0,dp(6),0,dp(6));parent.addView(e,p);return e;
@@ -352,6 +385,8 @@ public class MainActivity extends Activity {
  void bad(){Toast.makeText(this,"Ölçü veya adet hatalı",Toast.LENGTH_LONG).show();}
  @Override public void onCreate(Bundle state) {
   super.onCreate(state);
+  getWindow().setStatusBarColor(0xff0b1925);
+  getWindow().setNavigationBarColor(0xff081620);
   setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC);
   getPreferences(MODE_PRIVATE).registerOnSharedPreferenceChangeListener(musicSettingsChanged);
   home();
@@ -361,14 +396,20 @@ public class MainActivity extends Activity {
   musicScreenResumed = true;
   updateMusicButton();
   updateMusicService();
+  boolean motion = InterfaceMotion.enabled(this);
+  if (backdrop != null) backdrop.setActive(motion);
+  if (mastheadTrace != null) mastheadTrace.setActive(motion);
  }
  @Override protected void onPause() {
   musicScreenResumed = false;
+  if (backdrop != null) backdrop.setActive(false);
+  if (mastheadTrace != null) mastheadTrace.setActive(false);
   updateMusicService();
   if (savePhotoReview != null) savePhotoReview.run();
   super.onPause();
  }
  @Override protected void onDestroy() {
+  if (backdrop != null) backdrop.setActive(false);
   getPreferences(MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(musicSettingsChanged);
   super.onDestroy();
  }
@@ -381,12 +422,16 @@ public class MainActivity extends Activity {
   home();
  }
  void home(){
-  page("Profil Kesim Pro");
-  note("Cam balkon ve doğrama hesaplama • Ölçüler mm");
-  button("Fotoğraftan kesim listesi oku",()->photo());
-  button("Profil kesim optimizasyonu",()->opt());
-  button("Cam m² Hesaplama", () -> glass());
-  button("Kanat eşit bölme hesabı",()->panels());
+  page("Profil Kesim Pro", true);
+  TextView description = text("Cam balkon ve doğrama hesaplama", 14);
+  description.setTextColor(0xffd2ebee);
+  description.setShadowLayer(dp(7), 0, dp(1), 0xff07131d);
+  description.setPadding(dp(9), 0, dp(8), dp(18));
+  body.addView(description);
+  homeButton("Fotoğraftan kesim listesi oku", android.R.drawable.ic_menu_camera, () -> photo());
+  homeButton("Profil kesim optimizasyonu", android.R.drawable.ic_menu_sort_by_size, () -> opt());
+  homeButton("Cam m² hesaplama", android.R.drawable.ic_menu_crop, () -> glass());
+  homeButton("Kanat eşit bölme hesabı", android.R.drawable.ic_menu_agenda, () -> panels());
  }
  void photo() {
   if (photoNumber > 0) {
@@ -992,18 +1037,19 @@ public class MainActivity extends Activity {
  }
 
  android.graphics.drawable.Drawable rgbPanel(int start, int end, int edge) {
-  int[] spectrum = {0xfffa5f8b, 0xffa975ff, 0xff54cdfd, 0xff43f0ab, 0xffffca6d};
-  GradientDrawable frame = new GradientDrawable(GradientDrawable.Orientation.TL_BR, spectrum);
+  GradientDrawable frame = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+   new int[]{0xff7899a6, 0xff27424e, 0xff425c63, 0xff96785a});
   frame.setCornerRadius(dp(18));
-  GradientDrawable surface = gradient(start, end, edge);
-  GradientDrawable strip = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, spectrum);
+  GradientDrawable surface = gradient(start, end, (edge & 0x00ffffff) | 0x66000000);
+  GradientDrawable strip = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+   new int[]{0x00ecc18b, 0xbbecc18b, 0xb68cdee2, 0x008cdee2});
   strip.setCornerRadius(dp(3));
   android.graphics.drawable.LayerDrawable layers = new android.graphics.drawable.LayerDrawable(
    new android.graphics.drawable.Drawable[]{frame, surface, strip});
   layers.setPaddingMode(android.graphics.drawable.LayerDrawable.PADDING_MODE_STACK);
-  layers.setLayerInset(1, dp(2), dp(2), dp(2), dp(2));
-  layers.setLayerInset(2, dp(14), dp(3), dp(14), 0);
-  layers.setLayerHeight(2, dp(2));
+  layers.setLayerInset(1, dp(1), dp(1), dp(1), dp(1));
+  layers.setLayerInset(2, dp(18), dp(1), dp(18), 0);
+  layers.setLayerHeight(2, dp(1));
   layers.setLayerGravity(2, Gravity.TOP | Gravity.FILL_HORIZONTAL);
   return layers;
  }
@@ -1021,10 +1067,11 @@ public class MainActivity extends Activity {
  }
 
  void reveal(android.view.View view, int delay) {
-  view.setAlpha(0f);
-  view.setTranslationY(dp(10));
+  if (!InterfaceMotion.enabled(this)) return;
+  view.setAlpha(.14f);
+  view.setTranslationY(dp(14));
   view.animate().alpha(1f).translationY(0f).setStartDelay(delay)
-   .setDuration(320).setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+   .setDuration(430).setInterpolator(InterfaceMotion.ARRIVE).start();
  }
 
  LinearLayout planCard(LinearLayout parent, int start, int end, int border) {
@@ -1088,6 +1135,7 @@ public class MainActivity extends Activity {
   private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
   private final android.graphics.RectF bounds = new android.graphics.RectF();
   private final android.graphics.Path outline = new android.graphics.Path();
+  private android.graphics.LinearGradient bevel;
   private float fill = 1f;
   private ValueAnimator animator;
 
@@ -1100,10 +1148,11 @@ public class MainActivity extends Activity {
   }
 
   void animateFill() {
+   if (!InterfaceMotion.enabled(MainActivity.this)) return;
    fill = 0f;
    animator = ValueAnimator.ofFloat(0f, 1f);
-   animator.setDuration(780);
-   animator.setInterpolator(new android.view.animation.DecelerateInterpolator());
+   animator.setDuration(740);
+   animator.setInterpolator(InterfaceMotion.ARRIVE);
    animator.addUpdateListener(value -> {
     fill = (float) value.getAnimatedValue();
     invalidate();
@@ -1113,6 +1162,8 @@ public class MainActivity extends Activity {
 
   @Override protected void onDetachedFromWindow() {
    if (animator != null) animator.cancel();
+   animator = null;
+   fill = 1f;
    super.onDetachedFromWindow();
   }
 
@@ -1121,13 +1172,16 @@ public class MainActivity extends Activity {
    bounds.set(0, 0, width, height);
    outline.reset();
    outline.addRoundRect(bounds, dp(9), dp(9), android.graphics.Path.Direction.CW);
+   bevel = new android.graphics.LinearGradient(0f, 0f, 0f, Math.max(1, height),
+    new int[]{0x75ffffff, 0x16ffffff, 0x38031119},
+    new float[]{0f, .40f, 1f}, android.graphics.Shader.TileMode.CLAMP);
   }
 
   @Override protected void onDraw(android.graphics.Canvas canvas) {
    super.onDraw(canvas);
    canvas.save();
    canvas.clipPath(outline);
-   canvas.drawColor(0xff354765);
+   canvas.drawColor(0xff263d4b);
    canvas.clipRect(0, 0, getWidth() * fill, getHeight());
    float scale = getWidth() / (float) length;
    long offset = 0;
@@ -1145,9 +1199,20 @@ public class MainActivity extends Activity {
    }
    paint.setColor(REMAIN_GREEN);
    canvas.drawRect(offset * scale, 0, getWidth(), getHeight(), paint);
-   paint.setColor(0x40ffffff);
-   canvas.drawRect(0, 0, getWidth(), dp(3), paint);
+   paint.setShader(bevel);
+   canvas.drawRect(0, 0, getWidth(), getHeight(), paint);
+   paint.setShader(null);
+   if (fill > 0f && fill < 1f) {
+    float endpoint = getWidth() * fill;
+    paint.setColor(0x64fbfff6);
+    canvas.drawRect(Math.max(0, endpoint - dp(2)), 0, endpoint, getHeight(), paint);
+   }
    canvas.restore();
+   paint.setColor(0x8ab0d6d6);
+   paint.setStrokeWidth(dp(1));
+   paint.setStyle(android.graphics.Paint.Style.STROKE);
+   canvas.drawRoundRect(.5f, .5f, getWidth() - .5f, getHeight() - .5f, dp(9), dp(9), paint);
+   paint.setStyle(android.graphics.Paint.Style.FILL);
   }
  }
 
