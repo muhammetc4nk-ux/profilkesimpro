@@ -1,7 +1,5 @@
 package com.profilkesim.pro;
-import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
-import android.view.animation.AccelerateDecelerateInterpolator;
 import android.graphics.BlurMaskFilter;
 import android.app.Activity;
 import android.os.Bundle;
@@ -205,82 +203,81 @@ public class MainActivity extends Activity {
   root=new LinearLayout(this);root.setOrientation(1);
   root.setBackgroundResource(R.drawable.cambalkon);
   setContentView(root);
-  TextView brand=text("muhammet can . K",12);
-  brand.setTextColor(Color.WHITE);brand.setGravity(Gravity.CENTER);
-  brand.setBackground(rgbPanel(0xff0e1933, 0xff233953, 0xff3ab6c9));
-  {
-   LinearLayout masthead = new LinearLayout(this);
-   masthead.setGravity(Gravity.CENTER_VERTICAL);
-   masthead.setBackground(rgbPanel(0xff0e1933, 0xff233953, 0xff3ab6c9));
-   brand.setBackgroundColor(Color.TRANSPARENT);
-   masthead.addView(brand, new LinearLayout.LayoutParams(0, dp(50), 1f));
-   musicButton = new Button(this);
-   musicButton.setAllCaps(false);
-   musicButton.setTextSize(13);
-   musicButton.setTextColor(Color.WHITE);
-   musicButton.setPadding(dp(12), 0, dp(12), 0);
-   musicButton.setBackground(new android.graphics.drawable.RippleDrawable(
-    android.content.res.ColorStateList.valueOf(0x66a1fff3),
-    rgbPanel(0xff193154, 0xff185467, 0xff54d7e1), null));
-   LinearLayout.LayoutParams buttonSize = new LinearLayout.LayoutParams(-2, dp(48));
-   buttonSize.setMarginEnd(dp(7));
-   masthead.addView(musicButton, buttonSize);
-   root.addView(masthead, new LinearLayout.LayoutParams(-1, dp(56)));
+  LinearLayout masthead = new LinearLayout(this);
+  masthead.setGravity(Gravity.CENTER_VERTICAL);
+  masthead.setMinimumHeight(dp(70));
+  masthead.setBackground(rgbPanel(0xff0e1933, 0xff233953, 0xff3ab6c9));
+  masthead.setPadding(dp(9), dp(7), dp(9), dp(7));
+
+  ImageView appIcon = new ImageView(this);
+  appIcon.setImageResource(R.drawable.cannuryapi_icon);
+  appIcon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+  appIcon.setPadding(dp(4), dp(4), dp(4), dp(4));
+  appIcon.setBackground(rgbPanel(0xff152747, 0xff194455, 0xff43daca));
+  appIcon.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+  masthead.addView(appIcon, new LinearLayout.LayoutParams(dp(43), dp(43)));
+
+  LinearLayout identity = new LinearLayout(this);
+  identity.setOrientation(LinearLayout.VERTICAL);
+  LinearLayout.LayoutParams identitySize = new LinearLayout.LayoutParams(0, -2, 1f);
+  identitySize.setMarginStart(dp(9));
+  identitySize.setMarginEnd(dp(7));
+  masthead.addView(identity, identitySize);
+
+  TextView brand = text("MUHAMMET CAN . K", 16);
+  brand.setTextColor(0xffffe5a6);
+  brand.setTypeface(null, Typeface.BOLD);
+  brand.setPadding(0, 0, 0, 0);
+  identity.addView(brand);
+
+  TextView tagline = text("Yeni gelmedik, geri geldik", 12);
+  tagline.setTextColor(0xffaaf6ff);
+  tagline.setTypeface(null, Typeface.BOLD);
+  tagline.setPadding(0, dp(2), 0, 0);
+  identity.addView(tagline);
+
+  android.view.View light = new android.view.View(this);
+  GradientDrawable lightColor = box(0xff6af3ff);
+  light.setBackground(lightColor);
+  LinearLayout.LayoutParams lightSize = new LinearLayout.LayoutParams(dp(46), dp(2));
+  lightSize.topMargin = dp(3);
+  identity.addView(light, lightSize);
+
+  ValueAnimator neon = ValueAnimator.ofArgb(
+   0xff6af3ff, 0xffff8bdb, 0xffcda6ff, 0xff8bffcf, 0xff6af3ff);
+  neon.setDuration(1360);
+  neon.setRepeatCount(ValueAnimator.INFINITE);
+  neon.setInterpolator(new android.view.animation.LinearInterpolator());
+  neon.addUpdateListener(frame -> {
+   int color = (int) frame.getAnimatedValue();
+   float glow = .5f + .5f * (float) Math.sin(frame.getAnimatedFraction() * 4 * Math.PI);
+   tagline.setTextColor(color);
+   tagline.setShadowLayer(dp(2) + dp(5) * glow, 0, 0, color);
+   lightColor.setColor(color);
+   light.setAlpha(.60f + .40f * glow);
+  });
+  identity.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener() {
+   @Override public void onViewAttachedToWindow(android.view.View view) { neon.start(); }
+   @Override public void onViewDetachedFromWindow(android.view.View view) { neon.cancel(); }
+  });
+
+  musicButton = new Button(this);
+  musicButton.setAllCaps(false);
+  musicButton.setTextSize(13);
+  musicButton.setTextColor(Color.WHITE);
+  musicButton.setPadding(dp(9), 0, dp(9), 0);
+  musicButton.setBackground(new android.graphics.drawable.RippleDrawable(
+   android.content.res.ColorStateList.valueOf(0x66a1fff3),
+   rgbPanel(0xff193154, 0xff185467, 0xff54d7e1), null));
+  masthead.addView(musicButton, new LinearLayout.LayoutParams(-2, dp(48)));
+  root.addView(masthead, new LinearLayout.LayoutParams(-1, -2));
+  updateMusicButton();
+  musicButton.setOnClickListener(view -> {
+   android.content.SharedPreferences settings = getPreferences(MODE_PRIVATE);
+   boolean muted = !settings.getBoolean(MUSIC_MUTED, false);
+   settings.edit().putBoolean(MUSIC_MUTED, muted).apply();
    updateMusicButton();
-   musicButton.setOnClickListener(view -> {
-    android.content.SharedPreferences settings = getPreferences(MODE_PRIVATE);
-    boolean muted = !settings.getBoolean(MUSIC_MUTED, false);
-    settings.edit().putBoolean(MUSIC_MUTED, muted).apply();
-    updateMusicButton();
-    updateMusicService();
-   });
-  }
-  
-brand.setText("✦ MUHAMMET CAN . K ✦");
-brand.setTextSize(17);
-brand.setTypeface(null, Typeface.BOLD);
-brand.setTextColor(0xffffd76a);
-brand.setLayerType(
-    android.view.View.LAYER_TYPE_SOFTWARE, null
-);
-
-brand.setShadowLayer(
-    dp(12), 0, 0, 0xffffc400
-);
-
-ValueAnimator neon = ValueAnimator.ofArgb(
-    0xffffd76a,
-    0xff00f5ff,
-    0xffffd76a
-);
-
-neon.setDuration(2400);
-neon.setRepeatCount(ValueAnimator.INFINITE);
-neon.setInterpolator(
-    new AccelerateDecelerateInterpolator()
-);
-
-neon.addUpdateListener(animation -> {
-    int color = (int) animation.getAnimatedValue();
-    brand.setTextColor(color);
-    brand.setShadowLayer(dp(12), 0, 0, color);
-});
-
-neon.start();
-
-ObjectAnimator pulse = ObjectAnimator.ofFloat(
-    brand, "scaleX", 1.0f, 1.04f, 1.0f
-);
-
-pulse.setDuration(2400);
-pulse.setRepeatCount(ValueAnimator.INFINITE);
-pulse.start();
-  brand.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener() {
-   @Override public void onViewAttachedToWindow(android.view.View view) {}
-   @Override public void onViewDetachedFromWindow(android.view.View view) {
-    neon.cancel();
-    pulse.cancel();
-   }
+   updateMusicService();
   });
 
   ScrollView scroll=new ScrollView(this);root.addView(scroll);
