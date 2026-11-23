@@ -1,9 +1,12 @@
-
 package com.profilkesim.pro;
 import android.app.Activity;
 import android.os.Bundle;
 import android.content.Intent;
 import android.graphics.Bitmap;
+import android.graphics.Rect;
+import android.content.ContentValues;
+import com.google.mlkit.vision.text.Text;
+import java.util.regex.*;
 import android.net.Uri;
 import android.provider.MediaStore;
 import com.google.mlkit.vision.common.InputImage;
@@ -18,6 +21,9 @@ import java.util.*;
 public class MainActivity extends Activity {
  LinearLayout root,body;
  EditText recognized;
+ Uri cameraUri; Bitmap sourceBitmap;
+ ArrayList<CutRow> detected=new ArrayList<>();
+ static class CutRow {String code,name;int mm,qty;Bitmap icon;CutRow(String c,String n,int m,int q,Bitmap b){code=c;name=n;mm=m;qty=q;icon=b;}}
  static final int PICK_IMAGE=41, TAKE_PHOTO=42;
  int navy=0xff173447, teal=0xff087e89;
  int dp(int n){return (int)(n*getResources().getDisplayMetrics().density);}
@@ -43,89 +49,156 @@ public class MainActivity extends Activity {
  @Override public void onBackPressed(){home();}
  void home(){
   page("Profil Kesim Pro");note("Cam balkon ve doğrama hesaplama • Ölçüler mm");
-  button("Fotoğraftan kesim listesi oku",()->photo());
+  button("Fotoğraftan kesim föyü oku",()->photo());
   button("Profil kesim optimizasyonu",()->opt());
   button("Cam alanı ve adet hesabı",()->glass());
   button("Kanat eşit bölme hesabı",()->panels());
   for(String s:new String[]{"Tiara Twin","Statü","Sürme","Giyotin","Cam tavan","PVC","Sineklik","Duşakabin","ASAŞ RST116 Hebeschiebe"})button(s,()->system(s));
  }
  void photo(){
-  page("Fotoğraftan kesim listesi");
-  note("El yazısı ve bilgisayar çıktısı desteklenir. Yanlış okunan ölçüleri mutlaka düzeltin. Örnek: KASA 1250x3. Her satıra bir profil ve ölçü yazın.");
-  button("Galeriden fotoğraf seç",()->{
-    Intent i=new Intent(Intent.ACTION_GET_CONTENT);i.setType("image/*");startActivityForResult(i,PICK_IMAGE);
+  page("Fotoğraftan kesim föyü");
+  note("Albert Genau kesim föyünü düz zeminde, tamamı kadraja girecek şekilde çekin. Profil kodu, ölçü ve adet ayrı sütunlardan okunur.");
+  button("Galeriden fotoğraf seç",()->{Intent i=new Intent(Intent.ACTION_GET_CONTENT);i.setType("image/*");startActivityForResult(i,PICK_IMAGE);});
+  button("Kamerayla tam çözünürlüklü fotoğraf çek",()->{
+   try{
+    ContentValues values=new ContentValues();values.put(MediaStore.Images.Media.DISPLAY_NAME,"profil_foy_"+System.currentTimeMillis()+".jpg");values.put(MediaStore.Images.Media.MIME_TYPE,"image/jpeg");
+    cameraUri=getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values);
+    Intent i=new Intent(MediaStore.ACTION_IMAGE_CAPTURE);i.putExtra(MediaStore.EXTRA_OUTPUT,cameraUri);i.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);startActivityForResult(i,TAKE_PHOTO);
+   }catch(Exception e){note("Kamera açılamadı: "+e.getMessage());}
   });
-  button("Kamerayla fotoğraf çek",()->{
-    Intent i=new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-    try{startActivityForResult(i,TAKE_PHOTO);}catch(Exception e){note("Kamera açılamadı.");}
-  });
-  recognized=input("Okunan kesim listesi","");
-  recognized.setSingleLine(false);recognized.setMinLines(7);recognized.getLayoutParams().height=dp(230);
-  note("Örnek satırlar: KASA 1250x3 veya KANAT 850x4. Ölçüler mm cinsindedir.");
-  button("Profilleri ayır ve optimize et",()->analyzePhoto());
+  recognized=input("Fotoğraftan okunan metin","");
+  recognized.setSingleLine(false);recognized.setMinLines(6);recognized.getLayoutParams().height=dp(180);
+  button("Okunan profilleri göster",()->showDetected());
   button("Ana menü",()->home());
  }
  @Override protected void onActivityResult(int request,int result,Intent data){
   super.onActivityResult(request,result,data);
-  if(result!=RESULT_OK||data==null)return;
+  if(result!=RESULT_OK)return;
   try{
-    InputImage image;
-    if(request==PICK_IMAGE){Uri uri=data.getData();if(uri==null)return;image=InputImage.fromFilePath(this,uri);}
-    else if(request==TAKE_PHOTO){Bitmap bmp=(Bitmap)data.getExtras().get("data");image=InputImage.fromBitmap(bmp,0);}
-    else return;
-    if(recognized==null)photo();
-    TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS).process(image)
-      .addOnSuccessListener(r->{recognized.setText(r.getText());Toast.makeText(this,"Metin okundu; ölçüleri kontrol edin",Toast.LENGTH_LONG).show();})
-      .addOnFailureListener(e->Toast.makeText(this,"Fotoğraf okunamadı: "+e.getMessage(),Toast.LENGTH_LONG).show());
-  }catch(Exception e){Toast.makeText(this,"Fotoğraf açılmadı: "+e.getMessage(),Toast.LENGTH_LONG).show();}
+   Uri uri=request==TAKE_PHOTO?cameraUri:(data==null?null:data.getData());
+   if(uri==null)return;
+   sourceBitmap=MediaStore.Images.Media.getBitmap(getContentResolver(),uri);
+   InputImage image=InputImage.fromFilePath(this,uri);
+   if(recognized==null)photo();
+   TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS).process(image)
+    .addOnSuccessListener(r->{recognized.setText(r.getText());detected=parseFoy(r);Toast.makeText(this,detected.size()+" profil satırı algılandı",Toast.LENGTH_LONG).show();showDetected();})
+    .addOnFailureListener(e->Toast.makeText(this,"Okuma hatası: "+e.getMessage(),Toast.LENGTH_LONG).show());
+  }catch(Exception e){Toast.makeText(this,"Fotoğraf hatası: "+e.getMessage(),Toast.LENGTH_LONG).show();}
  }
- void analyzePhoto(){
-  if(recognized==null)return;
-  String raw=recognized.getText().toString();
-  TreeMap<String,ArrayList<Integer>> groups=new TreeMap<>();
-  StringBuilder ignored=new StringBuilder();
-  java.util.regex.Pattern pattern=java.util.regex.Pattern.compile("(\\d{2,5})\\s*(?:[xX×*]\\s*(\\d{1,3})|(?:adet|ad)\\s*(\\d{1,3}))?",java.util.regex.Pattern.CASE_INSENSITIVE);
-  for(String line:raw.split("[\\r\\n]+")){
-    String clean=line.trim();if(clean.isEmpty())continue;
-    java.util.regex.Matcher m=pattern.matcher(clean);
-    if(!m.find()){ignored.append(clean).append("\n");continue;}
-    try{
-      int size=Integer.parseInt(m.group(1));
-      String q=m.group(2)!=null?m.group(2):m.group(3);
-      int qty=q==null?1:Integer.parseInt(q);
-      if(size<100||size>6500||qty<1||qty>100){ignored.append(clean).append("\n");continue;}
-      String name=(clean.substring(0,m.start())+" "+clean.substring(m.end())).replaceAll("[^\\p{L}0-9 ]"," ").trim().toUpperCase(new Locale("tr","TR"));
-      if(name.isEmpty())name="PROFİL TÜRÜ BELİRSİZ";
-      if(!groups.containsKey(name))groups.put(name,new ArrayList<Integer>());
-      for(int i=0;i<qty;i++)groups.get(name).add(size);
-    }catch(Exception ex){ignored.append(clean).append("\n");}
+ ArrayList<CutRow> parseFoy(Text doc){
+  ArrayList<CutRow> rows=new ArrayList<>();
+  ArrayList<Text.Line> lines=new ArrayList<>();
+  for(Text.TextBlock b:doc.getTextBlocks())lines.addAll(b.getLines());
+  Collections.sort(lines,(a,b)->Integer.compare(a.getBoundingBox()==null?0:a.getBoundingBox().centerY(),b.getBoundingBox()==null?0:b.getBoundingBox().centerY()));
+  Pattern codePattern=Pattern.compile("B\\s*1\\s*5\\s*0\\s*\\d{2}",Pattern.CASE_INSENSITIVE);
+  for(int i=0;i<lines.size();i++){
+   Text.Line line=lines.get(i);Matcher match=codePattern.matcher(line.getText().replace("O","0"));
+   if(!match.find())continue;
+   String code=match.group().replaceAll("\\s+","").toUpperCase(Locale.ROOT);
+   Rect r=line.getBoundingBox();if(r==null)continue;
+   StringBuilder joined=new StringBuilder(line.getText());
+   int y=r.centerY(),height=Math.max(18,r.height());
+   for(Text.Line next:lines){
+    Rect nr=next.getBoundingBox();
+    if(nr!=null&&next!=line&&Math.abs(nr.centerY()-y)<height*1.2)joined.append(" ").append(next.getText());
+   }
+   String content=joined.toString();
+   String name=content.replaceFirst("(?i)B\\s*1\\s*5\\s*0\\s*\\d{2}","").replaceAll("\\d{3,5}\\s*(mm)?"," ").replaceAll("\\s+"," ").trim();
+   if(name.length()>75)name=name.substring(0,75);
+   if(name.isEmpty())name=profileName(code);
+   int mm=0,qty=0;
+   ArrayList<Integer> nums=new ArrayList<>();
+   Matcher nm=Pattern.compile("\\b\\d{1,5}\\b").matcher(content.replace(code," "));
+   while(nm.find())try{nums.add(Integer.parseInt(nm.group()));}catch(Exception ignored){}
+   for(int n:nums)if(n>=100&&n<=6500){mm=n;break;}
+   if(mm>0){boolean after=false;for(int n:nums){if(after&&n>=0&&n<=100){qty=n;break;}if(n==mm)after=true;}}
+   if(mm==0||qty==0){
+    for(Text.Line other:lines){
+     Rect nr=other.getBoundingBox();
+     if(nr==null||Math.abs(nr.centerY()-y)>height*1.2||nr.centerX()<=r.centerX())continue;
+     Matcher numbers=Pattern.compile("\\b\\d{1,5}\\b").matcher(other.getText());
+     while(numbers.find()){int n=Integer.parseInt(numbers.group());if(mm==0&&n>=100&&n<=6500)mm=n;else if(mm>0&&qty==0&&n>=0&&n<=100)qty=n;}
+    }
+   }
+   Bitmap icon=null;
+   try{
+    if(sourceBitmap!=null){
+     int left=Math.max(0,r.left-(int)(sourceBitmap.getWidth()*0.19));
+     int top=Math.max(0,r.top-height/2);
+     int right=Math.min(sourceBitmap.getWidth(),Math.max(left+1,r.left-5));
+     int bottom=Math.min(sourceBitmap.getHeight(),Math.max(top+1,r.bottom+height/2));
+     if(right>left&&bottom>top)icon=Bitmap.createBitmap(sourceBitmap,left,top,right-left,bottom-top);
+    }
+   }catch(Exception ignored){}
+   if(!code.isEmpty()&&rows.stream().noneMatch(z->z.code.equals(code)))rows.add(new CutRow(code,name,mm,qty,icon));
   }
-  page("Fotoğraf kesim sonuçları");
-  if(groups.isEmpty()){note("Ölçü bulunamadı. Fotoğraftaki metni düzeltip tekrar deneyin.");button("Fotoğrafa dön",()->photo());return;}
-  EditText stock=input("Stok boyu mm","6000"),saw=input("Testere payı mm","3");
-  button("Profil bazında hesapla",()->{
-    try{
-      int length=val(stock),kerf=val(saw);if(length<=0||kerf<0)throw new Exception();
-      StringBuilder out=new StringBuilder();
-      for(Map.Entry<String,ArrayList<Integer>> entry:groups.entrySet()){
-        ArrayList<Integer> parts=new ArrayList<>(entry.getValue());Collections.sort(parts,Collections.reverseOrder());
-        ArrayList<ArrayList<Integer>> bins=new ArrayList<>();ArrayList<Integer> used=new ArrayList<>();boolean impossible=false;
-        for(int piece:parts){if(piece+kerf>length){impossible=true;break;}int target=-1;
-          for(int j=0;j<used.size();j++)if(used.get(j)+piece+kerf<=length){target=j;break;}
-          if(target<0){target=bins.size();bins.add(new ArrayList<Integer>());used.add(0);}
-          bins.get(target).add(piece);used.set(target,used.get(target)+piece+kerf);
-        }
-        out.append("\n■ ").append(entry.getKey()).append("\n");
-        if(impossible){out.append("Stok boyuna sığmayan parça var.\n");continue;}
-        out.append(bins.size()).append(" stok boyu / ").append(parts.size()).append(" parça\n");
-        for(int j=0;j<bins.size();j++)out.append("Boy ").append(j+1).append(": ").append(bins.get(j)).append(" | Fire: ").append(length-used.get(j)).append(" mm\n");
-      }
-      result(out.toString());
-    }catch(Exception ex){bad();}
+  return rows;
+ }
+ String profileName(String code){
+  switch(code){
+   case "B15082":return "42×123 Kasa üst profili";
+   case "B15083":return "11×123 Yan dikme profili";
+   case "B15085":return "96×26 Kanat profili";
+   case "B15086":return "31×34 Kanat çektirme profili";
+   case "B15087":return "33×19 Yan birleşim kilit karşılık profili";
+   case "B15081":return "33×22 Yatay ayar profili";
+   case "B15099":return "70×44 Çektirmeli kilit ara dikme profili";
+   case "B15088":return "59×27 Orta birleşim kilit karşılık profili";
+   case "B15092":return "42×36 Tek ray profili";
+   case "B15091":return "11 Tek ray kapak profili";
+   default:return "Profil";
+  }
+ }
+ void showDetected(){
+  page("Okunan profil kesim listesi");
+  if(detected.isEmpty()){note("Profil satırı bulunamadı. Daha net, düz çekilmiş bir fotoğraf deneyin.");button("Yeniden fotoğraf çek",()->photo());return;}
+  note("Her profilin ölçüsünü ve adedini kontrol edip düzeltin. Sıfır adetli satırlar kesime girmez.");
+  ArrayList<EditText> lengths=new ArrayList<>(),quantities=new ArrayList<>();
+  for(CutRow row:detected){
+   LinearLayout item=new LinearLayout(this);item.setOrientation(1);item.setPadding(dp(8),dp(8),dp(8),dp(8));item.setBackground(box(0xf5ffffff));
+   LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,-2);ip.setMargins(0,dp(6),0,dp(6));body.addView(item,ip);
+   if(row.icon!=null){ImageView im=new ImageView(this);im.setImageBitmap(row.icon);im.setAdjustViewBounds(true);item.addView(im,new LinearLayout.LayoutParams(-1,dp(75)));}
+   TextView name=text(row.code+" • "+profileName(row.code),15);name.setTypeface(null,Typeface.BOLD);item.addView(name);
+   EditText m=new EditText(this);m.setSingleLine(true);m.setText(String.valueOf(row.mm));m.setHint("Kesim ölçüsü mm");m.setInputType(2);item.addView(m);
+   EditText q=new EditText(this);q.setSingleLine(true);q.setText(String.valueOf(row.qty));q.setHint("Kesim adedi");q.setInputType(2);item.addView(q);
+   lengths.add(m);quantities.add(q);
+  }
+  button("Onayla ve kesim planını hesapla",()->{
+   try{
+    for(int i=0;i<detected.size();i++){detected.get(i).mm=val(lengths.get(i));detected.get(i).qty=val(quantities.get(i));}
+    optimizeDetected();
+   }catch(Exception e){bad();}
   });
-  if(ignored.length()>0)note("Okunamayan satırlar (kontrol edin):\n"+ignored.toString());
-  note("Profil kesit görselleri ve üreticiye özel kesim payları henüz eklenmedi. Bu liste fotoğraftan okunan isimlere göre ayrılır.");
-  button("Yeni fotoğraf",()->photo());button("Ana menü",()->home());
+  button("Yeni fotoğraf",()->photo());
+ }
+ void optimizeDetected(){
+  page("Profil bazında kesim planı");
+  note("Stok boyu: Fabrikadan gelen ham profil uzunluğu. Kesim ölçüsü: Föydeki parça uzunluğu. Testere payı: Her kesimde testerenin tükettiği mm. Fire/kalan: Kesim sonrası boyda kalan mm.");
+  EditText stock=input("Stok profil boyu (mm)","6000"),saw=input("Testere payı (mm / kesim)","3");
+  button("Kesim planını oluştur",()->{
+   try{
+    int length=val(stock),kerf=val(saw);if(length<=0||kerf<0)throw new Exception();
+    StringBuilder out=new StringBuilder();
+    for(CutRow row:detected){
+     if(row.qty==0)continue;
+     if(row.mm<=0||row.qty<0||row.qty>1000||row.mm+kerf>length)throw new Exception();
+     ArrayList<ArrayList<Integer>> bins=new ArrayList<>();ArrayList<Integer> used=new ArrayList<>();
+     for(int k=0;k<row.qty;k++){
+      int target=-1;
+      for(int j=0;j<used.size();j++)if(used.get(j)+row.mm+kerf<=length){target=j;break;}
+      if(target<0){target=bins.size();bins.add(new ArrayList<Integer>());used.add(0);}
+      bins.get(target).add(row.mm);used.set(target,used.get(target)+row.mm+kerf);
+     }
+     out.append("\n").append(row.code).append(" - ").append(profileName(row.code)).append("\n");
+     out.append("Kesim ölçüsü: ").append(row.mm).append(" mm | Adet: ").append(row.qty).append("\n");
+     out.append("Gerekli stok: ").append(bins.size()).append(" boy\n");
+     for(int j=0;j<bins.size();j++)out.append("Boy ").append(j+1).append(": ").append(bins.get(j)).append(" | Kalan: ").append(length-used.get(j)).append(" mm\n");
+    }
+    if(out.length()==0)out.append("Kesilecek parça bulunamadı.");
+    result(out.toString());
+   }catch(Exception e){bad();}
+  });
+  button("Ana menü",()->home());
  }
  void opt(){
   page("Profil kesim optimizasyonu");
@@ -145,8 +218,7 @@ public class MainActivity extends Activity {
     }
     if(pieces.isEmpty())throw new Exception();
     Collections.sort(pieces,Collections.reverseOrder());
-    ArrayList<ArrayList<Integer>> bins=new ArrayList<>();ArrayList<Integer> used=new ArrayList<>();
-    long total=0;
+    ArrayList<ArrayList<Integer>> bins=new ArrayList<>();ArrayList<Integer> used=new ArrayList<>();long total=0;
     for(int size:pieces){
      total+=size;int target=-1;
      for(int i=0;i<used.size();i++)if(used.get(i)+size+saw<=length){target=i;break;}
@@ -176,5 +248,4 @@ public class MainActivity extends Activity {
   button("Ön hesapla",()->{try{int a=val(w),b=val(h),c=val(n);if(a<=0||b<=0||c<=0)throw new Exception();result(String.format(Locale.US,"Sistem: %s\nAlan: %.2f m²\nTeorik bölüm eni: %.1f mm\n\nBunlar nihai imalat kesim ölçüsü değildir.",s,a*b/1000000.0,a/(double)c));}catch(Exception e){bad();}});
   button("Ana menü",()->home());
  }
- }
-                                                                                                                          
+}
