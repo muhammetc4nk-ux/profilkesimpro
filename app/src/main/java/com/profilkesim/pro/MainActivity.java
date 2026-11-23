@@ -394,7 +394,7 @@ public class MainActivity extends Activity {
    return;
   }
   page("Fotoğraflardan kesim listesi");
-  note("Bir veya daha fazla kesim föyü ekleyin. Her fotoğraf için ayrı kesim planı hazırlanır.");
+  note("Bir veya daha fazla kesim föyü ekleyin. Aynı profiller tek kesim planında birleşir.");
   addPhotoButtons(() -> {});
   button("Elle satır ekle", () -> showDetected());
   button("Ana menü", () -> home());
@@ -694,6 +694,25 @@ public class MainActivity extends Activity {
    this.stock = stock;
    this.icon = icon;
   }
+
+  List<PackedStockBar> pack(int kerf) {
+   Collections.sort(pieces, Collections.reverseOrder());
+   List<PackedStockBar> bars = new ArrayList<>();
+   for (int size : pieces) {
+    int i = 0;
+    while (i < bars.size() && (long) bars.get(i).used + size + kerf > stock) i++;
+    if (i == bars.size()) bars.add(new PackedStockBar());
+    PackedStockBar bar = bars.get(i);
+    bar.pieces.add(size);
+    bar.used += size + kerf;
+   }
+   return bars;
+  }
+ }
+
+ static final class PackedStockBar {
+  final List<Integer> pieces = new ArrayList<>();
+  int used;
  }
 
  void showDetected() {
@@ -701,16 +720,27 @@ public class MainActivity extends Activity {
   int rowCount = 0;
   for (List<CutRow> rows : detected.values()) rowCount += rows.size();
   note(detected.size() + " fotoğraf okundu  ·  " + rowCount + " profil satırı");
-  if (!failedPhotos.isEmpty()) note("Okunamayan fotoğraflar: " + android.text.TextUtils.join(", ", failedPhotos)
-   + ". Bu fotoğrafları yeniden ekleyin veya kesimlerini elle girin.");
+  if (!failedPhotos.isEmpty()) {
+   note("Okunamayan fotoğraflar: " + android.text.TextUtils.join(", ", failedPhotos)
+    + ". Birleşik planı oluşturmadan önce bu fotoğrafları plandan çıkarın ve gerekiyorsa yeniden ekleyin.");
+   button("Okunamayan fotoğrafları plandan çıkar", () -> new android.app.AlertDialog.Builder(this)
+    .setMessage("Okunamayan fotoğraflar bu kesim planından çıkarılsın mı?")
+    .setNegativeButton("Vazgeç", null)
+    .setPositiveButton("Plandan çıkar", (dialog, which) -> {
+     savePhotoReview.run();
+     failedPhotos.clear();
+     showDetected();
+    }).show());
+  }
 
   Map<CutRow, EditText[]> fields = new LinkedHashMap<>();
   Map<String, List<EditText>> stocks = new HashMap<>();
+  Map<Integer, CheckBox> confirmations = new LinkedHashMap<>();
   addPhotoButtons(() -> savePhotoReview.run());
   EditText saw = input("TESTERE PAYI (mm / parça)", extraDraft[4]);
   saw.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
   if (detected.isEmpty()) note("Henüz profil okunmadı. Fotoğraf ekleyebilir veya aşağıdan elle satır girebilirsiniz.");
-  else note("Her fotoğrafın kesim ölçüsü ve adedini föyle karşılaştırın. Stok boyunu profil kartından değiştirebilirsiniz.");
+  else note("Her fotoğrafı kontrol edip onaylayın. Aynı profiller tek kesim planında birleşir.");
 
   for (Map.Entry<Integer, List<CutRow>> photo : detected.entrySet()) {
    int number = photo.getKey();
@@ -745,42 +775,29 @@ public class MainActivity extends Activity {
    confirmed.setTextColor(0xffeffaff);
    confirmed.setButtonTintList(android.content.res.ColorStateList.valueOf(0xff5af4ca));
    addTextPanel(confirmed, 0xff15283b, 0xff244d5a, 0xff51cfc0);
-   button("Fotoğraf " + number + " için kesim planı oluştur", () -> {
-    if (!confirmed.isChecked()) {
-     Toast.makeText(this, "Önce bu fotoğrafın kesim ölçülerini ve adetlerini onaylayın.", Toast.LENGTH_LONG).show();
+   confirmations.put(number, confirmed);
+  }
+
+  if (!detected.isEmpty()) button("Tüm fotoğrafları birlikte optimize et", () -> {
+   if (!failedPhotos.isEmpty()) {
+    Toast.makeText(this, "Önce okunamayan fotoğrafları plandan çıkarın.", Toast.LENGTH_LONG).show();
+    return;
+   }
+   for (Map.Entry<Integer, CheckBox> entry : confirmations.entrySet()) {
+    if (!entry.getValue().isChecked()) {
+     Toast.makeText(this, "Önce Fotoğraf " + entry.getKey() + " için ölçü ve adetleri onaylayın.", Toast.LENGTH_LONG).show();
      return;
     }
-    savePhotoReview.run();
-    try {
-     int kerf = readKerf();
-     Map<String, ProfileCutPlan> plans = new LinkedHashMap<>();
-     for (CutRow row : photo.getValue()) {
-      String label = (row.code + " " + row.name).trim();
-      String context = label + " · Fotoğraf " + number;
-      int size = cutNumber(row.draft[0], context + " kesim ölçüsü");
-      int quantity = cutNumber(row.draft[1], context + " kesim adedi");
-     if (quantity == 0) {
-      if (size < 0) throw new IllegalArgumentException(context + ": geçerli bir kesim ölçüsü girin.");
-      continue;
-     }
-      String key = profileStockKey(row);
-      int stock = cutNumber(stockDrafts.get(key), label + " stok boyu");
-      validateCut(size, quantity, stock, kerf, context);
-      ProfileCutPlan plan = plans.get(key);
-      if (plan == null) {
-       plan = new ProfileCutPlan(label, stock, row.icon);
-       plans.put(key, plan);
-      }
-      if (plan.icon == null) plan.icon = row.icon;
-      for (int i = 0; i < quantity; i++) plan.pieces.add(size);
-     }
-     if (plans.isEmpty()) throw new IllegalArgumentException("En az bir geçerli kesim girin.");
-     showPhotoOptimization(plans.values(), kerf, "Fotoğraf " + number);
-    } catch (IllegalArgumentException e) {
-     Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
-    }
-   });
-  }
+   }
+   savePhotoReview.run();
+   try {
+    int kerf = readKerf();
+    Collection<ProfileCutPlan> plans = combinePhotoCuts(detected, stockDrafts, kerf);
+    showPhotoOptimization(plans, kerf, detected.size() + " fotoğraftan birleşik kesim planı");
+   } catch (IllegalArgumentException e) {
+    Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+   }
+  });
 
   note("Elle kesim ekle");
   EditText extraName = input("Profil kodu / adı", extraDraft[0]);
@@ -849,7 +866,37 @@ public class MainActivity extends Activity {
   return kerf;
  }
 
- String profileStockKey(CutRow row) {
+ static Collection<ProfileCutPlan> combinePhotoCuts(Map<Integer, List<CutRow>> photos,
+                                                      Map<String, String> stocks, int kerf) {
+  Map<String, ProfileCutPlan> plans = new LinkedHashMap<>();
+  for (Map.Entry<Integer, List<CutRow>> photo : photos.entrySet()) {
+   for (CutRow row : photo.getValue()) {
+    String label = (row.code + " " + row.name).trim();
+    String context = label + " · Fotoğraf " + photo.getKey();
+    int size = cutNumber(row.draft[0], context + " kesim ölçüsü");
+    int quantity = cutNumber(row.draft[1], context + " kesim adedi");
+    if (quantity == 0) {
+     if (size < 0) throw new IllegalArgumentException(context + ": geçerli bir kesim ölçüsü girin.");
+     continue;
+    }
+    String key = profileStockKey(row);
+    int stock = cutNumber(stocks.get(key), label + " stok boyu");
+    validateCut(size, quantity, stock, kerf, context);
+    ProfileCutPlan plan = plans.get(key);
+    if (plan == null) {
+     plan = new ProfileCutPlan(label, stock, row.icon);
+     plans.put(key, plan);
+    } else if (plan.icon == null) {
+     plan.icon = row.icon;
+    }
+    for (int i = 0; i < quantity; i++) plan.pieces.add(size);
+   }
+  }
+  if (plans.isEmpty()) throw new IllegalArgumentException("En az bir geçerli kesim girin.");
+  return plans.values();
+ }
+
+ static String profileStockKey(CutRow row) {
   return row.code.isEmpty() ? "NAME:" + CutSheet.identity(row.name) : row.code;
  }
 
@@ -885,15 +932,15 @@ public class MainActivity extends Activity {
   return values;
  }
 
- int cutNumber(String value, String label) {
+ static int cutNumber(String value, String label) {
   try {
-   return Integer.parseInt(value.trim());
+   return Integer.parseInt(value == null ? "" : value.trim());
   } catch (NumberFormatException e) {
    throw new IllegalArgumentException(label + ": geçerli bir sayı girin.");
   }
  }
 
- void validateCut(int size, int quantity, int stock, int kerf, String label) {
+ static void validateCut(int size, int quantity, int stock, int kerf, String label) {
   if (size <= 0 || quantity < 0 || quantity > 1000 || stock <= 0) {
    throw new IllegalArgumentException(label + ": ölçüyü, adedi ve stok boyunu kontrol edin.");
   }
@@ -910,28 +957,17 @@ public class MainActivity extends Activity {
   int commonLength = profiles.iterator().next().stock;
   for (ProfileCutPlan plan : profiles) {
    if (commonLength != plan.stock) commonLength = 0;
-   Collections.sort(plan.pieces, Collections.reverseOrder());
-   ArrayList<ArrayList<Integer>> bins = new ArrayList<>();
-   ArrayList<Integer> used = new ArrayList<>();
-   for (int size : plan.pieces) {
-    int bin = 0;
-    while (bin < used.size() && (long) used.get(bin) + size + kerf > plan.stock) bin++;
-    if (bin == bins.size()) {
-     bins.add(new ArrayList<>());
-     used.add(0);
-    }
-    bins.get(bin).add(size);
-    used.set(bin, used.get(bin) + size + kerf);
-   }
+   List<PackedStockBar> bars = plan.pack(kerf);
    LinearLayout group = planCard(cards, 0xff172b44, 0xff254662, 0xff597d9b);
    profileHeading(group, plan.name, plan.icon);
    planLabel(group, "Stok " + plan.stock + " mm  ·  " + plan.pieces.size() + " parça", 14, 0xffd2e8f4);
    allPieces += plan.pieces.size();
-   for (int i = 0; i < bins.size(); i++) {
-    int waste = plan.stock - used.get(i);
+   for (int i = 0; i < bars.size(); i++) {
+    PackedStockBar bar = bars.get(i);
+    int waste = plan.stock - bar.used;
     remaining += waste;
-    net += used.get(i) - (long) kerf * bins.get(i).size();
-    planBar(group, i + 1, bins.get(i), plan.stock, kerf, waste, allBars < 12);
+    net += bar.used - (long) kerf * bar.pieces.size();
+    planBar(group, i + 1, bar.pieces, plan.stock, kerf, waste, allBars < 12);
     allBars++;
    }
   }
