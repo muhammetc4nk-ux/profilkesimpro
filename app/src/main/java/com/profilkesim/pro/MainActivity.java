@@ -75,8 +75,13 @@ public class MainActivity extends Activity {
   Intent command = new Intent(this, MusicService.class);
   if (!musicScreenResumed || getPreferences(MODE_PRIVATE).getBoolean(MUSIC_MUTED, false)) {
    stopService(command);
-  } else {
-   startService(command);
+  } else if (hasWindowFocus()) {
+   try {
+    startService(command);
+   } catch (IllegalStateException ignored) {
+    // A concurrent screen transition can still make Android deny the start.
+    // Resume or the next focus gain will retry if music is enabled.
+   }
   }
  }
 
@@ -426,6 +431,10 @@ public class MainActivity extends Activity {
   boolean motion = InterfaceMotion.enabled(this);
   if (backdrop != null) backdrop.setActive(motion);
   if (mastheadTrace != null) mastheadTrace.setActive(motion);
+ }
+ @Override public void onWindowFocusChanged(boolean hasFocus) {
+  super.onWindowFocusChanged(hasFocus);
+  if (hasFocus && musicScreenResumed) updateMusicService();
  }
  @Override protected void onPause() {
   musicScreenResumed = false;
