@@ -289,6 +289,11 @@ void scanCells(
     int index
 ) {
     if (index >= detected.size() * 2) {
+        for (CutRow row : detected) {
+            if (row.mm == 0 && row.qty < 0) {
+                row.qty = 0;
+            }
+        }
         showDetected();
         return;
     }
