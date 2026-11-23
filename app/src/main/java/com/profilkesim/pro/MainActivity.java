@@ -5,7 +5,6 @@ import android.os.Bundle;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Rect;
-import android.content.ContentValues;
 import com.google.mlkit.vision.text.Text;
 import android.net.Uri;
 import android.provider.MediaStore;
@@ -22,14 +21,16 @@ import java.util.*;
 
 public class MainActivity extends Activity {
  static final int DEFAULT_PROFILE_STOCK = 6000;
+ static final int DEFAULT_KERF = 4;
  LinearLayout root,body;
  private FrameLayout shell;
  private BalconyBackdrop backdrop;
  private LedTrace mastheadTrace;
+ private TemaWorkshop temaWorkshop;
  Uri cameraUri;
  final Map<Integer, List<CutRow>> detected = new LinkedHashMap<>();
  final Map<String, String> stockDrafts = new HashMap<>();
- String[] extraDraft = {"", "", "", String.valueOf(DEFAULT_PROFILE_STOCK), "3"};
+ String[] extraDraft = {"", "", "", String.valueOf(DEFAULT_PROFILE_STOCK), String.valueOf(DEFAULT_KERF)};
  int photoNumber;
  boolean photoBatchRunning;
  Runnable savePhotoReview;
@@ -309,7 +310,7 @@ public class MainActivity extends Activity {
   } else {
    addTextPanel(h, 0xff132432, 0xff173b47, 0xff548b95);
   }
-  reveal(body, 0);
+  if (!home) reveal(body, 0);
  }
  void note(String s){
   TextView t = text(s, 14);
@@ -334,20 +335,37 @@ public class MainActivity extends Activity {
  }
 
  void homeButton(String label, int iconResource, Runnable action) {
-  Button button = button(label, action);
-  android.graphics.drawable.Drawable icon = getDrawable(iconResource);
-  if (icon != null) {
-   icon = icon.mutate();
-   icon.setTint(0xff9ae9e4);
-   icon.setBounds(0, 0, dp(23), dp(23));
-   button.setCompoundDrawablesRelative(icon, null, null, null);
-  }
-  button.setCompoundDrawablePadding(dp(12));
-  button.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-  button.setTextSize(16);
-  button.setPadding(dp(16), dp(4), dp(16), dp(4));
-  button.setMinHeight(dp(57));
-  button.getLayoutParams().height = -2;
+  LinearLayout tile = new LinearLayout(this);
+  tile.setGravity(Gravity.CENTER_VERTICAL);
+  tile.setMinimumHeight(dp(59));
+  tile.setPaddingRelative(dp(15), dp(9), dp(15), dp(9));
+  tile.setBackground(new android.graphics.drawable.RippleDrawable(
+   android.content.res.ColorStateList.valueOf(0x5894f6ef),
+   rgbPanel(0xff142836, 0xff164550, 0xff6ba6aa), null));
+  ImageView icon = new ImageView(this);
+  icon.setImageResource(iconResource);
+  icon.setColorFilter(0xff9ae9e4);
+  icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+  tile.addView(icon, new LinearLayout.LayoutParams(dp(24), dp(24)));
+  TextView caption = text(label, 16);
+  caption.setTextColor(0xfff5fbff);
+  caption.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+  caption.setPaddingRelative(dp(13), 0, 0, 0);
+  caption.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+  tile.addView(caption, new LinearLayout.LayoutParams(0, -2, 1f));
+  tile.setContentDescription(label);
+  tile.setFocusable(true);
+  tile.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+   @Override public void onInitializeAccessibilityNodeInfo(View host, android.view.accessibility.AccessibilityNodeInfo info) {
+    super.onInitializeAccessibilityNodeInfo(host, info);
+    info.setClassName(Button.class.getName());
+   }
+  });
+  tile.setOnClickListener(view -> action.run());
+  InterfaceMotion.buttonFeedback(tile);
+  LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(-1, -2);
+  size.setMargins(0, dp(5), 0, dp(5));
+  body.addView(tile, size);
  }
  EditText input(String hint,String val){
   return input(body, hint, val);
@@ -388,8 +406,13 @@ public class MainActivity extends Activity {
   getWindow().setStatusBarColor(0xff0b1925);
   getWindow().setNavigationBarColor(0xff081620);
   setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC);
+  temaWorkshop = new TemaWorkshop(this);
   getPreferences(MODE_PRIVATE).registerOnSharedPreferenceChangeListener(musicSettingsChanged);
-  home();
+  if (!temaWorkshop.restoreState(state)) home();
+ }
+ @Override protected void onSaveInstanceState(Bundle out) {
+  super.onSaveInstanceState(out);
+  temaWorkshop.saveState(out);
  }
  @Override protected void onResume() {
   super.onResume();
@@ -428,6 +451,7 @@ public class MainActivity extends Activity {
   description.setShadowLayer(dp(7), 0, dp(1), 0xff07131d);
   description.setPadding(dp(9), 0, dp(8), dp(18));
   body.addView(description);
+  homeButton("Tema C60 / Aldoks imalat hesabı", android.R.drawable.ic_menu_manage, () -> temaWorkshop.open());
   homeButton("Fotoğraftan kesim listesi oku", android.R.drawable.ic_menu_camera, () -> photo());
   homeButton("Profil kesim optimizasyonu", android.R.drawable.ic_menu_sort_by_size, () -> opt());
   homeButton("Cam m² hesaplama", android.R.drawable.ic_menu_crop, () -> glass());
@@ -458,24 +482,32 @@ public class MainActivity extends Activity {
   button("Kameradan fotoğraf ekle", () -> {
    saveDraft.run();
    try {
-    ContentValues values = new ContentValues();
-    values.put(MediaStore.Images.Media.DISPLAY_NAME, "profil_foy_" + System.currentTimeMillis() + ".jpg");
-    values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
-    cameraUri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
-    if (cameraUri == null) throw new IllegalStateException("Fotoğraf dosyası oluşturulamadı");
-    Intent camera = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-    camera.putExtra(MediaStore.EXTRA_OUTPUT, cameraUri);
-    camera.setClipData(android.content.ClipData.newRawUri("Kesim föyü", cameraUri));
-    camera.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
-    startActivityForResult(camera, TAKE_PHOTO);
+    cameraUri = cameraFile();
+    capturePhoto(cameraUri, TAKE_PHOTO);
    } catch (Exception e) {
     Toast.makeText(this, "Kamera açılamadı: " + e.getMessage(), Toast.LENGTH_LONG).show();
    }
   });
  }
 
+ Uri cameraFile() throws java.io.IOException {
+  java.io.File folder = new java.io.File(getCacheDir(), "camera");
+  if (!folder.isDirectory() && !folder.mkdirs()) throw new java.io.IOException("Kamera klasörü açılamadı.");
+  java.io.File photo = java.io.File.createTempFile("cizim_", ".jpg", folder);
+  return androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".photos", photo);
+ }
+
+ void capturePhoto(Uri uri, int request) {
+  Intent camera = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+  camera.putExtra(MediaStore.EXTRA_OUTPUT, uri);
+  camera.setClipData(android.content.ClipData.newRawUri("Çizim fotoğrafı", uri));
+  camera.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+  startActivityForResult(camera, request);
+ }
+
  @Override protected void onActivityResult(int request, int result, Intent data) {
   super.onActivityResult(request, result, data);
+  if (temaWorkshop.handlePhotoResult(request, result, data)) return;
   if (result != RESULT_OK || photoBatchRunning) return;
   LinkedHashSet<Uri> selected = new LinkedHashSet<>();
   if (request == TAKE_PHOTO && cameraUri != null) {
@@ -740,24 +772,9 @@ public class MainActivity extends Activity {
    this.icon = icon;
   }
 
-  List<PackedStockBar> pack(int kerf) {
-   Collections.sort(pieces, Collections.reverseOrder());
-   List<PackedStockBar> bars = new ArrayList<>();
-   for (int size : pieces) {
-    int i = 0;
-    while (i < bars.size() && (long) bars.get(i).used + size + kerf > stock) i++;
-    if (i == bars.size()) bars.add(new PackedStockBar());
-    PackedStockBar bar = bars.get(i);
-    bar.pieces.add(size);
-    bar.used += size + kerf;
-   }
-   return bars;
+  List<CutPacking.Bar> pack(int kerf) {
+   return CutPacking.pack(pieces, Collections.singletonList(stock), kerf);
   }
- }
-
- static final class PackedStockBar {
-  final List<Integer> pieces = new ArrayList<>();
-  int used;
  }
 
  void showDetected() {
@@ -782,7 +799,7 @@ public class MainActivity extends Activity {
   Map<String, List<EditText>> stocks = new HashMap<>();
   Map<Integer, CheckBox> confirmations = new LinkedHashMap<>();
   addPhotoButtons(() -> savePhotoReview.run());
-  EditText saw = input("TESTERE PAYI (mm / parça)", extraDraft[4]);
+  EditText saw = input("TESTERE PAYI (mm / parça arası)", extraDraft[4]);
   saw.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
   if (detected.isEmpty()) note("Henüz profil okunmadı. Fotoğraf ekleyebilir veya aşağıdan elle satır girebilirsiniz.");
   else note("Her fotoğrafı kontrol edip onaylayın. Aynı profiller tek kesim planında birleşir.");
@@ -837,7 +854,7 @@ public class MainActivity extends Activity {
    savePhotoReview.run();
    try {
     int kerf = readKerf();
-    Collection<ProfileCutPlan> plans = combinePhotoCuts(detected, stockDrafts, kerf);
+    Collection<ProfileCutPlan> plans = combinePhotoCuts(detected, stockDrafts);
     showPhotoOptimization(plans, kerf, detected.size() + " fotoğraftan birleşik kesim planı");
    } catch (IllegalArgumentException e) {
     Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
@@ -878,7 +895,7 @@ public class MainActivity extends Activity {
     int stock = cutNumber(extraDraft[3], "Stok boyu");
     int kerf = readKerf();
     if (quantity == 0) throw new IllegalArgumentException("Kesim adedi en az 1 olmalı.");
-    validateCut(size, quantity, stock, kerf, name);
+    validateCut(size, quantity, stock, name);
     ProfileCutPlan plan = new ProfileCutPlan(name, stock, null);
     for (int i = 0; i < quantity; i++) plan.pieces.add(size);
     showPhotoOptimization(Collections.singletonList(plan), kerf, "Elle girilen kesim");
@@ -896,7 +913,7 @@ public class MainActivity extends Activity {
     stockDrafts.clear();
     photoNumber = 0;
     failedPhotos.clear();
-    extraDraft = new String[]{"", "", "", String.valueOf(DEFAULT_PROFILE_STOCK), "3"};
+    extraDraft = new String[]{"", "", "", String.valueOf(DEFAULT_PROFILE_STOCK), String.valueOf(DEFAULT_KERF)};
     photo();
    }).show());
   button("Ana menü", () -> {
@@ -912,7 +929,7 @@ public class MainActivity extends Activity {
  }
 
  static Collection<ProfileCutPlan> combinePhotoCuts(Map<Integer, List<CutRow>> photos,
-                                                      Map<String, String> stocks, int kerf) {
+                                                    Map<String, String> stocks) {
   Map<String, ProfileCutPlan> plans = new LinkedHashMap<>();
   for (Map.Entry<Integer, List<CutRow>> photo : photos.entrySet()) {
    for (CutRow row : photo.getValue()) {
@@ -926,7 +943,7 @@ public class MainActivity extends Activity {
     }
     String key = profileStockKey(row);
     int stock = cutNumber(stocks.get(key), label + " stok boyu");
-    validateCut(size, quantity, stock, kerf, context);
+    validateCut(size, quantity, stock, context);
     ProfileCutPlan plan = plans.get(key);
     if (plan == null) {
      plan = new ProfileCutPlan(label, stock, row.icon);
@@ -985,12 +1002,12 @@ public class MainActivity extends Activity {
   }
  }
 
- static void validateCut(int size, int quantity, int stock, int kerf, String label) {
+ static void validateCut(int size, int quantity, int stock, String label) {
   if (size <= 0 || quantity < 0 || quantity > 1000 || stock <= 0) {
    throw new IllegalArgumentException(label + ": ölçüyü, adedi ve stok boyunu kontrol edin.");
   }
-  if ((long) size + kerf > stock) {
-   throw new IllegalArgumentException(label + ": kesim ve testere payı " + stock + " mm stoğa sığmıyor.");
+  if (size > stock) {
+   throw new IllegalArgumentException(label + ": kesim " + stock + " mm stoğa sığmıyor.");
   }
  }
 
@@ -1002,16 +1019,16 @@ public class MainActivity extends Activity {
   int commonLength = profiles.iterator().next().stock;
   for (ProfileCutPlan plan : profiles) {
    if (commonLength != plan.stock) commonLength = 0;
-   List<PackedStockBar> bars = plan.pack(kerf);
+   List<CutPacking.Bar> bars = plan.pack(kerf);
    LinearLayout group = planCard(cards, 0xff172b44, 0xff254662, 0xff597d9b);
    profileHeading(group, plan.name, plan.icon);
    planLabel(group, "Stok " + plan.stock + " mm  ·  " + plan.pieces.size() + " parça", 14, 0xffd2e8f4);
    allPieces += plan.pieces.size();
    for (int i = 0; i < bars.size(); i++) {
-    PackedStockBar bar = bars.get(i);
+    CutPacking.Bar bar = bars.get(i);
     int waste = plan.stock - bar.used;
     remaining += waste;
-    net += bar.used - (long) kerf * bar.pieces.size();
+    net += bar.used - (long) kerf * (bar.pieces.size() - 1);
     planBar(group, i + 1, bar.pieces, plan.stock, kerf, waste, allBars < 12);
     allBars++;
    }
@@ -1095,21 +1112,33 @@ public class MainActivity extends Activity {
  }
 
  void planSummary(int length, int kerf, int bars, int count, long net, long remaining) {
+  planSummary(length, kerf, bars, count, net, remaining, 1);
+ }
+
+ void planSummary(int length, int kerf, int bars, int count, long net, long remaining, int unitsPerMm) {
   LinearLayout card = planCard(body, 0xff10233e, 0xff17485a, 0xff46dfdb);
   planLabel(card, bars + " stok profili  ·  " + count + " parça", 23, Color.WHITE)
    .setTypeface(null, Typeface.BOLD);
-  String stockLabel = length > 0 ? "Stok " + length + " mm" : "Profil türüne göre farklı stok boyları";
-  planLabel(card, stockLabel + "  ·  Testere payı " + kerf + " mm/parça", 14, 0xffd2e8f4);
-  planLabel(card, "Kesim " + net + " mm", 16, 0xffff8c9d);
-  planLabel(card, "Kalan " + remaining + " mm", 16, 0xff6af5c0);
-  if (kerf > 0) planLabel(card, "Testere payı " + ((long) kerf * count) + " mm", 14, KERF_GOLD);
+  String stockLabel = length > 0 ? "Stok " + formatMm(length, unitsPerMm) + " mm" : "Karma stok boyları";
+  planLabel(card, stockLabel + "  ·  Testere payı " + formatMm(kerf, unitsPerMm) + " mm/ara", 14, 0xffd2e8f4);
+  planLabel(card, "Kesim " + formatMm(net, unitsPerMm) + " mm", 16, 0xffff8c9d);
+  planLabel(card, "Kalan " + formatMm(remaining, unitsPerMm) + " mm", 16, 0xff6af5c0);
+  long sawUsed = (long) kerf * (count - bars);
+  if (kerf > 0) planLabel(card, "Toplam testere payı " + formatMm(sawUsed, unitsPerMm) + " mm", 14, KERF_GOLD);
+  long stockTotal = net + remaining + sawUsed;
+  if (stockTotal > 0) planLabel(card, String.format(new Locale("tr", "TR"), "Kalan stok %% %.1f", 100d * remaining / stockTotal), 14, 0xffb4e3e3);
   reveal(card, 0);
  }
 
  void planBar(LinearLayout parent, int number, List<Integer> cuts, int length, int kerf,
               int remaining, boolean animated) {
+  planBar(parent, number, cuts, length, kerf, remaining, animated, 1);
+ }
+
+ void planBar(LinearLayout parent, int number, List<Integer> cuts, int length, int kerf,
+              int remaining, boolean animated, int unitsPerMm) {
   LinearLayout card = planCard(parent, 0xff121c33, 0xff203453, 0xff557b9b);
-  planLabel(card, "Stok profil " + number + "  ·  " + length + " mm", 17, Color.WHITE)
+  planLabel(card, "Stok profil " + number + "  ·  " + formatMm(length, unitsPerMm) + " mm", 17, Color.WHITE)
    .setTypeface(null, Typeface.BOLD);
   StockBar bar = new StockBar(cuts, length, kerf);
   LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, dp(27));
@@ -1118,14 +1147,19 @@ public class MainActivity extends Activity {
   StringBuilder sizes = new StringBuilder();
   for (int size : cuts) {
    if (sizes.length() > 0) sizes.append("  ·  ");
-   sizes.append(size);
+   sizes.append(formatMm(size, unitsPerMm));
   }
   planLabel(card, "Kesilen (mm)  " + sizes, 14, 0xffff8c9d);
-  planLabel(card, "Kalan  " + remaining + " mm", 15, 0xff6af5c0);
+  planLabel(card, "Kalan  " + formatMm(remaining, unitsPerMm) + " mm", 15, 0xff6af5c0);
   if (animated) {
    reveal(card, Math.min(160, number * 35));
    bar.animateFill();
   }
+ }
+
+ static String formatMm(long value, int unitsPerMm) {
+  if (unitsPerMm == 1) return Long.toString(value);
+  return java.math.BigDecimal.valueOf(value, 1).stripTrailingZeros().toPlainString().replace('.', ',');
  }
 
  final class StockBar extends android.view.View {
@@ -1185,10 +1219,12 @@ public class MainActivity extends Activity {
    canvas.clipRect(0, 0, getWidth() * fill, getHeight());
    float scale = getWidth() / (float) length;
    long offset = 0;
-   for (int cut : cuts) {
+   for (int i = 0; i < cuts.size(); i++) {
+    int cut = cuts.get(i);
     paint.setColor(CUT_RED);
     canvas.drawRect(offset * scale, 0, (offset + cut) * scale, getHeight(), paint);
     offset += cut;
+    if (i == cuts.size() - 1) break;
     paint.setColor(KERF_GOLD);
     canvas.drawRect(offset * scale, 0, (offset + kerf) * scale, getHeight(), paint);
     offset += kerf;
@@ -1216,75 +1252,60 @@ public class MainActivity extends Activity {
   }
  }
 
- void opt(){
+ void opt() {
   page("Profil kesim optimizasyonu");
   button("Fotoğraflardan kesim planı oluştur", () -> photo());
   EditText profileName = input("PROFİL İSMİ", "");
   profileName.setSingleLine(true);
-  note("Kesimler: Her satır 1250x3 biçiminde. Testere payı parça başına eklenir. Azalan ilk uygun yerleştirme yöntemi kullanılır.");
-  EditText stock=input(
-   "HAM PROFİL BOYU (mm)", String.valueOf(DEFAULT_PROFILE_STOCK));
-  stock.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
-  EditText kerf=input(
-   "TESTERE PAYI (mm / parça) – örnek 3","3");
-  EditText cuts=input(
-   "KESİM ÖLÇÜSÜ x ADET – örnek 1250x3",
-   "1250x3\n850x4");
+  note("Her satıra ölçü × adet girin. Stok boylarını noktalı virgülle ayırabilirsiniz. Testere payı parçaların arasına eklenir.");
+  EditText stock = input("HAM PROFİL BOYU (mm)", String.valueOf(DEFAULT_PROFILE_STOCK));
+  EditText kerf = input("TESTERE PAYI (mm / parça arası)", String.valueOf(DEFAULT_KERF));
+  kerf.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
+  EditText cuts = input("KESİM ÖLÇÜSÜ × ADET · örnek 1250×3", "");
   cuts.setSingleLine(false);
   cuts.setMinLines(4);
-  cuts.getLayoutParams().height=dp(140);
-  button("Kesim planı oluştur",()->{
-   try{
-    int length=val(stock),saw=val(kerf);
-    if(length<=0||saw<0)throw new Exception();
-    ArrayList<Integer> pieces=new ArrayList<>();
-    for(String line:cuts.getText().toString()
-     .split("[\\n,;]+")){
-     String[] a=line.trim()
-      .toLowerCase(Locale.ROOT)
-      .replace(" ","").split("[x×*]");
-     if(a[0].isEmpty())continue;
-     int size=Integer.parseInt(a[0]);
-     int qty=a.length>1?Integer.parseInt(a[1]):1;
-     if(size<=0||qty<1||qty>1000||
-      (long)size+saw>length||
-      pieces.size()+qty>3000)
-      throw new Exception();
-     for(int i=0;i<qty;i++)pieces.add(size);
-    }
-    if(pieces.isEmpty())throw new Exception();
-    Collections.sort(pieces,Collections.reverseOrder());
-    ArrayList<ArrayList<Integer>> bins=new ArrayList<>();
-    ArrayList<Integer> used=new ArrayList<>();
-    long total=0;
-    for(int size:pieces){
-     total+=size;int target=-1;
-     for(int i=0;i<used.size();i++)
-      if((long)used.get(i)+size+saw<=length){
-       target=i;break;
-      }
-     if(target<0){
-      target=bins.size();
-      bins.add(new ArrayList<Integer>());
-      used.add(0);
+  cuts.getLayoutParams().height = dp(140);
+  button("Kesim planı oluştur", () -> {
+   try {
+    List<Integer> stocks = ShopDimensions.stocks(stock.getText().toString());
+    int saw = ShopDimensions.tenths(kerf.getText().toString(), "Testere payı");
+    List<Integer> pieces = new ArrayList<>();
+    for (String row : cuts.getText().toString().split("[\\n;]+")) {
+     if (row.trim().isEmpty()) continue;
+     String[] fields = row.split("(?i)\\s*[x×*]\\s*", -1);
+     if (fields.length > 2) throw new IllegalArgumentException("Her satıra ölçü × adet girin.");
+     int size = ShopDimensions.tenths(fields[0], "Kesim ölçüsü");
+     int quantity = fields.length == 1 ? 1 : cutNumber(fields[1], "Kesim adedi");
+     if (quantity < 1 || quantity > 1000 || pieces.size() + quantity > 3000) {
+      throw new IllegalArgumentException("Kesim adetlerini kontrol edin. Bir plana en fazla 3000 parça ekleyebilirsiniz.");
      }
-     bins.get(target).add(size);
-     used.set(target,used.get(target)+size+saw);
+     for (int i = 0; i < quantity; i++) pieces.add(size);
+    }
+    if (pieces.isEmpty()) throw new IllegalArgumentException("En az bir kesim ölçüsü girin.");
+    List<CutPacking.Bar> bars = CutPacking.pack(pieces, stocks, saw);
+    long net = 0, remaining = 0;
+    for (int piece : pieces) net += piece;
+    int common = bars.get(0).stock;
+    for (CutPacking.Bar bar : bars) {
+     remaining += bar.remaining();
+     if (common != bar.stock) common = 0;
     }
     page("Kesim optimizasyon sonucu");
-    long remaining = (long) bins.size() * length - total - (long) pieces.size() * saw;
-    planSummary(length, saw, bins.size(), pieces.size(), total, remaining);
+    planSummary(common, saw, bars.size(), pieces.size(), net, remaining, ShopDimensions.PER_MM);
     String name = profileName.getText().toString().trim();
     LinearLayout profile = planCard(body, 0xff172b44, 0xff254662, 0xff597d9b);
     profileHeading(profile, name.isEmpty() ? "Profil" : name, null);
-    for (int i = 0; i < bins.size(); i++) {
-     planBar(profile, i + 1, bins.get(i), length, saw, length - used.get(i), i < 12);
+    for (int i = 0; i < bars.size(); i++) {
+     CutPacking.Bar bar = bars.get(i);
+     planBar(profile, i + 1, bar.pieces, bar.stock, saw, bar.remaining(), i < 12, ShopDimensions.PER_MM);
     }
     button("Yeni kesim planı", () -> opt());
     button("Ana menü", () -> home());
-   }catch(Exception ex){bad();}
+   } catch (IllegalArgumentException error) {
+    Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show();
+   }
   });
-  button("Ana menü",()->home());
+  button("Ana menü", () -> home());
  }
  static final class GlassRow {
   final TextView heading, result;
@@ -1343,7 +1364,8 @@ public class MainActivity extends Activity {
    @Override public void afterTextChanged(android.text.Editable text) {}
   };
   for (EditText field : new EditText[]{width, height, quantity}) {
-   field.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+   field.setInputType(android.text.InputType.TYPE_CLASS_NUMBER
+    | (field == quantity ? 0 : android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL));
    field.addTextChangedListener(watcher);
   }
   if (!first) {
@@ -1364,59 +1386,85 @@ public class MainActivity extends Activity {
  }
 
  void calculateGlass(List<GlassRow> rows, TextView total) {
-  Locale turkish = new Locale("tr", "TR");
   ArrayList<String> results = new ArrayList<>();
-  double area = 0;
+  java.math.BigDecimal area = java.math.BigDecimal.ZERO;
   long pieces = 0;
   for (GlassRow row : rows) {
-   int width = positiveGlassValue(row.width);
-   int height = positiveGlassValue(row.height);
-   int quantity = positiveGlassValue(row.quantity);
+   int width = positiveGlassLength(row.width, "Cam eni");
+   int height = positiveGlassLength(row.height, "Cam yüksekliği");
+   int quantity;
+   try {
+    quantity = val(row.quantity);
+    if (quantity <= 0) throw new NumberFormatException();
+   } catch (NumberFormatException e) {
+    row.quantity.setError("Sıfırdan büyük bir adet girin.");
+    quantity = 0;
+   }
    if (width == 0 || height == 0 || quantity == 0) {
     (width == 0 ? row.width : height == 0 ? row.height : row.quantity).requestFocus();
     return;
    }
-   double single = (double) width * height / 1_000_000;
-   double subtotal = single * quantity;
+   java.math.BigDecimal single = ShopDimensions.area(width, height, 1);
+   java.math.BigDecimal subtotal = ShopDimensions.area(width, height, quantity);
    pieces += quantity;
-   area += subtotal;
-   results.add(String.format(turkish, "%d × %d mm  ·  %d adet\nTek cam: %.3f m²  ·  Toplam: %.3f m²",
-    width, height, quantity, single, subtotal));
+   area = area.add(subtotal);
+   results.add(ShopDimensions.mm(width) + " × " + ShopDimensions.mm(height) + " mm  ·  " + quantity
+    + " adet\nTek cam " + ShopDimensions.squareMeters(single) + " m²  ·  Toplam "
+    + ShopDimensions.squareMeters(subtotal) + " m²");
   }
   for (int i = 0; i < rows.size(); i++) {
    TextView result = rows.get(i).result;
    result.setText(results.get(i));
    result.setVisibility(android.view.View.VISIBLE);
   }
-  total.setText(String.format(turkish, "Genel toplam: %.3f m²\n%d adet cam", area, pieces));
+  total.setText("Genel toplam " + ShopDimensions.squareMeters(area) + " m²\n" + pieces + " adet cam");
   total.setVisibility(android.view.View.VISIBLE);
   reveal(total, 0);
  }
 
- int positiveGlassValue(EditText field) {
+ int positiveGlassLength(EditText field, String label) {
   try {
-   int value = val(field);
+   int value = ShopDimensions.tenths(field.getText().toString(), label);
    if (value > 0) return value;
-  } catch (NumberFormatException ignored) {}
-  field.setError("Sıfırdan büyük bir sayı girin.");
+   field.setError("Sıfırdan büyük bir ölçü girin.");
+  } catch (IllegalArgumentException e) {
+   field.setError(e.getMessage());
+  }
   return 0;
  }
 
  void panels(){
   page("Kanat bölme hesabı");
-  note("Sistem payları hariç teorik eşit bölme.");
-  EditText w=input("AÇIKLIK ENİ (mm)","4100");
-  EditText n=input("KANAT ADEDİ","6");
+  note("Net açıklığı seçilen kanat adedine böler. Profil ve montaj paylarını toplam düşüm alanına girin.");
+  EditText w=input("AÇIKLIK ENİ (mm)","");
+  EditText n=input("KANAT ADEDİ","");
   EditText ded=input("TOPLAM DÜŞÜM (mm)","0");
+  int decimal = android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL;
+  w.setInputType(decimal);
+  ded.setInputType(decimal);
+  n.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+  TextView answer = text("", 16);
+  answer.setTextColor(0xffeffaff);
+  answer.setVisibility(View.GONE);
+  addTextPanel(answer, 0xff14233e, 0xff285575, 0xff4ecade);
   button("Hesapla",()->{
    try{
-    int a=val(w),b=val(n),c=val(ded);
-    if(a<=0||b<=0||c<0||c>=a)
-     throw new Exception();
-    result(String.format(Locale.US,
-     "Teorik kanat eni: %.1f mm",
-     (a-c)/(double)b));
-   }catch(Exception e){bad();}
+    int width = ShopDimensions.tenths(w.getText().toString(), "Açıklık eni");
+    int count = cutNumber(n.getText().toString(), "Kanat adedi");
+    int deduction = ShopDimensions.tenths(ded.getText().toString(), "Toplam düşüm");
+    int net = width - deduction;
+    if (width <= 0 || count <= 0 || deduction < 0 || net < count) {
+     throw new IllegalArgumentException("Net açıklık, düşüm ve kanat adedini kontrol edin.");
+    }
+    int base = net / count, extra = net % count;
+    String widths = extra == 0 ? count + " × " + ShopDimensions.mm(base) + " mm"
+     : extra + " × " + ShopDimensions.mm(base + 1) + " mm  ·  " + (count - extra) + " × " + ShopDimensions.mm(base) + " mm";
+    answer.setText("Net açıklık " + ShopDimensions.mm(net) + " mm\n" + widths);
+    answer.setVisibility(View.VISIBLE);
+   } catch (IllegalArgumentException e) {
+    answer.setVisibility(View.GONE);
+    Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+   }
   });
   button("Ana menü",()->home());
  }

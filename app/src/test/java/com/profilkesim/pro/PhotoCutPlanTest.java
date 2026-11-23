@@ -18,10 +18,10 @@ public final class PhotoCutPlanTest {
 
   List<MainActivity.ProfileCutPlan> plans = plans(photos);
   assertEquals(1, plans.size());
-  List<MainActivity.PackedStockBar> bars = plans.get(0).pack(3);
+  List<CutPacking.Bar> bars = plans.get(0).pack(4);
   assertEquals(1, bars.size());
   assertEquals(Arrays.asList(4200, 1700), bars.get(0).pieces);
-  assertEquals(94, plans.get(0).stock - bars.get(0).used);
+  assertEquals(96, plans.get(0).stock - bars.get(0).used);
  }
 
  @Test public void groupsCodeFreeNamesAndKeepsDistinctCodesSeparate() {
@@ -50,7 +50,7 @@ public final class PhotoCutPlanTest {
   for (List<MainActivity.CutRow> rows : photos.values()) {
    for (MainActivity.CutRow row : rows) stocks.put(MainActivity.profileStockKey(row), "6000");
   }
-  return new ArrayList<>(MainActivity.combinePhotoCuts(photos, stocks, 3));
+  return new ArrayList<>(MainActivity.combinePhotoCuts(photos, stocks));
  }
 
  private static MainActivity.CutRow row(String code, String name, String size, String quantity) {
