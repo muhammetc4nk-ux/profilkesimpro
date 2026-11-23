@@ -383,10 +383,29 @@ void scanColumn(Bitmap bmp, double left, double right,
      " mm okundu. Son rakam eksik olabilir; föyden doğrulayın!");
    EditText name=input(
     "PROFİL KODU VE ADI",r.code+" "+r.name);
-   EditText mm=input(
+   
+EditText mm = input(
     "KESİM ÖLÇÜSÜ (mm)",
-    r.mm<0?"":String.valueOf(r.mm));
-   EditText qty=input(
+    r.mm < 0 ? "" : String.valueOf(r.mm));
+
+EditText qty = input(
+    "KESİM ADEDİ",
+    r.qty < 0 ? "" : String.valueOf(r.qty));
+
+if (r.mm < 0) {
+    mm.setHint("OKUNAMADI - ölçüyü girin");
+    mm.setError("Kesim ölçüsü okunamadı");
+}
+
+if (r.qty < 0) {
+    qty.setHint("OKUNAMADI - adedi girin");
+    qty.setError("Kesim adedi okunamadı");
+}
+
+if (r.mm == 0 && r.qty == 0) {
+    note(r.code + " - 0 mm / 0 adet: Kesim yapılmayacak.");
+}
+
     "KESİM ADEDİ",
     r.qty<0?"":String.valueOf(r.qty));
    edits.add(new EditText[]{name,mm,qty});
