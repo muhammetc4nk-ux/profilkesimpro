@@ -416,14 +416,7 @@ void scanCells(
     }
 }
 
-  if(bmp==null||detected.isEmpty()){
-   showDetected();return;
-  }
-  scanColumn(bmp,.555,.645,false,()->
-   scanColumn(bmp,.680,.765,true,()->showDetected()));
- }
- 
-void scanColumn(Bitmap bmp, double left, double right,
+  void scanColumn(Bitmap bmp, double left, double right,
     boolean quantity, Runnable finished) {
     try {
         int x = (int)(bmp.getWidth() * left);
