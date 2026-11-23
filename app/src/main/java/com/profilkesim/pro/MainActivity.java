@@ -45,14 +45,184 @@ public class MainActivity extends Activity {
   TextView t=new TextView(this);t.setText(s);t.setTextSize(size);
   t.setTextColor(navy);t.setPadding(dp(12),dp(12),dp(12),dp(12));return t;
  }
+ private static final int MUSIC_RATE = 22050;
+ private boolean homeVisible, musicResumed, musicMuted, loadingMusic, ownsAudioFocus;
+ private short[] homeSamples;
+ private android.media.AudioTrack homeTrack;
+ private android.media.AudioManager audioManager;
+ private Button musicButton;
+ private final android.media.AudioManager.OnAudioFocusChangeListener musicFocus = change -> {
+  if (change == android.media.AudioManager.AUDIOFOCUS_LOSS) {
+   stopHomeMusic();
+  } else if (homeTrack != null) {
+   if (change == android.media.AudioManager.AUDIOFOCUS_GAIN && musicResumed && homeVisible && !musicMuted) {
+    homeTrack.play();
+   } else if (change < 0) {
+    homeTrack.pause();
+   }
+  }
+ };
+
+ private void updateMusicButton() {
+  if (musicButton == null) return;
+  musicButton.setText(musicMuted ? "Sesi aç" : "Sustur");
+  musicButton.setContentDescription(musicMuted ? "Ana ekran müziğini aç" : "Ana ekran müziğini sustur");
+ }
+
+ private void syncHomeMusic() {
+  if (!homeVisible || !musicResumed || musicMuted) {
+   stopHomeMusic();
+   return;
+  }
+  if (homeTrack != null || audioManager == null) return;
+  if (homeSamples == null) {
+   if (loadingMusic) return;
+   loadingMusic = true;
+   new Thread(() -> {
+    short[] samples = composeHomeMusic();
+    runOnUiThread(() -> {
+     loadingMusic = false;
+     if (isDestroyed() || isFinishing()) return;
+     homeSamples = samples;
+     syncHomeMusic();
+    });
+   }, "home-music").start();
+   return;
+  }
+  if (audioManager.requestAudioFocus(musicFocus, android.media.AudioManager.STREAM_MUSIC,
+      android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+      != android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED) return;
+  ownsAudioFocus = true;
+  try {
+   homeTrack = new android.media.AudioTrack.Builder()
+    .setAudioAttributes(new android.media.AudioAttributes.Builder()
+     .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+     .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build())
+    .setAudioFormat(new android.media.AudioFormat.Builder()
+     .setEncoding(android.media.AudioFormat.ENCODING_PCM_16BIT)
+     .setSampleRate(MUSIC_RATE)
+     .setChannelMask(android.media.AudioFormat.CHANNEL_OUT_MONO).build())
+    .setBufferSizeInBytes(homeSamples.length * 2)
+    .setTransferMode(android.media.AudioTrack.MODE_STATIC)
+    .build();
+   if (homeTrack.write(homeSamples, 0, homeSamples.length) != homeSamples.length
+       || homeTrack.setLoopPoints(0, homeSamples.length, -1) != android.media.AudioTrack.SUCCESS) {
+    stopHomeMusic();
+    return;
+   }
+   homeTrack.play();
+  } catch (IllegalArgumentException | IllegalStateException ignored) {
+   stopHomeMusic();
+  }
+ }
+
+ private void stopHomeMusic() {
+  if (homeTrack != null) {
+   homeTrack.release();
+   homeTrack = null;
+  }
+  if (ownsAudioFocus) {
+   ownsAudioFocus = false;
+   audioManager.abandonAudioFocus(musicFocus);
+  }
+ }
+
+ private static short[] composeHomeMusic() {
+  // Greensleeves melody, arranged for soft plucked keys. Durations are in eighth notes.
+  int[][] melody = {
+   {69, 2}, {72, 4}, {74, 2}, {76, 3}, {77, 1}, {76, 2}, {74, 4}, {71, 2},
+   {67, 3}, {69, 1}, {71, 2}, {72, 4}, {69, 2}, {69, 3}, {68, 1}, {69, 2},
+   {71, 4}, {68, 2}, {64, 4}, {69, 2},
+   {72, 4}, {74, 2}, {76, 3}, {77, 1}, {76, 2}, {74, 4}, {71, 2},
+   {67, 3}, {69, 1}, {71, 2}, {72, 3}, {71, 1}, {69, 2}, {68, 3}, {66, 1}, {68, 2},
+   {69, 6}, {69, 4}
+  };
+  int unit = MUSIC_RATE * 24 / 100;
+  int total = 0;
+  for (int[] note : melody) total += note[1];
+  float[] mix = new float[total * unit];
+  int cursor = 0;
+  for (int[] note : melody) {
+   addPluckedNote(mix, cursor * unit, note[1] * unit, note[0], .19);
+   cursor += note[1];
+  }
+  int[][] chords = {
+   {45, 52, 60}, {48, 55, 60}, {48, 55, 64}, {47, 55, 62},
+   {43, 50, 59}, {45, 52, 60}, {45, 52, 60}, {40, 47, 56}, {40, 47, 56},
+   {48, 55, 60}, {48, 55, 64}, {47, 55, 62}, {43, 50, 59},
+   {45, 52, 60}, {40, 47, 56}, {45, 52, 60}
+  };
+  for (int bar = 0; bar < chords.length; bar++) {
+   for (int step = 0; step < 3; step++) {
+    addPluckedNote(mix, (2 + bar * 6 + step * 2) * unit, unit * 3,
+     chords[bar][step], step == 0 ? .092 : .064);
+   }
+  }
+  short[] output = new short[mix.length];
+  int fade = MUSIC_RATE / 12;
+  for (int i = 0; i < output.length; i++) {
+   float edge = Math.min(1f, Math.min(i, output.length - 1 - i) / (float) fade);
+   output[i] = (short) (mix[i] * edge * Short.MAX_VALUE);
+  }
+  return output;
+ }
+
+ private static void addPluckedNote(float[] mix, int start, int duration, int pitch, double volume) {
+  double step = 2 * Math.PI * 440 * Math.pow(2, (pitch - 69) / 12.0) / MUSIC_RATE;
+  int end = Math.min(duration, mix.length - start);
+  for (int i = 0; i < end; i++) {
+   double attack = Math.min(1, i / (MUSIC_RATE * .012));
+   double tail = Math.min(1, (end - i) / (MUSIC_RATE * .085));
+   double decay = Math.exp(-3.2 * i / MUSIC_RATE);
+   double phase = i * step;
+   double tone = .72 * Math.sin(phase) + .20 * Math.sin(2 * phase) + .08 * Math.sin(3 * phase);
+   mix[start + i] += (float) (tone * volume * attack * decay * tail);
+  }
+ }
+
  void page(String title){
+  page(title, false);
+ }
+
+ void page(String title, boolean isHome){
+  homeVisible = isHome;
+  musicButton = null;
+  if (!isHome) stopHomeMusic();
   root=new LinearLayout(this);root.setOrientation(1);
   root.setBackgroundResource(R.drawable.cambalkon);
   setContentView(root);
   TextView brand=text("muhammet can . K",12);
   brand.setTextColor(Color.WHITE);brand.setGravity(Gravity.CENTER);
   brand.setBackground(rgbPanel(0xff0e1933, 0xff233953, 0xff3ab6c9));
-  root.addView(brand,new LinearLayout.LayoutParams(-1,dp(44)));
+  if (isHome) {
+   LinearLayout masthead = new LinearLayout(this);
+   masthead.setGravity(Gravity.CENTER_VERTICAL);
+   masthead.setBackground(rgbPanel(0xff0e1933, 0xff233953, 0xff3ab6c9));
+   brand.setBackgroundColor(Color.TRANSPARENT);
+   masthead.addView(brand, new LinearLayout.LayoutParams(0, dp(50), 1f));
+   musicButton = new Button(this);
+   musicButton.setAllCaps(false);
+   musicButton.setTextSize(13);
+   musicButton.setTextColor(Color.WHITE);
+   musicButton.setPadding(dp(12), 0, dp(12), 0);
+   musicButton.setBackground(new android.graphics.drawable.RippleDrawable(
+    android.content.res.ColorStateList.valueOf(0x66a1fff3),
+    rgbPanel(0xff193154, 0xff185467, 0xff54d7e1), null));
+   LinearLayout.LayoutParams buttonSize = new LinearLayout.LayoutParams(-2, dp(48));
+   buttonSize.setMarginEnd(dp(7));
+   masthead.addView(musicButton, buttonSize);
+   root.addView(masthead, new LinearLayout.LayoutParams(-1, dp(56)));
+   updateMusicButton();
+   musicButton.setOnClickListener(view -> {
+    musicMuted = !musicMuted;
+    getPreferences(MODE_PRIVATE).edit().putBoolean("home_music_muted", musicMuted).apply();
+    updateMusicButton();
+    syncHomeMusic();
+   });
+   syncHomeMusic();
+  } else {
+   root.addView(brand, new LinearLayout.LayoutParams(-1, dp(44)));
+  }
   
 brand.setText("✦ MUHAMMET CAN . K ✦");
 brand.setTextSize(17);
@@ -157,10 +327,26 @@ pulse.start();
   reveal(t, 0);
  }
  void bad(){Toast.makeText(this,"Ölçü veya adet hatalı",Toast.LENGTH_LONG).show();}
- @Override public void onCreate(Bundle b){super.onCreate(b);home();}
+ @Override public void onCreate(Bundle state) {
+  super.onCreate(state);
+  audioManager = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
+  setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC);
+  musicMuted = getPreferences(MODE_PRIVATE).getBoolean("home_music_muted", false);
+  home();
+ }
+ @Override protected void onResume() {
+  super.onResume();
+  musicResumed = true;
+  syncHomeMusic();
+ }
+ @Override protected void onPause() {
+  musicResumed = false;
+  stopHomeMusic();
+  super.onPause();
+ }
  @Override public void onBackPressed(){home();}
  void home(){
-  page("Profil Kesim Pro");
+  page("Profil Kesim Pro", true);
   note("Cam balkon ve doğrama hesaplama • Ölçüler mm");
   button("Fotoğraftan kesim listesi oku",()->photo());
   button("Profil kesim optimizasyonu",()->opt());
