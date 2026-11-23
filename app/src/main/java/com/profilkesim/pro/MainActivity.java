@@ -371,12 +371,8 @@ public class MainActivity extends Activity {
   note("Cam balkon ve doğrama hesaplama • Ölçüler mm");
   button("Fotoğraftan kesim listesi oku",()->photo());
   button("Profil kesim optimizasyonu",()->opt());
-  button("Cam alanı ve adet hesabı",()->glass());
+  button("Cam m² Hesaplama", () -> glass());
   button("Kanat eşit bölme hesabı",()->panels());
-  for(String s:new String[]{
-   "Tiara Twin","Statü","Sürme","Giyotin","Cam tavan",
-   "PVC","Sineklik","Duşakabin","ASAŞ RST116 Hebeschiebe"
-  })button(s,()->system(s));
  }
  void photo() {
   if (!detected.isEmpty()) {
@@ -1379,6 +1375,8 @@ void scanCells(
  void opt(){
   page("Profil kesim optimizasyonu");
   button("Fotoğraflardan kesim planı oluştur", () -> photo());
+  EditText profileName = input("PROFİL İSMİ", "");
+  profileName.setSingleLine(true);
   note("Kesimler: Her satır 1250x3 biçiminde. Testere payı parça başına eklenir. Azalan ilk uygun yerleştirme yöntemi kullanılır.");
   EditText stock=input(
    "HAM PROFİL BOYU (mm) – örnek 6000","6000");
@@ -1431,8 +1429,11 @@ void scanCells(
     page("Kesim optimizasyon sonucu");
     long remaining = (long) bins.size() * length - total - (long) pieces.size() * saw;
     planSummary(length, saw, bins.size(), pieces.size(), total, remaining);
+    String name = profileName.getText().toString().trim();
+    LinearLayout profile = planCard(body, 0xff172b44, 0xff254662, 0xff597d9b);
+    profileHeading(profile, name.isEmpty() ? "Profil" : name, null);
     for (int i = 0; i < bins.size(); i++) {
-     planBar(body, i + 1, bins.get(i), length, saw, length - used.get(i), i < 12);
+     planBar(profile, i + 1, bins.get(i), length, saw, length - used.get(i), i < 12);
     }
     button("Yeni kesim planı", () -> opt());
     button("Ana menü", () -> home());
@@ -1440,22 +1441,122 @@ void scanCells(
   });
   button("Ana menü",()->home());
  }
- void glass(){
-  page("Cam alan hesabı");
-  EditText w=input("CAM ENİ (mm)","870");
-  EditText h=input("CAM YÜKSEKLİĞİ (mm)","1265");
-  EditText n=input("CAM ADEDİ","1");
-  button("Hesapla",()->{
-   try{
-    int a=val(w),b=val(h),c=val(n);
-    if(a<=0||b<=0||c<=0)throw new Exception();
-    result(String.format(Locale.US,
-     "Tek cam: %.3f m²\nToplam: %.3f m²",
-     a*b/1000000.0,a*b*c/1000000.0));
-   }catch(Exception e){bad();}
-  });
-  button("Ana menü",()->home());
+ static final class GlassRow {
+  final TextView heading, result;
+  final EditText width, height, quantity;
+
+  GlassRow(TextView heading, TextView result, EditText width, EditText height, EditText quantity) {
+   this.heading = heading;
+   this.result = result;
+   this.width = width;
+   this.height = height;
+   this.quantity = quantity;
+  }
  }
+
+ void glass() {
+  page("Cam m² Hesaplama");
+  LinearLayout cards = new LinearLayout(this);
+  cards.setOrientation(LinearLayout.VERTICAL);
+  body.addView(cards, new LinearLayout.LayoutParams(-1, -2));
+  ArrayList<GlassRow> rows = new ArrayList<>();
+  TextView total = text("", 21);
+  Runnable clearResults = () -> {
+   if (total.getVisibility() != android.view.View.VISIBLE) return;
+   total.setVisibility(android.view.View.GONE);
+   for (GlassRow row : rows) row.result.setVisibility(android.view.View.GONE);
+  };
+  addGlassRow(cards, rows, clearResults);
+  button("Cam ekle", () -> {
+   clearResults.run();
+   addGlassRow(cards, rows, clearResults);
+  });
+  button("Toplam m² hesapla", () -> calculateGlass(rows, total));
+  total.setTypeface(null, Typeface.BOLD);
+  total.setTextColor(0xffa7ffdd);
+  addTextPanel(total, 0xff122a42, 0xff17525a, 0xff4cf0c2);
+  total.setVisibility(android.view.View.GONE);
+  total.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);
+  button("Ana menü", () -> home());
+ }
+
+ void addGlassRow(LinearLayout cards, List<GlassRow> rows, Runnable clearResults) {
+  boolean first = rows.isEmpty();
+  LinearLayout card = planCard(cards, 0xff13233f, 0xff263f62, 0xff58aec6);
+  TextView heading = planLabel(card, "Cam " + (rows.size() + 1), 18, Color.WHITE);
+  heading.setTypeface(null, Typeface.BOLD);
+  EditText width = input(card, "En (mm)", "");
+  EditText height = input(card, "Yükseklik (mm)", "");
+  EditText quantity = input(card, "Cam adedi", "1");
+  TextView result = planLabel(card, "", 15, 0xff88f9d0);
+  result.setVisibility(android.view.View.GONE);
+  GlassRow row = new GlassRow(heading, result, width, height, quantity);
+  rows.add(row);
+  android.text.TextWatcher watcher = new android.text.TextWatcher() {
+   @Override public void beforeTextChanged(CharSequence text, int start, int count, int after) {}
+   @Override public void onTextChanged(CharSequence text, int start, int before, int count) { clearResults.run(); }
+   @Override public void afterTextChanged(android.text.Editable text) {}
+  };
+  for (EditText field : new EditText[]{width, height, quantity}) {
+   field.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+   field.addTextChangedListener(watcher);
+  }
+  if (!first) {
+   Button remove = new Button(this);
+   remove.setAllCaps(false);
+   remove.setText("Camı kaldır");
+   remove.setTextColor(0xffffd5df);
+   remove.setBackground(rgbPanel(0xff34243e, 0xff51354f, 0xffaa719b));
+   card.addView(remove, new LinearLayout.LayoutParams(-1, dp(48)));
+   remove.setOnClickListener(view -> {
+    clearResults.run();
+    rows.remove(row);
+    cards.removeView(card);
+    for (int i = 0; i < rows.size(); i++) rows.get(i).heading.setText("Cam " + (i + 1));
+   });
+   reveal(card, 0);
+  }
+ }
+
+ void calculateGlass(List<GlassRow> rows, TextView total) {
+  Locale turkish = new Locale("tr", "TR");
+  ArrayList<String> results = new ArrayList<>();
+  double area = 0;
+  long pieces = 0;
+  for (GlassRow row : rows) {
+   int width = positiveGlassValue(row.width);
+   int height = positiveGlassValue(row.height);
+   int quantity = positiveGlassValue(row.quantity);
+   if (width == 0 || height == 0 || quantity == 0) {
+    (width == 0 ? row.width : height == 0 ? row.height : row.quantity).requestFocus();
+    return;
+   }
+   double single = (double) width * height / 1_000_000;
+   double subtotal = single * quantity;
+   pieces += quantity;
+   area += subtotal;
+   results.add(String.format(turkish, "%d × %d mm  ·  %d adet\nTek cam: %.3f m²  ·  Toplam: %.3f m²",
+    width, height, quantity, single, subtotal));
+  }
+  for (int i = 0; i < rows.size(); i++) {
+   TextView result = rows.get(i).result;
+   result.setText(results.get(i));
+   result.setVisibility(android.view.View.VISIBLE);
+  }
+  total.setText(String.format(turkish, "Genel toplam: %.3f m²\n%d adet cam", area, pieces));
+  total.setVisibility(android.view.View.VISIBLE);
+  reveal(total, 0);
+ }
+
+ int positiveGlassValue(EditText field) {
+  try {
+   int value = val(field);
+   if (value > 0) return value;
+  } catch (NumberFormatException ignored) {}
+  field.setError("Sıfırdan büyük bir sayı girin.");
+  return 0;
+ }
+
  void panels(){
   page("Kanat bölme hesabı");
   note("Sistem payları hariç teorik eşit bölme.");
@@ -1470,26 +1571,6 @@ void scanCells(
     result(String.format(Locale.US,
      "Teorik kanat eni: %.1f mm",
      (a-c)/(double)b));
-   }catch(Exception e){bad();}
-  });
-  button("Ana menü",()->home());
- }
- void system(String s){
-  page(s);
-  note("Ön ölçülendirme. Gerçek profil/cam kesim payları için üretici kataloğu gereklidir.");
-  EditText w=input("AÇIKLIK ENİ (mm)","3000");
-  EditText h=input("AÇIKLIK YÜKSEKLİĞİ (mm)","2200");
-  EditText n=input("KANAT / BÖLÜM ADEDİ","4");
-  button("Ön hesapla",()->{
-   try{
-    int a=val(w),b=val(h),c=val(n);
-    if(a<=0||b<=0||c<=0)
-     throw new Exception();
-    result(String.format(Locale.US,
-     "Sistem: %s\nAlan: %.2f m²\n"+
-     "Teorik bölüm eni: %.1f mm\n\n"+
-     "Bunlar nihai imalat kesim ölçüsü değildir.",
-     s,a*b/1000000.0,a/(double)c));
    }catch(Exception e){bad();}
   });
   button("Ana menü",()->home());
