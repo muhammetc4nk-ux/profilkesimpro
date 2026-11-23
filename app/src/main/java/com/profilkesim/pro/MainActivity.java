@@ -93,19 +93,33 @@ ObjectAnimator pulse = ObjectAnimator.ofFloat(
 pulse.setDuration(2400);
 pulse.setRepeatCount(ValueAnimator.INFINITE);
 pulse.start();
+  brand.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener() {
+   @Override public void onViewAttachedToWindow(android.view.View view) {}
+   @Override public void onViewDetachedFromWindow(android.view.View view) {
+    neon.cancel();
+    pulse.cancel();
+   }
+  });
 
   ScrollView scroll=new ScrollView(this);root.addView(scroll);
   body=new LinearLayout(this);body.setOrientation(1);
   body.setPadding(dp(14),dp(12),dp(14),dp(20));scroll.addView(body);
   TextView h=text(title,23);h.setTypeface(null,Typeface.BOLD);
-  h.setBackground(box(0xf2ffffff));body.addView(h);
+  h.setTextColor(Color.WHITE);
+  h.setBackground(gradient(0xff102740, 0xff175865, 0xff4ce5de));
+  h.setElevation(dp(4));body.addView(h);
+  reveal(body, 0);
  }
  void note(String s){
   TextView t=text(s,14);t.setBackground(box(0xeeffffff));body.addView(t);
  }
  void button(String s,Runnable r){
   Button b=new Button(this);b.setText(s);b.setAllCaps(false);
-  b.setTextColor(Color.WHITE);b.setBackground(box(teal));
+  b.setTextColor(Color.WHITE);
+  b.setBackground(new android.graphics.drawable.RippleDrawable(
+   android.content.res.ColorStateList.valueOf(0x66a1fff3),
+   gradient(0xff11365c, 0xff087e89, 0xff57e8de), null));
+  b.setElevation(dp(4));
   LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(54));
   p.setMargins(0,dp(6),0,dp(6));body.addView(b,p);
   b.setOnClickListener(v->r.run());
@@ -115,7 +129,13 @@ pulse.start();
   label.setBackground(box(0xeeffffff));body.addView(label);
   EditText e=new EditText(this);e.setText(val);e.setHint(hint);
   e.setTextSize(17);e.setPadding(dp(12),dp(12),dp(12),dp(12));
-  e.setBackground(box(0xf8ffffff));
+  e.setBackground(gradient(0xfff8ffff, 0xffe4f4ff, 0xff8fc6db));
+  e.setOnFocusChangeListener((view, focused) -> {
+   e.setBackground(focused
+    ? gradient(0xfff0fffb, 0xffc8f6ee, 0xff0ba294)
+    : gradient(0xfff8ffff, 0xffe4f4ff, 0xff8fc6db));
+   e.animate().translationZ(dp(focused ? 5 : 0)).setDuration(180).start();
+  });
   LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(55));
   p.setMargins(0,dp(6),0,dp(6));body.addView(e,p);return e;
  }
@@ -622,7 +642,7 @@ if (r.mm == 0 && r.qty == 0) {
       throw new Exception("Okunamayan ölçü/adet var");
      int m=Integer.parseInt(ms),q=Integer.parseInt(qs);
      if(q==0)continue;
-     if(m<=0||q<0||q>1000||m+kerf>length)
+     if(m<=0||q<0||q>1000||(long)m+kerf>length)
       throw new Exception();
      if(!groups.containsKey(name))
       groups.put(name,new ArrayList<>());
@@ -633,7 +653,7 @@ if (r.mm == 0 && r.qty == 0) {
      !extraMm.getText().toString().trim().isEmpty()){
      String n=extraName.getText().toString().trim();
      int m=val(extraMm),q=val(extraQty);
-     if(m<=0||q<0||q>1000||m+kerf>length)
+     if(m<=0||q<0||q>1000||(long)m+kerf>length)
       throw new Exception();
      if(!groups.containsKey(n))
       groups.put(n,new ArrayList<>());
@@ -645,10 +665,10 @@ if (r.mm == 0 && r.qty == 0) {
       "Önce geçerli ölçü ve adet girin",
       Toast.LENGTH_LONG).show();return;
     }
-    StringBuilder out=new StringBuilder(
-     "STOK BOYU: "+length+
-     " mm\nTESTERE PAYI: "+kerf+" mm / parça\n\n");
-    int allBars=0;long allWaste=0;
+    LinearLayout plans = new LinearLayout(this);
+    plans.setOrientation(LinearLayout.VERTICAL);
+    int allBars = 0, allPieces = 0;
+    long allWaste = 0, net = 0;
     for(Map.Entry<String,ArrayList<Integer>> entry:
      groups.entrySet()){
      ArrayList<Integer> parts=entry.getValue();
@@ -658,7 +678,7 @@ if (r.mm == 0 && r.qty == 0) {
      for(int size:parts){
       int target=-1;
       for(int i=0;i<used.size();i++)
-       if(used.get(i)+size+kerf<=length){
+       if((long)used.get(i)+size+kerf<=length){
         target=i;break;
        }
       if(target<0){
@@ -669,27 +689,21 @@ if (r.mm == 0 && r.qty == 0) {
       bins.get(target).add(size);
       used.set(target,used.get(target)+size+kerf);
      }
-     out.append("■ ").append(entry.getKey())
-      .append("\n").append(parts.size())
-      .append(" parça / ").append(bins.size())
-      .append(" ham profil\n");
-     allBars+=bins.size();
-     for(int i=0;i<bins.size();i++){
-      int waste=length-used.get(i);
-      allWaste+=waste;
-      out.append("Boy ").append(i+1)
-       .append(" | KESİM ").append(bins.get(i))
-       .append(" | KALAN/FİRE ").append(waste)
-       .append(" mm\n");
+     if (bins.isEmpty()) continue;
+     LinearLayout group = planCard(plans, 0xff172b44, 0xff254662, 0xff597d9b);
+     planLabel(group, entry.getKey(), 17, Color.WHITE).setTypeface(null, Typeface.BOLD);
+     allPieces += parts.size();
+     for (int i = 0; i < bins.size(); i++) {
+      int waste = length - used.get(i);
+      allWaste += waste;
+      net += used.get(i) - (long) kerf * bins.get(i).size();
+      planBar(group, i + 1, bins.get(i), length, kerf, waste, allBars < 12);
+      allBars++;
      }
-     out.append("\n");
     }
-    out.append("TOPLAM HAM PROFİL: ")
-     .append(allBars)
-     .append(" boy\nTOPLAM KALAN/FİRE: ")
-     .append(allWaste).append(" mm\n");
     page("Kesim optimizasyon sonucu");
-    result(out.toString());
+    planSummary(length, kerf, allBars, allPieces, net, allWaste);
+    body.addView(plans);
     note("Kalan parça tekrar kullanılabiliyorsa gerçek hurda/fire sayılmayabilir. Kesim sırası ve testere payını imalattan önce doğrulayın.");
     button("Ana menü",()->home());
    }catch(Exception e){bad();}
@@ -697,6 +711,148 @@ if (r.mm == 0 && r.qty == 0) {
   button("Yeni fotoğraf çek / seç",()->photo());
   button("Ana menü",()->home());
  }
+ static final int CUT_RED = 0xffef4963;
+ static final int REMAIN_GREEN = 0xff2ddd9e;
+ static final int KERF_GOLD = 0xfff3bf60;
+
+ GradientDrawable gradient(int start, int end, int border) {
+  GradientDrawable background = new GradientDrawable(
+   GradientDrawable.Orientation.TL_BR, new int[]{start, end});
+  background.setCornerRadius(dp(16));
+  background.setStroke(dp(1), border);
+  return background;
+ }
+
+ void reveal(android.view.View view, int delay) {
+  view.setAlpha(0f);
+  view.setTranslationY(dp(10));
+  view.animate().alpha(1f).translationY(0f).setStartDelay(delay)
+   .setDuration(320).setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+ }
+
+ LinearLayout planCard(LinearLayout parent, int start, int end, int border) {
+  LinearLayout card = new LinearLayout(this);
+  card.setOrientation(LinearLayout.VERTICAL);
+  card.setPadding(dp(14), dp(12), dp(14), dp(12));
+  card.setBackground(gradient(start, end, border));
+  card.setElevation(dp(3));
+  LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+  params.setMargins(0, dp(10), 0, 0);
+  parent.addView(card, params);
+  return card;
+ }
+
+ TextView planLabel(LinearLayout card, String value, int size, int color) {
+  TextView label = text(value, size);
+  label.setPadding(0, dp(3), 0, dp(3));
+  label.setTextColor(color);
+  card.addView(label);
+  return label;
+ }
+
+ void planSummary(int length, int kerf, int bars, int count, long net, long remaining) {
+  LinearLayout card = planCard(body, 0xff10233e, 0xff17485a, 0xff46dfdb);
+  planLabel(card, bars + " stok profili  ·  " + count + " parça", 23, Color.WHITE)
+   .setTypeface(null, Typeface.BOLD);
+  planLabel(card, "Stok " + length + " mm  ·  Testere payı " + kerf + " mm/parça", 14, 0xffd2e8f4);
+  planLabel(card, "Kesim " + net + " mm", 16, 0xffff8c9d);
+  planLabel(card, "Kalan " + remaining + " mm", 16, 0xff6af5c0);
+  if (kerf > 0) planLabel(card, "Testere payı " + ((long) kerf * count) + " mm", 14, KERF_GOLD);
+  reveal(card, 0);
+ }
+
+ void planBar(LinearLayout parent, int number, List<Integer> cuts, int length, int kerf,
+              int remaining, boolean animated) {
+  LinearLayout card = planCard(parent, 0xff121c33, 0xff203453, 0xff557b9b);
+  planLabel(card, "Stok profil " + number + "  ·  " + length + " mm", 17, Color.WHITE)
+   .setTypeface(null, Typeface.BOLD);
+  StockBar bar = new StockBar(cuts, length, kerf);
+  LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, dp(27));
+  params.setMargins(0, dp(9), 0, dp(9));
+  card.addView(bar, params);
+  StringBuilder sizes = new StringBuilder();
+  for (int size : cuts) {
+   if (sizes.length() > 0) sizes.append("  ·  ");
+   sizes.append(size);
+  }
+  planLabel(card, "Kesilen (mm)  " + sizes, 14, 0xffff8c9d);
+  planLabel(card, "Kalan  " + remaining + " mm", 15, 0xff6af5c0);
+  if (animated) {
+   reveal(card, Math.min(160, number * 35));
+   bar.animateFill();
+  }
+ }
+
+ final class StockBar extends android.view.View {
+  private final List<Integer> cuts;
+  private final int length;
+  private final int kerf;
+  private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+  private final android.graphics.RectF bounds = new android.graphics.RectF();
+  private final android.graphics.Path outline = new android.graphics.Path();
+  private float fill = 1f;
+  private ValueAnimator animator;
+
+  StockBar(List<Integer> cuts, int length, int kerf) {
+   super(MainActivity.this);
+   this.cuts = cuts;
+   this.length = length;
+   this.kerf = kerf;
+   setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+  }
+
+  void animateFill() {
+   fill = 0f;
+   animator = ValueAnimator.ofFloat(0f, 1f);
+   animator.setDuration(780);
+   animator.setInterpolator(new android.view.animation.DecelerateInterpolator());
+   animator.addUpdateListener(value -> {
+    fill = (float) value.getAnimatedValue();
+    invalidate();
+   });
+   animator.start();
+  }
+
+  @Override protected void onDetachedFromWindow() {
+   if (animator != null) animator.cancel();
+   super.onDetachedFromWindow();
+  }
+
+  @Override protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
+   super.onSizeChanged(width, height, oldWidth, oldHeight);
+   bounds.set(0, 0, width, height);
+   outline.reset();
+   outline.addRoundRect(bounds, dp(9), dp(9), android.graphics.Path.Direction.CW);
+  }
+
+  @Override protected void onDraw(android.graphics.Canvas canvas) {
+   super.onDraw(canvas);
+   canvas.save();
+   canvas.clipPath(outline);
+   canvas.drawColor(0xff354765);
+   canvas.clipRect(0, 0, getWidth() * fill, getHeight());
+   float scale = getWidth() / (float) length;
+   long offset = 0;
+   for (int cut : cuts) {
+    paint.setColor(CUT_RED);
+    canvas.drawRect(offset * scale, 0, (offset + cut) * scale, getHeight(), paint);
+    offset += cut;
+    paint.setColor(KERF_GOLD);
+    canvas.drawRect(offset * scale, 0, (offset + kerf) * scale, getHeight(), paint);
+    offset += kerf;
+    if (offset < length) {
+     paint.setColor(0xff66263b);
+     canvas.drawLine(offset * scale, 0, offset * scale, getHeight(), paint);
+    }
+   }
+   paint.setColor(REMAIN_GREEN);
+   canvas.drawRect(offset * scale, 0, getWidth(), getHeight(), paint);
+   paint.setColor(0x40ffffff);
+   canvas.drawRect(0, 0, getWidth(), dp(3), paint);
+   canvas.restore();
+  }
+ }
+
  void opt(){
   page("Profil kesim optimizasyonu");
   note("Kesimler: Her satır 1250x3 biçiminde. Testere payı parça başına eklenir. Azalan ilk uygun yerleştirme yöntemi kullanılır.");
@@ -724,7 +880,7 @@ if (r.mm == 0 && r.qty == 0) {
      int size=Integer.parseInt(a[0]);
      int qty=a.length>1?Integer.parseInt(a[1]):1;
      if(size<=0||qty<1||qty>1000||
-      size+saw>length||
+      (long)size+saw>length||
       pieces.size()+qty>3000)
       throw new Exception();
      for(int i=0;i<qty;i++)pieces.add(size);
@@ -737,7 +893,7 @@ if (r.mm == 0 && r.qty == 0) {
     for(int size:pieces){
      total+=size;int target=-1;
      for(int i=0;i<used.size();i++)
-      if(used.get(i)+size+saw<=length){
+      if((long)used.get(i)+size+saw<=length){
        target=i;break;
       }
      if(target<0){
@@ -748,20 +904,13 @@ if (r.mm == 0 && r.qty == 0) {
      bins.get(target).add(size);
      used.set(target,used.get(target)+size+saw);
     }
-    StringBuilder out=new StringBuilder(
-     "Gerekli profil: "+bins.size()+
-     " boy\nParça: "+pieces.size()+
-     " adet\nNet kesim: "+total+
-     " mm\nKalan: "+
-     ((long)bins.size()*length-total-
-      (long)pieces.size()*saw)+" mm\n\n");
-    for(int i=0;i<bins.size();i++)
-     out.append("Boy ").append(i+1)
-      .append(": ").append(bins.get(i))
-      .append("\nKalan: ")
-      .append(length-used.get(i))
-      .append(" mm\n\n");
-    result(out.toString());
+    page("Kesim optimizasyon sonucu");
+    long remaining = (long) bins.size() * length - total - (long) pieces.size() * saw;
+    planSummary(length, saw, bins.size(), pieces.size(), total, remaining);
+    for (int i = 0; i < bins.size(); i++) {
+     planBar(body, i + 1, bins.get(i), length, saw, length - used.get(i), i < 12);
+    }
+    button("Yeni kesim planı", () -> opt());
    }catch(Exception ex){bad();}
   });
   button("Ana menü",()->home());
