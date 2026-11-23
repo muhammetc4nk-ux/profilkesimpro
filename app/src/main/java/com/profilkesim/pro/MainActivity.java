@@ -52,7 +52,6 @@ public class MainActivity extends Activity {
   TextView t=new TextView(this);t.setText(s);t.setTextSize(size);
   t.setTextColor(navy);t.setPadding(dp(12),dp(12),dp(12),dp(12));return t;
  }
- private static final int MUSIC_RATE = 22050;
  private static final int PICK_MUSIC = 43;
  private static final String MUSIC_MUTED = "home_music_muted";
  private static final String MUSIC_URI = "home_music_uri";
@@ -87,9 +86,7 @@ public class MainActivity extends Activity {
   private static final int NOTIFICATION = 31;
   private android.media.AudioManager audio;
   private android.media.MediaPlayer player;
-  private java.io.File generatedTrack;
   private String currentSource;
-  private int revision;
   private boolean destroyed, prepared, focused, focusRequested;
 
   private final android.media.AudioManager.OnAudioFocusChangeListener focusListener = change -> {
@@ -119,12 +116,11 @@ public class MainActivity extends Activity {
    if (source.equals(currentSource)) return START_NOT_STICKY;
    currentSource = source;
    releaseTrack();
-   int request = ++revision;
-   if (source.isEmpty()) {
-    new Thread(() -> generateDefaultTrack(request), "profile-music").start();
-   } else {
-    prepareTrack(Uri.parse(source));
-   }
+   Uri track = source.isEmpty()
+    ? new Uri.Builder().scheme(android.content.ContentResolver.SCHEME_ANDROID_RESOURCE)
+      .authority(getPackageName()).appendPath(String.valueOf(R.raw.home_music)).build()
+    : Uri.parse(source);
+   prepareTrack(track);
    return START_NOT_STICKY;
   }
 
@@ -148,38 +144,6 @@ public class MainActivity extends Activity {
     .setContentIntent(openApp).setOngoing(true).setOnlyAlertOnce(true)
     .addAction(new android.app.Notification.Action.Builder(android.R.drawable.ic_media_pause,
      "Sustur", muteAction).build()).build();
-  }
-
-  private void generateDefaultTrack(int request) {
-   java.io.File file = null;
-   try {
-    short[] samples = composeHomeMusic();
-    file = java.io.File.createTempFile("profile-music-", ".wav", getCacheDir());
-    java.nio.ByteBuffer wav = java.nio.ByteBuffer.allocate(44 + samples.length * 2)
-     .order(java.nio.ByteOrder.LITTLE_ENDIAN);
-    wav.putInt(0x46464952).putInt(36 + samples.length * 2).putInt(0x45564157);
-    wav.putInt(0x20746d66).putInt(16).putShort((short) 1).putShort((short) 1);
-    wav.putInt(MUSIC_RATE).putInt(MUSIC_RATE * 2).putShort((short) 2).putShort((short) 16);
-    wav.putInt(0x61746164).putInt(samples.length * 2);
-    for (short sample : samples) wav.putShort(sample);
-    try (java.io.FileOutputStream stream = new java.io.FileOutputStream(file)) {
-     stream.write(wav.array());
-    }
-    java.io.File track = file;
-    new android.os.Handler(getMainLooper()).post(() -> {
-     if (destroyed || request != revision) {
-      track.delete();
-      return;
-     }
-     generatedTrack = track;
-     prepareTrack(Uri.fromFile(track));
-    });
-   } catch (java.io.IOException e) {
-    if (file != null) file.delete();
-    new android.os.Handler(getMainLooper()).post(() -> {
-     if (!destroyed && request == revision) playbackError();
-    });
-   }
   }
 
   private void prepareTrack(Uri source) {
@@ -230,10 +194,6 @@ public class MainActivity extends Activity {
     player.release();
     player = null;
    }
-   if (generatedTrack != null) {
-    generatedTrack.delete();
-    generatedTrack = null;
-   }
   }
 
   @Override public void onDestroy() {
@@ -242,59 +202,6 @@ public class MainActivity extends Activity {
    if (focusRequested && audio != null) audio.abandonAudioFocus(focusListener);
    stopForeground(true);
    super.onDestroy();
-  }
- }
-
- private static short[] composeHomeMusic() {
-  // Greensleeves melody, arranged for soft plucked keys. Durations are in eighth notes.
-  int[][] melody = {
-   {69, 2}, {72, 4}, {74, 2}, {76, 3}, {77, 1}, {76, 2}, {74, 4}, {71, 2},
-   {67, 3}, {69, 1}, {71, 2}, {72, 4}, {69, 2}, {69, 3}, {68, 1}, {69, 2},
-   {71, 4}, {68, 2}, {64, 4}, {69, 2},
-   {72, 4}, {74, 2}, {76, 3}, {77, 1}, {76, 2}, {74, 4}, {71, 2},
-   {67, 3}, {69, 1}, {71, 2}, {72, 3}, {71, 1}, {69, 2}, {68, 3}, {66, 1}, {68, 2},
-   {69, 6}, {69, 4}
-  };
-  int unit = MUSIC_RATE * 24 / 100;
-  int total = 0;
-  for (int[] note : melody) total += note[1];
-  float[] mix = new float[total * unit];
-  int cursor = 0;
-  for (int[] note : melody) {
-   addPluckedNote(mix, cursor * unit, note[1] * unit, note[0], .19);
-   cursor += note[1];
-  }
-  int[][] chords = {
-   {45, 52, 60}, {48, 55, 60}, {48, 55, 64}, {47, 55, 62},
-   {43, 50, 59}, {45, 52, 60}, {45, 52, 60}, {40, 47, 56}, {40, 47, 56},
-   {48, 55, 60}, {48, 55, 64}, {47, 55, 62}, {43, 50, 59},
-   {45, 52, 60}, {40, 47, 56}, {45, 52, 60}
-  };
-  for (int bar = 0; bar < chords.length; bar++) {
-   for (int step = 0; step < 3; step++) {
-    addPluckedNote(mix, (2 + bar * 6 + step * 2) * unit, unit * 3,
-     chords[bar][step], step == 0 ? .092 : .064);
-   }
-  }
-  short[] output = new short[mix.length];
-  int fade = MUSIC_RATE / 12;
-  for (int i = 0; i < output.length; i++) {
-   float edge = Math.min(1f, Math.min(i, output.length - 1 - i) / (float) fade);
-   output[i] = (short) (mix[i] * edge * Short.MAX_VALUE);
-  }
-  return output;
- }
-
- private static void addPluckedNote(float[] mix, int start, int duration, int pitch, double volume) {
-  double step = 2 * Math.PI * 440 * Math.pow(2, (pitch - 69) / 12.0) / MUSIC_RATE;
-  int end = Math.min(duration, mix.length - start);
-  for (int i = 0; i < end; i++) {
-   double attack = Math.min(1, i / (MUSIC_RATE * .012));
-   double tail = Math.min(1, (end - i) / (MUSIC_RATE * .085));
-   double decay = Math.exp(-3.2 * i / MUSIC_RATE);
-   double phase = i * step;
-   double tone = .72 * Math.sin(phase) + .20 * Math.sin(2 * phase) + .08 * Math.sin(3 * phase);
-   mix[start + i] += (float) (tone * volume * attack * decay * tail);
   }
  }
 
@@ -478,6 +385,13 @@ pulse.start();
    picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
    startActivityForResult(picker, PICK_MUSIC);
   });
+  if (getPreferences(MODE_PRIVATE).contains(MUSIC_URI)) {
+   button("Varsayılan müziğe dön", () -> {
+    getPreferences(MODE_PRIVATE).edit().remove(MUSIC_URI).apply();
+    updateMusicService();
+    home();
+   });
+  }
   button("Fotoğraftan kesim listesi oku",()->photo());
   button("Profil kesim optimizasyonu",()->opt());
   button("Cam alanı ve adet hesabı",()->glass());
