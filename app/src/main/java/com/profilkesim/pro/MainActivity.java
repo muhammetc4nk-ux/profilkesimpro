@@ -515,97 +515,150 @@ public class MainActivity extends Activity {
      android.util.Log.w("ProfilKesimOCR", "URI OCR input unavailable for photo " + number, e);
     }
    }
-   Bitmap bitmap = decoded;
-   InputImage fileImage = original;
+   List<CutRow> rows = Collections.emptyList();
+   if (decoded != null || original != null) {
+    try {
+     rows = recognizePhoto(decoded, original, recognizer);
+    } catch (InterruptedException e) {
+     Thread.currentThread().interrupt();
+    }
+   }
+   List<CutRow> result = rows;
+   boolean opened = decoded != null || original != null;
    runOnUiThread(() -> {
     if (isDestroyed() || isFinishing()) {
      recognizer.close();
-     return;
-    }
-    if (fileImage == null && bitmap == null) {
+    } else if (!opened) {
      failed.accept("dosya açılamadı");
-     return;
+    } else if (result.isEmpty()) {
+     failed.accept("kesim tablosu okunamadı");
+    } else {
+     finished.accept(result);
     }
-    recognizePhoto(fileImage, bitmap, fileImage == null ? 0 : -1, recognizer, false, failed, finished);
    });
   }, "photo-decoder").start();
  }
 
- void recognizePhoto(InputImage fileImage, Bitmap bitmap, int pass,
-                     com.google.mlkit.vision.text.TextRecognizer recognizer, boolean sawText,
-                     PhotoResult<String> failed, PhotoResult<List<CutRow>> finished) {
-  if (isDestroyed() || isFinishing()) {
-   recognizer.close();
-   return;
-  }
-  if (pass >= 4 || (pass >= 0 && bitmap == null)) {
-   failed.accept(sawText ? "profil adı, kesim ölçüsü ve adet başlıkları olan kesim tablosu bulunamadı" : "metin okunamadı");
-   return;
-  }
-  int rotation = pass < 0 ? 0 : 90 * pass;
-  Bitmap oriented = bitmap;
-  com.google.android.gms.tasks.Task<Text> task;
-  try {
-   if (bitmap != null && rotation != 0) {
+ List<CutRow> recognizePhoto(Bitmap bitmap, InputImage fileImage,
+                             com.google.mlkit.vision.text.TextRecognizer recognizer) throws InterruptedException {
+  int rotations = bitmap == null ? 1 : 4;
+  for (int pass = 0; pass < rotations; pass++) {
+   Bitmap oriented = bitmap;
+   if (pass != 0) {
     android.graphics.Matrix matrix = new android.graphics.Matrix();
-    matrix.setRotate(rotation);
+    matrix.setRotate(90 * pass);
     oriented = Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
    }
-   InputImage input = pass < 0 ? fileImage : InputImage.fromBitmap(oriented, 0);
-   task = recognizer.process(input);
-  } catch (RuntimeException e) {
-   android.util.Log.w("ProfilKesimOCR", "Text recognition could not start: " + pass, e);
-   recognizePhoto(fileImage, bitmap, pass + 1, recognizer, sawText, failed, finished);
-   return;
+   int width = oriented == null ? 0 : oriented.getWidth();
+   int height = oriented == null ? 0 : oriented.getHeight();
+   Bitmap source = oriented;
+   CutTableGrid.Pixels pixels = source == null ? null
+    : (y, colors) -> source.getPixels(colors, 0, width, 0, y, width, 1);
+   if (pixels != null) {
+    try {
+     TableOcrRegion region = TableOcrRegion.find(pixels, width, height);
+     if (region != null) {
+      List<CutSheet.Word> words = new ArrayList<>();
+      for (int col = 0; col < 3; col++) {
+       CutSheet.Bounds area = new CutSheet.Bounds(region.columnEdge(col), region.box.top,
+        region.columnEdge(col + 1), region.box.bottom);
+       words.addAll(recognizeRegion(pixels, width, region, area, recognizer));
+      }
+      List<CutSheet.Row> parsed = CutSheet.read(words, width, height, pixels, region);
+      if (!parsed.isEmpty()) return photoRows(parsed, source, pixels, region, recognizer);
+     }
+    } catch (java.util.concurrent.ExecutionException | RuntimeException e) {
+     android.util.Log.w("ProfilKesimOCR", "Could not read isolated table", e);
+    }
+   }
+   try {
+    InputImage image = source == null ? fileImage : InputImage.fromBitmap(source, 0);
+    List<CutSheet.Word> words = recognizedWords(image, 0, 0, recognizer);
+    if (source == null) for (CutSheet.Word word : words) height = Math.max(height, word.box.bottom);
+    List<CutSheet.Row> parsed = CutSheet.read(words, width, height, pixels);
+    if (!parsed.isEmpty()) return photoRows(parsed, source, pixels, null, recognizer);
+   } catch (java.util.concurrent.ExecutionException | RuntimeException e) {
+    android.util.Log.w("ProfilKesimOCR", "Could not read orientation " + pass, e);
+   }
   }
-  Bitmap ocrBitmap = oriented;
-  task.addOnSuccessListener(doc -> {
-   if (isDestroyed() || isFinishing()) {
-    recognizer.close();
-    return;
-   }
-   ArrayList<CutRow> rows = parseSheet(doc, ocrBitmap);
-   if (rows.isEmpty()) {
-    recognizePhoto(fileImage, bitmap, pass + 1, recognizer, sawText || !doc.getText().trim().isEmpty(), failed, finished);
-    return;
-   }
-   finished.accept(rows);
-  }).addOnFailureListener(e -> {
-   android.util.Log.w("ProfilKesimOCR", "Text recognition pass failed: " + pass, e);
-   recognizePhoto(fileImage, bitmap, pass + 1, recognizer, sawText, failed, finished);
-  });
+  return Collections.emptyList();
  }
 
- ArrayList<CutRow> parseSheet(Text document, Bitmap bitmap) {
+ List<CutSheet.Word> recognizeRegion(CutTableGrid.Pixels pixels, int imageWidth, TableOcrRegion region,
+                                    CutSheet.Bounds area, com.google.mlkit.vision.text.TextRecognizer recognizer)
+                                   throws java.util.concurrent.ExecutionException, InterruptedException {
+  int width = area.right - area.left;
+  Bitmap prepared = Bitmap.createBitmap(width, area.height(), Bitmap.Config.ARGB_8888);
+  try {
+   int[] colors = new int[imageWidth];
+   for (int y = area.top; y < area.bottom; y++) {
+    pixels.readRow(y, colors);
+    region.prepareRow(y, colors);
+    prepared.setPixels(colors, area.left, imageWidth, 0, y - area.top, width, 1);
+   }
+   return recognizedWords(InputImage.fromBitmap(prepared, 0), area.left, area.top, recognizer);
+  } finally {
+   prepared.recycle();
+  }
+ }
+
+ List<CutSheet.Word> recognizedWords(InputImage image, int left, int top,
+                                    com.google.mlkit.vision.text.TextRecognizer recognizer)
+                                   throws java.util.concurrent.ExecutionException, InterruptedException {
+  Text document = com.google.android.gms.tasks.Tasks.await(recognizer.process(image));
   List<CutSheet.Word> words = new ArrayList<>();
-  int height = 0;
   for (Text.TextBlock block : document.getTextBlocks()) {
    for (Text.Line line : block.getLines()) {
+    android.graphics.Point[] corners = line.getCornerPoints();
+    if (Math.abs(line.getAngle()) > 20 || (corners != null && corners.length >= 2 && corners[1].x <= corners[0].x)) continue;
     for (Text.Element element : line.getElements()) {
      Rect box = element.getBoundingBox();
      if (box == null || box.isEmpty()) continue;
-     height = Math.max(height, box.bottom);
-     words.add(new CutSheet.Word(element.getText(), new CutSheet.Bounds(box.left, box.top, box.right, box.bottom),
+     words.add(new CutSheet.Word(element.getText(),
+      new CutSheet.Bounds(box.left + left, box.top + top, box.right + left, box.bottom + top),
       element.getConfidence()));
     }
    }
   }
-  List<CutSheet.Row> parsed = CutSheet.read(words, bitmap == null ? 0 : bitmap.getWidth(),
-   bitmap == null ? height : bitmap.getHeight());
-  ArrayList<CutRow> rows = new ArrayList<>();
+  return words;
+ }
+
+ List<CutRow> photoRows(List<CutSheet.Row> parsed, Bitmap bitmap, CutTableGrid.Pixels pixels,
+                        TableOcrRegion region, com.google.mlkit.vision.text.TextRecognizer recognizer)
+                       throws InterruptedException {
+  List<CutRow> rows = new ArrayList<>();
   for (CutSheet.Row row : parsed) {
    Bitmap icon = null;
    if (row.section != null) {
     CutSheet.Bounds crop = row.section;
     try {
-     icon = Bitmap.createBitmap(bitmap, crop.left, crop.top, crop.right - crop.left, crop.bottom - crop.top);
+     icon = Bitmap.createBitmap(bitmap, crop.left, crop.top, crop.right - crop.left, crop.height());
     } catch (IllegalArgumentException e) {
      android.util.Log.w("ProfilKesimOCR", "Profile preview crop is outside the photo", e);
     }
    }
-   rows.add(new CutRow(row.code, row.name, row.length, row.quantity, icon));
+   int length = row.length;
+   int quantity = row.quantity;
+   if (region != null) {
+    if (length < 0) length = retryCutCell(row.lengthCell, false, pixels, bitmap.getWidth(), region, recognizer);
+    if (quantity < 0) quantity = retryCutCell(row.quantityCell, true, pixels, bitmap.getWidth(), region, recognizer);
+   }
+   rows.add(new CutRow(row.code, row.name, length, quantity, icon));
   }
   return rows;
+ }
+
+ int retryCutCell(CutSheet.Bounds cell, boolean quantity, CutTableGrid.Pixels pixels, int width,
+                  TableOcrRegion region, com.google.mlkit.vision.text.TextRecognizer recognizer)
+                  throws InterruptedException {
+  if (cell == null) return -1;
+  try {
+   List<CutSheet.Word> words = recognizeRegion(pixels, width, region, cell, recognizer);
+   return CutSheet.number(words, quantity);
+  } catch (java.util.concurrent.ExecutionException | RuntimeException e) {
+   android.util.Log.w("ProfilKesimOCR", "Could not read cutting cell", e);
+   return -1;
+  }
  }
 
  void profileHeading(LinearLayout card, String name, Bitmap icon) {

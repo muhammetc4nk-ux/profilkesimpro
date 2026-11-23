@@ -80,6 +80,57 @@ public final class CutSheetTest {
   assertNotNull(rowTwo.section);
  }
 
+ @Test public void keepsSideBySideSystemTextOutOfTheRuledTable() {
+  int width = 900, height = 600;
+  int[][] photo = new int[height][width];
+  for (int y = 0; y < height; y++) {
+   Arrays.fill(photo[y], 0xffffffff);
+   if (y >= 150 && y < 200) Arrays.fill(photo[y], 460, 885, 0xff153650);
+   if (y >= 200 && y <= 500) {
+    for (int x : new int[]{460, 675, 810, 884}) photo[y][x] = 0xff25364a;
+    if (y % 50 == 0) Arrays.fill(photo[y], 460, 885, 0xff25364a);
+    if (y % 50 >= 12 && y % 50 <= 35) {
+     Arrays.fill(photo[y], 478, 526, 0xff666666);
+     Arrays.fill(photo[y], 553, 615, 0xff000000);
+    }
+   }
+  }
+  CutTableGrid.Pixels pixels = (y, colors) -> System.arraycopy(photo[y], 0, colors, 0, width);
+  TableOcrRegion region = TableOcrRegion.find(pixels, width, height);
+  assertNotNull(region);
+  List<CutSheet.Word> words = Arrays.asList(
+   word("Cam Balkon", 220, 175), word("Profil adı", 580, 178),
+   word("Kesim ölçüsü", 739, 170), word("Adet", 851, 178), word("(mm)", 739, 187),
+   word("Sistem ölçüsü", 185, 225), word("4820", 282, 225), word("12", 339, 225),
+   word("Üst kasa", 581, 225), word("3160", 767, 225), word("2", 836, 225),
+   word("Yan dikme", 581, 275), word("2090", 747, 275), word("1", 851, 275),
+   word("İspanyolet profili", 600, 325), word("1930", 744, 325),
+   word("RAL 7016 Antrasit", 585, 527), word("6000", 745, 527), word("4", 851, 527));
+  List<CutSheet.Row> rows = CutSheet.read(words, width, height, pixels, region);
+  assertEquals(3, rows.size());
+  assertEquals("Üst kasa", rows.get(0).name);
+  assertEquals(3160, rows.get(0).length);
+  assertEquals(2, rows.get(0).quantity);
+  assertEquals("", rows.get(0).code);
+  assertNotNull(rows.get(0).section);
+  assertTrue(rows.get(0).section.left > 460);
+  assertTrue(rows.get(0).section.right <= rows.get(0).identity.left);
+  assertEquals(-1, rows.get(2).quantity);
+  assertNotNull(rows.get(2).quantityCell);
+  assertTrue(rows.get(2).quantityCell.left > 810);
+  assertTrue(rows.get(2).quantityCell.top > 300);
+ }
+
+ @Test public void doesNotTreatUpsideDownLabelsAsAHeaderOrMetadataAsAProfile() {
+  List<CutSheet.Word> rotated = Arrays.asList(
+   word("Adet", 126, 90), word("Ölçü", 330, 90), word("Profil", 650, 90),
+   word("Antrasit 7016 RAL", 640, 125), word("6000", 330, 125), word("4", 126, 125));
+  assertTrue(CutSheet.read(rotated, 800, 300).isEmpty());
+  List<CutSheet.Word> metadata = new ArrayList<>(header());
+  metadata.addAll(Arrays.asList(word("Antrasit 7016 RAL", 225, 110), word("6000", 500, 110), word("4", 620, 110)));
+  assertTrue(CutSheet.read(metadata, 800, 300).isEmpty());
+ }
+
  private static List<CutSheet.Word> header() {
   return Arrays.asList(word("Profil adı", 232, 70), word("Kesim ölçüsü", 500, 70),
    word("Adet", 620, 70), word("Stok boyu", 735, 70));
