@@ -47,7 +47,8 @@ final class TemaWorkshop {
  private final TemaCatalog.Series series;
  private final Set<Integer> chosenSashes = new LinkedHashSet<>();
  private LinearLayout recordProfile, sashProfile, fixedBeadProfile, sashBeadProfile, advancedPanel;
- private Button bayButton;
+ private Button bayButton, fixedCountButton;
+ private TextView photoBayCount;
  private CheckBox adapter;
  private int beadCorner, expectedFixed = -1;
  private boolean drawingReading;
@@ -88,7 +89,10 @@ final class TemaWorkshop {
   LinearLayout counts = horizontal(divisions);
   EditText vertical = shortField(column(counts), "vertical", "Dikey kayıt", "0", InputType.TYPE_CLASS_NUMBER);
   EditText horizontal = shortField(column(counts), "horizontal", "Yatay kayıt", "0", InputType.TYPE_CLASS_NUMBER);
-  bayButton = chooseButton(divisions, "Bölmeleri seç", this::chooseBays);
+  LinearLayout bayControls = horizontal(divisions);
+  fixedCountButton = chooseButton(column(bayControls), "Sabit adedi", this::chooseFixedCount);
+  bayButton = chooseButton(column(bayControls), "Bölme düzeni", this::chooseBays);
+  photoBayCount = app.planLabel(divisions, "", 13, 0xffffce83);
   for (EditText input : new EditText[]{vertical, horizontal}) input.addTextChangedListener(watcher(() -> {
    chosenSashes.clear();
    expectedFixed = -1;
@@ -104,6 +108,7 @@ final class TemaWorkshop {
   chooseButton(profiles, "Tema katalog PDF’ini aç", () -> openUrl(series.url));
 
   LinearLayout material = section("Hesapla");
+  app.planLabel(material, "Gönye boyları uzun uçtan ölçülür.", 13, 0xffc9dbe3);
   Button details = chooseButton(material, "Montaj ve stok ayarları", null);
   advancedPanel = new LinearLayout(app);
   advancedPanel.setOrientation(LinearLayout.VERTICAL);
@@ -245,13 +250,51 @@ final class TemaWorkshop {
   int columns = recordCount("vertical") + 1, rows = recordCount("horizontal") + 1;
   int cells = columns * rows;
   int open = chosenSashes.size();
-  bayButton.setText(cells == 0 ? "Kayıt adetlerini kontrol et" : "Bölmeleri seç  ·  " + (cells - open) + " sabit, " + open + " açılır"
-   + (expectedFixed >= 0 ? " · fotoğrafta " + expectedFixed + " sabit" : ""));
+  fixedCountButton.setText(cells == 0 ? "Sabit adedi" : (cells - open) + " sabit · " + open + " açılır");
+  fixedCountButton.setContentDescription("Sabit adedini değiştir · " + fixedCountButton.getText());
+  fixedCountButton.setEnabled(cells > 0);
+  photoBayCount.setText(expectedFixed < 0 ? "" : "Çizimde " + expectedFixed + " sabit bölme yazıyor.");
+  photoBayCount.setVisibility(expectedFixed < 0 ? View.GONE : View.VISIBLE);
   bayButton.setEnabled(cells > 0);
   recordProfile.setVisibility(cells > 1 ? View.VISIBLE : View.GONE);
   sashProfile.setVisibility(open > 0 ? View.VISIBLE : View.GONE);
   sashBeadProfile.setVisibility(open > 0 ? View.VISIBLE : View.GONE);
   fixedBeadProfile.setVisibility(cells > open ? View.VISIBLE : View.GONE);
+ }
+
+ private void chooseFixedCount() {
+  int total = (recordCount("vertical") + 1) * (recordCount("horizontal") + 1);
+  if (total <= 0) return;
+  LinearLayout content = new LinearLayout(app);
+  content.setOrientation(LinearLayout.VERTICAL);
+  content.setPadding(app.dp(22), app.dp(4), app.dp(22), app.dp(8));
+  app.planLabel(content, "0–" + total + " arası. Açılır bölmeler sağdan başlar. Konumları Bölme düzeni’nden değiştirebilirsiniz.", 14, Color.DKGRAY);
+  EditText count = new EditText(app);
+  count.setSingleLine(true);
+  count.setInputType(InputType.TYPE_CLASS_NUMBER);
+  count.setContentDescription("Sabit bölme sayısı");
+  count.setText(String.valueOf(total - chosenSashes.size()));
+  count.setSelectAllOnFocus(true);
+  content.addView(count);
+  AlertDialog dialog = new AlertDialog.Builder(app).setTitle("Kaç sabit bölme?").setView(content)
+   .setNegativeButton("Vazgeç", null).setPositiveButton("Uygula", null).create();
+  dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+   try {
+    int fixed = MainActivity.cutNumber(count.getText().toString(), "Sabit adedi");
+    if (fixed < 0 || fixed > total) throw new IllegalArgumentException("Sabit adedi 0–" + total + " arasında olmalı.");
+    if (fixed != total - chosenSashes.size()) {
+     chosenSashes.clear();
+     for (int cell = fixed + 1; cell <= total; cell++) chosenSashes.add(cell);
+    }
+    expectedFixed = -1;
+    updateLayout();
+    invalidate();
+    dialog.dismiss();
+   } catch (IllegalArgumentException error) {
+    count.setError(error.getMessage());
+   }
+  }));
+  dialog.show();
  }
 
  private void chooseBays() {

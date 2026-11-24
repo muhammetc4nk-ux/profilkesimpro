@@ -170,6 +170,45 @@ final class CutSheet {
   return result;
  }
 
+ static List<Row> readSelectedColumns(List<Word> words, int width, int height, int first, int second, CutTableGrid.Pixels pixels) {
+  if (first <= 0 || second <= first || second >= width || height <= 0 || words.isEmpty()) return Collections.emptyList();
+  List<Word> inside = new ArrayList<>();
+  List<Integer> heights = new ArrayList<>();
+  for (Word word : words) {
+   if (word.box.left < 0 || word.box.right > width || word.box.y() < 0 || word.box.y() >= height) continue;
+   inside.add(word);
+   heights.add(word.box.height());
+  }
+  if (inside.isEmpty()) return Collections.emptyList();
+  Collections.sort(heights);
+  int textHeight = Math.max(2, heights.get(heights.size() / 2));
+  List<Column> columns = new ArrayList<>();
+  columns.add(selectedColumn(Field.NAME, first / 2, textHeight, "PROFIL ADI"));
+  columns.add(selectedColumn(Field.LENGTH, (first + second) / 2, textHeight, "KESIM OLCUSU"));
+  columns.add(selectedColumn(Field.QUANTITY, (second + width) / 2, textHeight, "ADET"));
+  Header header = new Header(columns);
+  CutTableGrid grid = new CutTableGrid(0, width, height, java.util.Arrays.asList(first, second));
+  List<Row> rows = new ArrayList<>();
+  int bottom = height;
+  for (Line line : tableLines(inside, pixels, grid, width, header)) {
+   if (FOOTER.matcher(identity(join(line.words))).find()) {
+    if (rows.isEmpty()) continue;
+    bottom = line.baseline.top;
+    break;
+   }
+   if (findHeader(line.words, true) != null) continue;
+   Row row = header.readRow(line.words, grid);
+   if (row == null || (row.length < 0 && row.quantity < 0 && headerField(identity(row.name)) != null)) continue;
+   rows.add(row);
+  }
+  setSections(rows, header, width, bottom, grid, 0);
+  return rows;
+ }
+
+ private static Column selectedColumn(Field field, int x, int height, String label) {
+  return new Column(field, new Bounds(x - 1, -height, x + 1, 0), label);
+ }
+
  private static List<Line> tableLines(List<Word> words, CutTableGrid.Pixels pixels, CutTableGrid grid,
                                      int width, Header header) {
   if (grid == null || pixels == null) return linesFrom(words);

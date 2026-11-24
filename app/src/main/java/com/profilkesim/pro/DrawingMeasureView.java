@@ -15,10 +15,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 final class DrawingMeasureView extends View {
+ enum Mode {
+  MEASURE(6), AREA(2), COLUMNS(4);
+
+  final int limit;
+  Mode(int limit) { this.limit = limit; }
+ }
  private static final int[] COLORS = {0xffffce83, 0xff54f4e3, 0xff91b8ff};
  private final Bitmap bitmap;
  private final Runnable onChange;
- private final boolean selectArea;
+ private final Mode mode;
  private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
  private final RectF picture = new RectF(), displayed = new RectF();
  private final Matrix matrix = new Matrix(), inverse = new Matrix();
@@ -30,17 +36,17 @@ final class DrawingMeasureView extends View {
  private float scale = 1f, shiftX, shiftY;
 
  DrawingMeasureView(Context context, Bitmap bitmap, Runnable onChange) {
-  this(context, bitmap, onChange, false);
+  this(context, bitmap, onChange, Mode.MEASURE);
  }
 
- DrawingMeasureView(Context context, Bitmap bitmap, Runnable onChange, boolean selectArea) {
+ DrawingMeasureView(Context context, Bitmap bitmap, Runnable onChange, Mode mode) {
   super(context);
   this.bitmap = bitmap;
   this.onChange = onChange;
-  this.selectArea = selectArea;
+  this.mode = mode;
   density = getResources().getDisplayMetrics().density;
   picture.set(0, 0, bitmap.getWidth(), bitmap.getHeight());
-  setContentDescription(selectArea ? "Kesim tablosu alanı seçilen fotoğraf" : "Ölçek ve dış kasa ölçüleri için nokta seçilen çizim");
+  setContentDescription(mode == Mode.MEASURE ? "Ölçek ve dış kasa ölçüleri için nokta seçilen çizim" : "Kesim tablosunun işaretlendiği fotoğraf");
   zoom = new ScaleGestureDetector(context, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
    @Override public boolean onScale(ScaleGestureDetector detector) {
     float next = Math.max(1f, Math.min(6f, scale * detector.getScaleFactor()));
@@ -56,7 +62,7 @@ final class DrawingMeasureView extends View {
    @Override public boolean onDown(MotionEvent event) { return true; }
 
    @Override public boolean onSingleTapUp(MotionEvent event) {
-    if (!pinch && points.size() < (selectArea ? 2 : 6) && displayed.contains(event.getX(), event.getY())) {
+    if (!pinch && points.size() < mode.limit && displayed.contains(event.getX(), event.getY())) {
      float[] position = {event.getX(), event.getY()};
      inverse.mapPoints(position);
      points.add(new PointF(position[0], position[1]));
@@ -80,13 +86,24 @@ final class DrawingMeasureView extends View {
 
  int pointCount() { return points.size(); }
 
- RectF selectedArea() {
-  if (points.size() != 2) throw new IllegalArgumentException("Tablonun karşılıklı iki köşesini seçin.");
+ CutPhotoReader.Selection tableSelection() {
+  if (points.size() < 2) throw new IllegalArgumentException("Tablonun karşılıklı iki köşesini seçin.");
   PointF first = points.get(0), second = points.get(1);
   RectF area = new RectF(Math.min(first.x, second.x) / picture.width(), Math.min(first.y, second.y) / picture.height(),
    Math.max(first.x, second.x) / picture.width(), Math.max(first.y, second.y) / picture.height());
   if (area.width() < .04f || area.height() < .04f) throw new IllegalArgumentException("Kesim tablosu alanı çok küçük.");
-  return area;
+  if (mode == Mode.AREA) return new CutPhotoReader.Selection(area, 0, 0);
+  if (points.size() < mode.limit) throw new IllegalArgumentException("İki sütun ayracını da işaretleyin.");
+  float left = (points.get(2).x / picture.width() - area.left) / area.width();
+  float right = (points.get(3).x / picture.width() - area.left) / area.width();
+  if (left < .07f || right - left < .07f || right > .93f) {
+   throw new IllegalArgumentException("Ayraçları tablonun içinde, soldan sağa işaretleyin.");
+  }
+  for (int i = 2; i < 4; i++) {
+   float y = points.get(i).y / picture.height();
+   if (y < area.top || y > area.bottom) throw new IllegalArgumentException("Ayraçları tablonun içinde işaretleyin.");
+  }
+  return new CutPhotoReader.Selection(area, left, right);
  }
 
  void undo() {
@@ -156,7 +173,7 @@ final class DrawingMeasureView extends View {
    mapped[2 * i + 1] = points.get(i).y;
   }
   matrix.mapPoints(mapped);
-  if (selectArea && points.size() == 2) {
+  if (mode != Mode.MEASURE && points.size() >= 2) {
    float left = Math.min(mapped[0], mapped[2]), top = Math.min(mapped[1], mapped[3]);
    float right = Math.max(mapped[0], mapped[2]), bottom = Math.max(mapped[1], mapped[3]);
    paint.setColor(0x4049e5d8);
@@ -166,12 +183,17 @@ final class DrawingMeasureView extends View {
    paint.setStrokeWidth(2 * density);
    canvas.drawRect(left, top, right, bottom, paint);
    paint.setStyle(Paint.Style.FILL);
+   for (int i = 2; i < points.size(); i++) {
+    paint.setColor(i == 2 ? 0xffb8a4ff : 0xffffce83);
+    paint.setStrokeWidth(2 * density);
+    if (mapped[2 * i] > left && mapped[2 * i] < right) canvas.drawLine(mapped[2 * i], top, mapped[2 * i], bottom, paint);
+   }
   }
   for (int i = 0; i < points.size(); i++) {
    float x = mapped[2 * i], y = mapped[2 * i + 1];
    paint.setColor(COLORS[i / 2]);
    paint.setStrokeWidth(2f * density);
-   if (!selectArea && i % 2 == 1) canvas.drawLine(mapped[2 * i - 2], mapped[2 * i - 1], x, y, paint);
+   if (mode == Mode.MEASURE && i % 2 == 1) canvas.drawLine(mapped[2 * i - 2], mapped[2 * i - 1], x, y, paint);
    canvas.drawCircle(x, y, 5f * density, paint);
    paint.setColor(0xff122330);
    canvas.drawCircle(x, y, 2f * density, paint);

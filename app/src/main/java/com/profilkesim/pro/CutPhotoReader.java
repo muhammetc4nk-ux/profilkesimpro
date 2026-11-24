@@ -20,6 +20,19 @@ final class CutPhotoReader {
  private static final String TAG = "ProfilKesimOCR";
  private static final Paint FILTER = new Paint(Paint.FILTER_BITMAP_FLAG);
 
+ static final class Selection {
+  final RectF area;
+  final float firstDivider, secondDivider;
+
+  Selection(RectF area, float firstDivider, float secondDivider) {
+   this.area = area;
+   this.firstDivider = firstDivider;
+   this.secondDivider = secondDivider;
+  }
+
+  boolean usesDividers() { return firstDivider > 0; }
+ }
+
  static final class Result {
   final List<MainActivity.CutRow> rows;
   final Bitmap original, preview;
@@ -131,6 +144,36 @@ final class CutPhotoReader {
    return new Candidate(merged, first.region);
   }
   return first.score() >= second.score() ? first : second;
+ }
+
+ static Result scanColumns(Bitmap original, Selection selection, TextRecognizer recognizer) throws InterruptedException {
+  Bitmap table = crop(original, selection.area);
+  int width = table.getWidth(), height = table.getHeight();
+  int first = Math.round(selection.firstDivider * width), second = Math.round(selection.secondDivider * width);
+  if (first < 12 || second - first < 12 || width - second < 12) {
+   throw new IllegalArgumentException("Tablo sütunları tarama için çok dar.");
+  }
+  Candidate best = selectedColumns(table, first, second, recognizer);
+  if (!best.complete()) {
+   Bitmap contrasted = contrast(table);
+   try {
+    best = prefer(best, selectedColumns(contrasted, first, second, recognizer));
+   } finally {
+    contrasted.recycle();
+   }
+  }
+  return result(best, thumbnail(original, 840), table, recognizer);
+ }
+
+ private static Candidate selectedColumns(Bitmap table, int first, int second, TextRecognizer recognizer) throws InterruptedException {
+  int[] edges = {0, first, second, table.getWidth()};
+  CutTableGrid.Pixels pixels = pixels(table);
+  List<CutSheet.Word> words = new ArrayList<>();
+  for (int i = 0; i < 3; i++) {
+   CutSheet.Bounds column = new CutSheet.Bounds(edges[i], 0, edges[i + 1], table.getHeight());
+   words.addAll(extract(table, pixels, null, column, 1.35f, recognizer));
+  }
+  return new Candidate(CutSheet.readSelectedColumns(words, table.getWidth(), table.getHeight(), first, second, pixels), null);
  }
 
  private static int agreement(int a, int b) { return a < 0 ? b : b < 0 || a == b ? a : -1; }

@@ -33,6 +33,7 @@ public class MainActivity extends Activity {
  String[] extraDraft = {"", "", "", String.valueOf(DEFAULT_PROFILE_STOCK), String.valueOf(DEFAULT_KERF)};
  int photoNumber;
  boolean photoBatchRunning;
+ private LinearLayout scanPanel;
  Runnable savePhotoReview;
  final Map<Integer, String> failedPhotos = new LinkedHashMap<>();
  final Map<Integer, Uri> photoSources = new LinkedHashMap<>();
@@ -221,6 +222,7 @@ public class MainActivity extends Activity {
 
  void page(String title, boolean home) {
   savePhotoReview = null;
+  scanPanel = null;
   musicButton = null;
   if (shell == null) {
    shell = new FrameLayout(this);
@@ -381,6 +383,7 @@ public class MainActivity extends Activity {
   LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(-1, -2);
   size.setMargins(0, dp(5), 0, dp(5));
   body.addView(tile, size);
+  if (accent != 0xff9ae9e4) lightPanel(tile);
  }
  EditText input(String hint,String val){
   return input(body, hint, val);
@@ -477,22 +480,29 @@ public class MainActivity extends Activity {
   home();
  }
  void home(){
-  page("Profil Kesim Pro", true);
-  TextView description = text("Cam balkon ve doğrama hesaplama", 14);
+  page(getApplicationInfo().loadLabel(getPackageManager()).toString(), true);
+  String version = "";
+  try {
+   version = " · Sürüm " + getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+  } catch (android.content.pm.PackageManager.NameNotFoundException ignored) { }
+  TextView description = text("Cam balkon ve doğrama" + version, 14);
   description.setTextColor(0xffd2ebee);
   description.setShadowLayer(dp(7), 0, dp(1), 0xff07131d);
   description.setPadding(dp(9), 0, dp(8), dp(18));
   body.addView(description);
-  for (TemaCatalog.Series series : TemaCatalog.Series.values()) {
-   homeButton("Tema " + series.label + " imalat hesabı", android.R.drawable.ic_menu_manage, series.accent, () -> {
-    temaWorkshop = temaWorkshops.get(series);
-    temaWorkshop.open();
-   });
-  }
+  temaMenu(TemaCatalog.Series.ALDOKS);
+  temaMenu(TemaCatalog.Series.C60);
   homeButton("Fotoğraftan kesim listesi oku", android.R.drawable.ic_menu_camera, () -> photo());
   homeButton("Profil kesim optimizasyonu", android.R.drawable.ic_menu_sort_by_size, () -> opt());
   homeButton("Cam m² hesaplama", android.R.drawable.ic_menu_crop, () -> glass());
   homeButton("Kanat eşit bölme hesabı", android.R.drawable.ic_menu_agenda, () -> panels());
+ }
+
+ private void temaMenu(TemaCatalog.Series series) {
+  homeButton("Tema " + series.label + " imalat hesabı", android.R.drawable.ic_menu_manage, series.accent, () -> {
+   temaWorkshop = temaWorkshops.get(series);
+   temaWorkshop.open();
+  });
  }
  void photo() {
   if (photoNumber > 0) {
@@ -598,7 +608,7 @@ public class MainActivity extends Activity {
 
  interface PhotoResult<T> { void accept(T result); }
 
- void readPhoto(Uri uri, int number, android.graphics.RectF crop, com.google.mlkit.vision.text.TextRecognizer recognizer,
+ void readPhoto(Uri uri, int number, CutPhotoReader.Selection selection, com.google.mlkit.vision.text.TextRecognizer recognizer,
                 PhotoResult<String> failed, PhotoResult<CutPhotoReader.Result> finished) {
   new Thread(() -> {
    Bitmap decoded = null;
@@ -632,18 +642,23 @@ public class MainActivity extends Activity {
      android.util.Log.w("ProfilKesimOCR", "URI OCR input unavailable for photo " + number, e);
     }
    }
+   Bitmap sourcePreview = CutPhotoReader.thumbnail(decoded, 840);
+   if (sourcePreview != null) runOnUiThread(() -> {
+    if (!isDestroyed() && photoBatchRunning) showScanImage(sourcePreview);
+   });
    CutPhotoReader.Result parsed = null;
    String fault = "Dosya açılamadı.";
-   if (decoded != null || original != null) {
+   boolean mapped = selection != null && selection.usesDividers();
+   if (decoded != null || (original != null && !mapped)) {
     try {
-     parsed = CutPhotoReader.scan(decoded, original, crop, recognizer);
+     parsed = mapped ? CutPhotoReader.scanColumns(decoded, selection, recognizer)
+      : CutPhotoReader.scan(decoded, original, selection == null ? null : selection.area, recognizer);
     } catch (InterruptedException e) {
      Thread.currentThread().interrupt();
      fault = "Fotoğraf taraması kesildi.";
     } catch (RuntimeException e) {
      android.util.Log.w("ProfilKesimOCR", "Cut table scan failed for photo " + number, e);
-     Bitmap preview = CutPhotoReader.thumbnail(decoded, 840);
-     parsed = new CutPhotoReader.Result(Collections.emptyList(), preview, preview, Collections.emptyList());
+     parsed = new CutPhotoReader.Result(Collections.emptyList(), sourcePreview, sourcePreview, Collections.emptyList());
     }
    }
    CutPhotoReader.Result result = parsed;
@@ -659,7 +674,7 @@ public class MainActivity extends Activity {
  private void acceptScan(int number, CutPhotoReader.Result result) {
   scans.put(number, result);
   if (result.rows.isEmpty()) {
-   failedPhotos.put(number, "Kesim tablosu otomatik bulunamadı.");
+   failedPhotos.put(number, "Kesim satırı bulunamadı. Tablo alanını veya sütunları işaretleyip yeniden tarayabilirsiniz.");
   } else {
    detected.put(number, result.rows);
    failedPhotos.remove(number);
@@ -668,21 +683,27 @@ public class MainActivity extends Activity {
 
  private TextView scanningPage(String message) {
   page("Kesim tablosu taranıyor");
-  LinearLayout scan = planCard(body, 0xff122435, 0xff1d4c4d, 0xff62f4d1);
-  lightPanel(scan);
-  TextView progress = planLabel(scan, message, 16, Color.WHITE);
-  scan.addView(new PhotoScanView(this, null, null, true), new LinearLayout.LayoutParams(-1, dp(70)));
+  scanPanel = planCard(body, 0xff122435, 0xff1d4c4d, 0xff62f4d1);
+  lightPanel(scanPanel);
+  TextView progress = planLabel(scanPanel, message, 16, Color.WHITE);
+  showScanImage(null);
   return progress;
  }
 
- private void retryPhoto(int number, android.graphics.RectF crop) {
+ private void showScanImage(Bitmap image) {
+  if (scanPanel == null) return;
+  if (scanPanel.getChildCount() > 1) scanPanel.removeViewAt(1);
+  scanPanel.addView(new PhotoScanView(this, image, null, true), new LinearLayout.LayoutParams(-1, dp(image == null ? 70 : 225)));
+ }
+
+ private void retryPhoto(int number, CutPhotoReader.Selection selection) {
   Uri source = photoSources.get(number);
   if (source == null || photoBatchRunning) return;
   savePhotoReview.run();
   photoBatchRunning = true;
   scanningPage("Fotoğraf " + number + " · Seçilen tablo okunuyor…");
   com.google.mlkit.vision.text.TextRecognizer recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
-  readPhoto(source, number, crop, recognizer, reason -> {
+  readPhoto(source, number, selection, recognizer, reason -> {
    recognizer.close();
    photoBatchRunning = false;
    if (!detected.containsKey(number)) failedPhotos.put(number, reason);
@@ -698,25 +719,36 @@ public class MainActivity extends Activity {
   });
  }
 
- private void selectCutArea(int number, Bitmap image) {
+ private void selectCutArea(int number, Bitmap image, DrawingMeasureView.Mode mode) {
   if (image == null) return;
   LinearLayout content = new LinearLayout(this);
   content.setOrientation(LinearLayout.VERTICAL);
   content.setPadding(dp(15), dp(3), dp(15), dp(8));
-  planLabel(content, "Başlık satırı dahil tablonun iki karşı köşesine dokunun. Yakınlaştırmak için iki parmak kullanın.", 14, Color.DKGRAY);
-  DrawingMeasureView picker = new DrawingMeasureView(this, image, () -> {}, true);
+  boolean columns = mode == DrawingMeasureView.Mode.COLUMNS;
+  String corners = columns ? "Tablonun iki karşı köşesini seçin. Sütunlar soldan sağa profil, ölçü ve adet olmalı."
+   : "Başlık dahil tablonun iki karşı köşesini seçin. İki parmakla yakınlaştırabilirsiniz.";
+  TextView directions = planLabel(content, corners, 14, Color.DKGRAY);
+  DrawingMeasureView[] view = new DrawingMeasureView[1];
+  DrawingMeasureView picker = new DrawingMeasureView(this, image, () -> {
+   int count = view[0].pointCount();
+   if (count < 2) directions.setText(corners);
+   else if (columns && count == 2) directions.setText("Profil ve ölçü sütunlarının arasına dokunun.");
+   else if (columns && count == 3) directions.setText("Ölçü ve adet sütunlarının arasına dokunun.");
+   else directions.setText("Seçimi kontrol edip taramayı başlatın.");
+  }, mode);
+  view[0] = picker;
   content.addView(picker, new LinearLayout.LayoutParams(-1, dp(274)));
   Button undo = new Button(this);
   undo.setText("Son noktayı geri al");
   undo.setOnClickListener(v -> picker.undo());
   content.addView(undo);
-  android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this).setTitle("Kesim tablosunun alanı")
+  android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this).setTitle(columns ? "Profil, ölçü ve adet sütunları" : "Kesim tablosunun alanı")
    .setView(content).setNegativeButton("Vazgeç", null).setPositiveButton("Alanı tara", null).create();
   dialog.setOnShowListener(ignored -> dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
    try {
-    android.graphics.RectF area = picker.selectedArea();
+    CutPhotoReader.Selection selection = picker.tableSelection();
     dialog.dismiss();
-    retryPhoto(number, area);
+    retryPhoto(number, selection);
    } catch (IllegalArgumentException error) {
     Toast.makeText(this, error.getMessage(), Toast.LENGTH_SHORT).show();
    }
@@ -731,14 +763,9 @@ public class MainActivity extends Activity {
   CutPhotoReader.Result scan = scans.get(number);
   if (scan != null && scan.preview != null) {
    card.addView(new PhotoScanView(this, scan.preview, scan.highlights, false), new LinearLayout.LayoutParams(-1, dp(167)));
-   Button crop = new Button(this);
-   crop.setAllCaps(false);
-   crop.setText("Tablo alanını seç ve yeniden tara");
-   crop.setTextColor(Color.WHITE);
-   crop.setBackground(rgbPanel(0xff172a3b, 0xff24505b, 0xff59e8ce));
-   crop.setOnClickListener(v -> selectCutArea(number, scan.original));
-   InterfaceMotion.buttonFeedback(crop);
-   card.addView(crop, new LinearLayout.LayoutParams(-1, dp(48)));
+   photoSelectionButton(card, "Tablo alanını seç ve yeniden tara", () -> selectCutArea(number, scan.original, DrawingMeasureView.Mode.AREA));
+   if (status != null) photoSelectionButton(card, "Profil, ölçü ve adet sütunlarını seç", () ->
+    selectCutArea(number, scan.original, DrawingMeasureView.Mode.COLUMNS));
   }
   if (status != null) {
    Button remove = new Button(this);
@@ -757,6 +784,20 @@ public class MainActivity extends Activity {
     }).show());
    card.addView(remove, new LinearLayout.LayoutParams(-1, dp(48)));
   }
+ }
+
+ private void photoSelectionButton(LinearLayout card, String label, Runnable select) {
+  Button button = new Button(this);
+  button.setAllCaps(false);
+  button.setText(label);
+  button.setTextColor(Color.WHITE);
+  button.setBackground(rgbPanel(0xff172a3b, 0xff24505b, 0xff59e8ce));
+  button.setOnClickListener(v -> select.run());
+  InterfaceMotion.buttonFeedback(button);
+  LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(-1, -2);
+  size.topMargin = dp(5);
+  button.setMinHeight(dp(48));
+  card.addView(button, size);
  }
 
  void profileHeading(LinearLayout card, String name, Bitmap icon) {

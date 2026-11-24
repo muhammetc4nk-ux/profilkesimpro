@@ -150,6 +150,22 @@ public final class CutSheetTest {
   assertEquals(-1, CutSheet.number(Arrays.asList(word("1,5", 620, 150)), true));
  }
 
+ @Test public void explicitlySelectedColumnsReadHeaderlessTablesAndIgnoreOutsideValues() {
+  List<CutSheet.Word> photo = Arrays.asList(
+   word("Kasa T. 3001", 200, 50), word("1450,5", 500, 50), word("2", 660, 50),
+   word("Kanat", 207, 86), word("1200", 500, 86), word("?", 660, 86), word("18", 850, 86),
+   word("Toplam", 208, 121), word("9500", 500, 121), word("8", 660, 121),
+   word("Yan dikme", 208, 166), word("9800", 500, 166), word("7", 660, 166));
+  assertTrue(CutSheet.read(photo, 800, 200).isEmpty());
+  List<CutSheet.Row> selected = CutSheet.readSelectedColumns(photo, 800, 200, 420, 585, null);
+  assertEquals(2, selected.size());
+  assertEquals("T.3001", selected.get(0).code);
+  assertEquals(14505, selected.get(0).length);
+  assertEquals(2, selected.get(0).quantity);
+  assertEquals(12000, selected.get(1).length);
+  assertEquals(-1, selected.get(1).quantity);
+ }
+
  private static List<CutSheet.Word> header() {
   return Arrays.asList(word("Profil adı", 232, 70), word("Kesim ölçüsü", 500, 70),
    word("Adet", 620, 70), word("Stok boyu", 735, 70));
