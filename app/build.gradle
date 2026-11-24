@@ -9,7 +9,7 @@ android {
     defaultConfig {
         applicationId 'com.profilkesim.pro'
         minSdk 23
-        targetSdk 28
+        targetSdk 34
         versionCode 3
         versionName '2.1.0'
         manifestPlaceholders = [appLabel: 'Profil Kesim Pro', appIcon: '@drawable/cannuryapi_icon']
