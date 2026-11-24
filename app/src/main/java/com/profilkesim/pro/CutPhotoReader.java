@@ -57,7 +57,7 @@ final class CutPhotoReader {
 
   int score() {
    int score = 0;
-   for (CutSheet.Row row : rows) score += 3 + (row.length > 0 ? 1 : 0) + (row.quantity >= 0 ? 1 : 0);
+   for (CutSheet.Row row : rows) score += 3 + (row.length >= 0 ? 1 : 0) + (row.quantity >= 0 ? 1 : 0);
    return score;
   }
 
@@ -265,6 +265,7 @@ final class CutPhotoReader {
  private static int retryFormNumber(Bitmap image, CutTableGrid.Pixels pixels, CutSheet.Bounds cell,
                                     boolean quantity, TextRecognizer recognizer) throws InterruptedException {
   if (!valid(cell, image)) return -1;
+  if (ZeroCell.matches(pixels, image.getWidth(), cell, true)) return 0;
   int wide = retry(image, pixels, null, cell, quantity, recognizer);
   int insetX = (cell.right - cell.left) / 5, insetY = cell.height() / 5;
   CutSheet.Bounds center = new CutSheet.Bounds(cell.left + insetX, cell.top + insetY,
@@ -319,7 +320,7 @@ final class CutPhotoReader {
   return Bitmap.createBitmap(image, 0, top, image.getWidth(), bottom - top);
  }
 
- private static Bitmap localContrast(Bitmap source) { return localContrast(source, false); }
+ static Bitmap localContrast(Bitmap source) { return localContrast(source, false); }
 
  private static Bitmap localContrast(Bitmap source, boolean ignoreBlueNotes) {
   int w = source.getWidth(), h = source.getHeight(), radius = Math.max(7, w / 95);
@@ -522,6 +523,7 @@ final class CutPhotoReader {
  private static int retry(Bitmap image, CutTableGrid.Pixels pixels, TableOcrRegion region, CutSheet.Bounds box,
                           boolean quantity, TextRecognizer recognizer) throws InterruptedException {
   if (!valid(box, image)) return -1;
+  if (ZeroCell.matches(pixels, image.getWidth(), box, false)) return 0;
   float scale = Math.max(1.5f, Math.min(4f, 105f / box.height()));
   int raw = CutSheet.number(extract(image, pixels, null, box, scale, recognizer), quantity);
   if (region == null) return raw;
@@ -555,7 +557,7 @@ final class CutPhotoReader {
   return enhanced;
  }
 
- private static Bitmap rotate(Bitmap image, float angle) {
+ static Bitmap rotate(Bitmap image, float angle) {
   Matrix rotation = new Matrix();
   rotation.setRotate(angle);
   return Bitmap.createBitmap(image, 0, 0, image.getWidth(), image.getHeight(), rotation, true);

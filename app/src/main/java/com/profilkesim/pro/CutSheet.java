@@ -231,7 +231,7 @@ final class CutSheet {
     return Collections.emptyList();
    }
    if (row.length > 10000) definiteLengths++;
-   if (row.length > 0 && row.quantity >= 0) complete++;
+   if (row.length >= 0 && row.quantity >= 0) complete++;
   }
   // Lengths larger than a valid quantity establish the column order without guessing.
   return definiteLengths >= 2 && complete * 3 >= rows.size() * 2 ? rows : Collections.emptyList();
@@ -429,7 +429,7 @@ final class CutSheet {
     for (Line textLine : textLines) {
      Row entry = header.readRow(textLine.words, grid);
      if (entry == null) continue;
-     if (entry.length > 0) lengths++;
+     if (entry.length >= 0) lengths++;
      if (entry.quantity >= 0) quantities++;
     }
     if (lengths > 1 || quantities > 1) {

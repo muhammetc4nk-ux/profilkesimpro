@@ -61,6 +61,12 @@ public final class PhotoCutPlanTest {
   assertEquals(Arrays.asList(26000), plans.get(0).pieces);
  }
 
+ @Test public void aReadZeroLengthWithPositiveQuantityStillNeedsCorrection() {
+  Map<Integer, List<MainActivity.CutRow>> photos = new LinkedHashMap<>();
+  photos.put(1, Arrays.asList(row("K100", "Üst kasa", "0", "2")));
+  assertThrows(IllegalArgumentException.class, () -> plans(photos));
+ }
+
  private static List<MainActivity.ProfileCutPlan> plans(Map<Integer, List<MainActivity.CutRow>> photos) {
   Map<String, String> stocks = new HashMap<>();
   for (List<MainActivity.CutRow> rows : photos.values()) {

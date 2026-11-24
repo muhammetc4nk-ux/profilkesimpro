@@ -22,8 +22,6 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
-import com.google.android.gms.tasks.Tasks;
-import com.google.mlkit.vision.common.InputImage;
 import com.google.mlkit.vision.text.TextRecognition;
 import com.google.mlkit.vision.text.TextRecognizer;
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
@@ -796,7 +794,7 @@ final class TemaWorkshop {
    app.planLabel(photoCard, android.text.TextUtils.join(" · ", details), 14, series.accent);
    chooseButton(photoCard, "Okunan değerleri forma al", () -> applyDimensions(recognized));
   } else {
-   app.planLabel(photoCard, "Ölçü etiketi bulunamadı. Referansla ölçebilir veya dış ölçüyü girebilirsiniz.", 13, 0xffffce83);
+   app.planLabel(photoCard, "Okunabilir dış ölçü bulunamadı. Çizime en ve yüksekliği yazabilir veya referansla ölçebilirsiniz.", 13, 0xffffce83);
   }
   chooseButton(photoCard, "Referansla çizim üzerinde ölç", this::measurePhoto);
  }
@@ -873,7 +871,7 @@ final class TemaWorkshop {
    });
    DrawingDimensions read = new DrawingDimensions(-1, -1);
    try (TextRecognizer recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)) {
-    read = DrawingDimensions.read(Tasks.await(recognizer.process(InputImage.fromBitmap(image, 0))).getText());
+    read = DrawingPhotoReader.scan(image, recognizer);
    } catch (InterruptedException e) {
     Thread.currentThread().interrupt();
    } catch (java.util.concurrent.ExecutionException | RuntimeException ignored) {
