@@ -25,6 +25,7 @@ public class MainActivity extends Activity {
  private FrameLayout shell;
  private BalconyBackdrop backdrop;
  private LedTrace mastheadTrace;
+ private boolean rgbRunning;
  private TemaWorkshop temaWorkshop;
  private final Map<TemaCatalog.Series, TemaWorkshop> temaWorkshops = new java.util.EnumMap<>(TemaCatalog.Series.class);
  Uri cameraUri;
@@ -265,8 +266,12 @@ public class MainActivity extends Activity {
   brand.setPadding(0, 0, 0, 0);
   identity.addView(brand);
 
-  TextView tagline = text("Yeni gelmedik, geri geldik", 12);
-  tagline.setTextColor(0xffa8d6db);
+  TextView tagline = new InterfaceMotion.Tagline(this, this::rgbRunning);
+  tagline.setText("Yeni gelmedik, geri geldik");
+  tagline.setTextSize(13);
+  tagline.setTypeface(null, Typeface.BOLD);
+  tagline.setTextColor(0xffc7f9ef);
+  tagline.setShadowLayer(dp(3), 0, 0, 0x8a995dff);
   tagline.setPadding(0, dp(2), 0, 0);
   identity.addView(tagline);
 
@@ -383,7 +388,7 @@ public class MainActivity extends Activity {
   LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(-1, -2);
   size.setMargins(0, dp(5), 0, dp(5));
   body.addView(tile, size);
-  if (accent != 0xff9ae9e4) lightPanel(tile);
+  reveal(tile, body.getChildCount() * 26);
  }
  EditText input(String hint,String val){
   return input(body, hint, val);
@@ -451,6 +456,8 @@ public class MainActivity extends Activity {
   updateMusicButton();
   updateMusicService();
   boolean motion = InterfaceMotion.enabled(this);
+  rgbRunning = motion;
+  InterfaceMotion.redraw(root);
   if (backdrop != null) backdrop.setActive(motion);
   if (mastheadTrace != null) mastheadTrace.setActive(motion);
  }
@@ -460,6 +467,7 @@ public class MainActivity extends Activity {
  }
  @Override protected void onPause() {
   musicScreenResumed = false;
+  rgbRunning = false;
   if (backdrop != null) backdrop.setActive(false);
   if (mastheadTrace != null) mastheadTrace.setActive(false);
   updateMusicService();
@@ -630,7 +638,7 @@ public class MainActivity extends Activity {
    }
    if (decoded == null) {
     try {
-     decoded = MediaStore.Images.Media.getBitmap(getContentResolver(), uri);
+     decoded = decodeSampledPhoto(uri);
     } catch (java.io.IOException | RuntimeException e) {
      android.util.Log.w("ProfilKesimOCR", "Legacy bitmap decode failed for photo " + number, e);
     }
@@ -669,6 +677,22 @@ public class MainActivity extends Activity {
     else finished.accept(result);
    });
   }, "photo-decoder").start();
+ }
+
+ private Bitmap decodeSampledPhoto(Uri uri) throws java.io.IOException {
+  android.graphics.BitmapFactory.Options options = new android.graphics.BitmapFactory.Options();
+  options.inJustDecodeBounds = true;
+  try (java.io.InputStream input = getContentResolver().openInputStream(uri)) {
+   android.graphics.BitmapFactory.decodeStream(input, null, options);
+  }
+  if (options.outWidth <= 0 || options.outHeight <= 0) return null;
+  options.inJustDecodeBounds = false;
+  options.inSampleSize = 1;
+  int longest = Math.max(options.outWidth, options.outHeight);
+  while (longest / options.inSampleSize > 3200) options.inSampleSize *= 2;
+  try (java.io.InputStream input = getContentResolver().openInputStream(uri)) {
+   return android.graphics.BitmapFactory.decodeStream(input, null, options);
+  }
  }
 
  private void acceptScan(int number, CutPhotoReader.Result result) {
@@ -1111,18 +1135,16 @@ public class MainActivity extends Activity {
    new int[]{0xff7899a6, 0xff27424e, 0xff425c63, 0xff96785a});
   frame.setCornerRadius(dp(18));
   GradientDrawable surface = gradient(start, end, (edge & 0x00ffffff) | 0x66000000);
-  GradientDrawable strip = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-   new int[]{0x00ecc18b, 0xbbecc18b, 0xb68cdee2, 0x008cdee2});
-  strip.setCornerRadius(dp(3));
+  InterfaceMotion.PanelLights lights = new InterfaceMotion.PanelLights(
+   getResources().getDisplayMetrics().density, this::rgbRunning);
   android.graphics.drawable.LayerDrawable layers = new android.graphics.drawable.LayerDrawable(
-   new android.graphics.drawable.Drawable[]{frame, surface, strip});
+   new android.graphics.drawable.Drawable[]{frame, surface, lights});
   layers.setPaddingMode(android.graphics.drawable.LayerDrawable.PADDING_MODE_STACK);
   layers.setLayerInset(1, dp(1), dp(1), dp(1), dp(1));
-  layers.setLayerInset(2, dp(18), dp(1), dp(18), 0);
-  layers.setLayerHeight(2, dp(1));
-  layers.setLayerGravity(2, Gravity.TOP | Gravity.FILL_HORIZONTAL);
   return layers;
  }
+
+ private boolean rgbRunning() { return rgbRunning; }
 
  void addTextPanel(TextView view, int start, int end, int edge) {
   addTextPanel(body, view, start, end, edge);

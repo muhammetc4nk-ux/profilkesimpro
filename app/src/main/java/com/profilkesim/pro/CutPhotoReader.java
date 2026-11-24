@@ -101,25 +101,58 @@ final class CutPhotoReader {
    Words raw = words(InputImage.fromBitmap(oriented, 0), 0, 0, 1, recognizer);
    Candidate clean = candidate(raw, oriented);
    Candidate best = prefer(isolated, clean);
+   if (!best.complete() && (turn % 2 == 0 || best.score() > 0)) {
+    best = prefer(best, enhanced(oriented, recognizer));
+   }
    float skew = raw.angle();
    if (skew != 0 && !best.complete()) {
     Bitmap straight = rotate(oriented, -skew);
-    Candidate leveled = candidate(words(InputImage.fromBitmap(straight, 0), 0, 0, 1, recognizer), straight);
-    if (leveled.score() == 0) {
+    Words levelWords = words(InputImage.fromBitmap(straight, 0), 0, 0, 1, recognizer);
+    Candidate leveled = candidate(levelWords, straight);
+    if (!leveled.complete()) {
      TableOcrRegion levelRegion = TableOcrRegion.find(pixels(straight), straight.getWidth(), straight.getHeight());
-     leveled = isolated(straight, levelRegion, recognizer);
+     leveled = prefer(leveled, isolated(straight, levelRegion, recognizer));
+     leveled = prefer(leveled, enhanced(straight, recognizer));
+    }
+    if (!leveled.complete() && !best.complete()) {
+     Result recovered = scanRuledWithoutHeading(straight, thumb, levelWords,
+      Math.max(best.rows.size(), leveled.rows.size()), recognizer);
+     if (recovered != null) return recovered;
     }
     if (leveled.score() > best.score()) return result(leveled, thumb, straight, recognizer);
+    straight.recycle();
+   }
+   if (!best.complete()) {
+    Result recovered = scanRuledWithoutHeading(oriented, thumb, raw, best.rows.size(), recognizer);
+    if (recovered != null) return recovered;
    }
    if (best.score() > 0) return result(best, thumb, oriented, recognizer);
-   if (turn == 0 || turn == 2) {
-    Bitmap highContrast = contrast(oriented);
-    Candidate enhanced = candidate(words(InputImage.fromBitmap(highContrast, 0), 0, 0, 1, recognizer), oriented);
-    highContrast.recycle();
-    if (enhanced.score() > 0) return result(enhanced, thumb, oriented, recognizer);
-   }
+   if (turn > 0) oriented.recycle();
   }
   return new Result(Collections.emptyList(), thumb, thumb, Collections.emptyList());
+ }
+
+ private static Candidate enhanced(Bitmap image, TextRecognizer recognizer) throws InterruptedException {
+  Bitmap highContrast = contrast(image);
+  try {
+   return candidate(words(InputImage.fromBitmap(highContrast, 0), 0, 0, 1, recognizer), image);
+  } finally {
+   highContrast.recycle();
+  }
+ }
+
+ private static Result scanRuledWithoutHeading(Bitmap image, Bitmap thumb, Words raw, int previousRows,
+                                               TextRecognizer recognizer) throws InterruptedException {
+  TableOcrRegion area = TableOcrRegion.findWithoutHeading(pixels(image), image.getWidth(), image.getHeight());
+  if (area == null || CutSheet.hasNonCutHeading(raw.elements, area.box)) return null;
+  CutSheet.Bounds areaBox = area.box;
+  Bitmap table = Bitmap.createBitmap(image, areaBox.left, areaBox.top, areaBox.right - areaBox.left, areaBox.height());
+  int first = area.columnEdge(1) - areaBox.left, second = area.columnEdge(2) - areaBox.left;
+  Candidate best = selectedColumns(table, first, second, area.cropped(), true, recognizer);
+  if (!best.complete()) {
+   best = prefer(best, selectedColumns(table, first, second, null, true, recognizer));
+  }
+  return best.rows.size() > previousRows ? result(best, thumb, table, recognizer) : null;
  }
 
  private static Candidate prefer(Candidate first, Candidate second) {
@@ -132,13 +165,15 @@ final class CutPhotoReader {
       || !(CutSheet.identity(a.name).equals(CutSheet.identity(b.name)) || (!a.code.isEmpty() && a.code.equals(b.code)))) {
      return first.score() >= second.score() ? first : second;
     }
+    boolean lengthConflict = a.lengthConflict || b.lengthConflict || (a.length >= 0 && b.length >= 0 && a.length != b.length);
+    boolean countConflict = a.quantityConflict || b.quantityConflict || (a.quantity >= 0 && b.quantity >= 0 && a.quantity != b.quantity);
     CutSheet.Row row = new CutSheet.Row(a.name, a.code.isEmpty() ? b.code : a.code,
-     agreement(a.length, b.length), agreement(a.quantity, b.quantity), a.identity);
+     lengthConflict ? -1 : agreement(a.length, b.length), countConflict ? -1 : agreement(a.quantity, b.quantity), a.identity);
+    row.lengthConflict = lengthConflict;
+    row.quantityConflict = countConflict;
     row.section = a.section == null ? b.section : a.section;
-    row.lengthCell = a.lengthCell;
-    row.quantityCell = a.quantityCell;
-    if (a.length >= 0 && b.length >= 0 && a.length != b.length) row.lengthCell = null;
-    if (a.quantity >= 0 && b.quantity >= 0 && a.quantity != b.quantity) row.quantityCell = null;
+    row.lengthCell = a.lengthCell == null ? b.lengthCell : a.lengthCell;
+    row.quantityCell = a.quantityCell == null ? b.quantityCell : a.quantityCell;
     merged.add(row);
    }
    return new Candidate(merged, first.region);
@@ -153,27 +188,27 @@ final class CutPhotoReader {
   if (first < 12 || second - first < 12 || width - second < 12) {
    throw new IllegalArgumentException("Tablo sütunları tarama için çok dar.");
   }
-  Candidate best = selectedColumns(table, first, second, recognizer);
+  TableOcrRegion cleanup = TableOcrRegion.selected(pixels(table), width, height, first, second);
+  Candidate best = selectedColumns(table, first, second, cleanup, false, recognizer);
   if (!best.complete()) {
-   Bitmap contrasted = contrast(table);
-   try {
-    best = prefer(best, selectedColumns(contrasted, first, second, recognizer));
-   } finally {
-    contrasted.recycle();
-   }
+   best = prefer(best, selectedColumns(table, first, second, null, false, recognizer));
   }
   return result(best, thumbnail(original, 840), table, recognizer);
  }
 
- private static Candidate selectedColumns(Bitmap table, int first, int second, TextRecognizer recognizer) throws InterruptedException {
+ private static Candidate selectedColumns(Bitmap table, int first, int second, TableOcrRegion cleanup, boolean auto,
+                                          TextRecognizer recognizer) throws InterruptedException {
   int[] edges = {0, first, second, table.getWidth()};
   CutTableGrid.Pixels pixels = pixels(table);
   List<CutSheet.Word> words = new ArrayList<>();
   for (int i = 0; i < 3; i++) {
    CutSheet.Bounds column = new CutSheet.Bounds(edges[i], 0, edges[i + 1], table.getHeight());
-   words.addAll(extract(table, pixels, null, column, 1.35f, recognizer));
+   words.addAll(extract(table, pixels, cleanup, column, 1.35f, recognizer));
   }
-  return new Candidate(CutSheet.readSelectedColumns(words, table.getWidth(), table.getHeight(), first, second, pixels), null);
+  List<CutSheet.Row> rows = auto
+   ? CutSheet.readRuledWithoutHeading(words, table.getWidth(), table.getHeight(), first, second, pixels)
+   : CutSheet.readSelectedColumns(words, table.getWidth(), table.getHeight(), first, second, pixels);
+  return new Candidate(rows, cleanup);
  }
 
  private static int agreement(int a, int b) { return a < 0 ? b : b < 0 || a == b ? a : -1; }
@@ -255,8 +290,8 @@ final class CutPhotoReader {
      row.section.right - row.section.left, row.section.height()), 300);
     highlights.add(normalized(row.section, image));
    }
-   int length = row.length < 0 ? retry(image, pixels, candidate.region, row.lengthCell, false, recognizer) : row.length;
-   int count = row.quantity < 0 ? retry(image, pixels, candidate.region, row.quantityCell, true, recognizer) : row.quantity;
+   int length = row.length < 0 && !row.lengthConflict ? retry(image, pixels, candidate.region, row.lengthCell, false, recognizer) : row.length;
+   int count = row.quantity < 0 && !row.quantityConflict ? retry(image, pixels, candidate.region, row.quantityCell, true, recognizer) : row.quantity;
    if (valid(row.lengthCell, image)) highlights.add(normalized(row.lengthCell, image));
    if (valid(row.quantityCell, image)) highlights.add(normalized(row.quantityCell, image));
    rows.add(new MainActivity.CutRow(row.code, row.name, length, count, icon));

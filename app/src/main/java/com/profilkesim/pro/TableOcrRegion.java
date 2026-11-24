@@ -5,7 +5,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
-/** Separates a dark-headed, ruled table from the rest of a photo before OCR. */
+/** Separates a ruled table from the surrounding photo before OCR. */
 final class TableOcrRegion {
  final CutSheet.Bounds box;
  private final int firstNumber, secondNumber, dataTop, nameStart;
@@ -31,6 +31,16 @@ final class TableOcrRegion {
    case 2: return secondNumber;
    default: return box.right;
   }
+ }
+
+ TableOcrRegion cropped() {
+  return new TableOcrRegion(new CutSheet.Bounds(0, 0, box.right - box.left, box.height()),
+   firstNumber - box.left, secondNumber - box.left, dataTop - box.top, nameStart - box.left);
+ }
+
+ static TableOcrRegion selected(CutTableGrid.Pixels pixels, int width, int height, int first, int second) {
+  int start = nameStart(pixels, new int[width], 4, first - 4, 0, height);
+  return new TableOcrRegion(new CutSheet.Bounds(0, 0, width, height), first, second, 0, start);
  }
 
  static TableOcrRegion find(CutTableGrid.Pixels pixels, int width, int height) {
@@ -90,10 +100,70 @@ final class TableOcrRegion {
   return best;
  }
 
+ static TableOcrRegion findWithoutHeading(CutTableGrid.Pixels pixels, int width, int height) {
+  if (width < 180 || height < 100) return null;
+  int[] colors = new int[width];
+  List<Rule> columns = verticalRules(pixels, colors, height);
+  TableOcrRegion best = null;
+  int bestRows = 2;
+  for (int i = 3; i < columns.size(); i++) {
+   Rule left = columns.get(i - 3), first = columns.get(i - 2);
+   Rule second = columns.get(i - 1), right = columns.get(i);
+   int names = first.x - left.x, lengths = second.x - first.x, counts = right.x - second.x;
+   int span = right.x - left.x;
+   if (span < Math.max(150, width / 4) || names < lengths || lengths < span / 9
+     || counts < span / 14 || counts > lengths * 1.35f) continue;
+   int top = Math.max(first.top, second.top);
+   int bottom = Math.min(first.bottom, second.bottom);
+   if (bottom - top < Math.max(75, height / 4)
+     || Math.abs(first.top - second.top) > (bottom - top) / 10) continue;
+   int rows = countAlignedRules(pixels, colors, left.x, first.x, second.x, right.x, top, bottom);
+   if (rows <= bestRows) continue;
+   bestRows = rows;
+   int nameStart = nameStart(pixels, colors, left.x + 5, first.x - 5, top, bottom);
+   best = new TableOcrRegion(new CutSheet.Bounds(left.x, top, right.x + 1, Math.min(height, bottom + 2)),
+    first.x, second.x, top, nameStart);
+  }
+  return best;
+ }
+
+ private static int countAlignedRules(CutTableGrid.Pixels pixels, int[] colors, int left, int first,
+                                      int second, int right, int top, int bottom) {
+  int rules = 0, leftHits = 0, rightHits = 0;
+  int previous = top;
+  int gap = Math.max(10, (bottom - top) / 40);
+  for (int y = top; y <= bottom; y++) {
+   pixels.readRow(y, colors);
+   if (darkNear(colors, left)) leftHits++;
+   if (darkNear(colors, right)) rightHits++;
+   if (y - previous >= gap && hasRule(colors, left, first) && hasRule(colors, first, second)
+     && hasRule(colors, second, right)) {
+    rules++;
+    previous = y;
+   }
+  }
+  int rows = bottom - top + 1;
+  return leftHits * 4 >= rows * 3 && rightHits * 4 >= rows * 3 ? rules : 0;
+ }
+
+ private static boolean hasRule(int[] colors, int left, int right) {
+  int ink = 0;
+  for (int x = left + 3; x < right - 3; x += 2) if (brightness(colors[x]) < 2120) ink++;
+  return ink * 2 >= (right - left - 6) * .82f;
+ }
+
+ private static boolean darkNear(int[] colors, int x) {
+  for (int i = Math.max(0, x - 2); i <= Math.min(colors.length - 1, x + 2); i++) {
+   if (dark(colors[i])) return true;
+  }
+  return false;
+ }
+
  void prepareRow(int y, int[] colors) {
   boolean heading = y < dataTop;
   boolean rule = y < box.top + 3 || Math.abs(y - dataTop) <= 2 || y >= box.bottom - 4
-   || (!heading && darkShare(colors, firstNumber + 3, secondNumber - 3) > .55f);
+   || (!heading && (darkShare(colors, firstNumber + 3, secondNumber - 3) > .55f
+    || (dataTop == box.top && hasRule(colors, firstNumber, secondNumber))));
   for (int x = box.left; x < box.right; x++) {
    boolean divider = x < box.left + 4 || x >= box.right - 4
     || Math.abs(x - firstNumber) <= 2 || Math.abs(x - secondNumber) <= 2;
@@ -143,8 +213,8 @@ final class TableOcrRegion {
   Rule[] longest = new Rule[width];
   for (int y = 0; y < height; y += 2) {
    pixels.readRow(y, colors);
-   for (int x = 5; x < width - 5; x++) {
-    if (!dark(colors[x]) || (dark(colors[x - 5]) && dark(colors[x + 5]))) continue;
+   for (int x = 1; x < width - 1; x++) {
+    if (!dark(colors[x]) || (dark(colors[Math.max(0, x - 5)]) && dark(colors[Math.min(width - 1, x + 5)]))) continue;
     if (lengths[x] == 0 || y - last[x] > 6) {
      starts[x] = y;
      lengths[x] = 0;

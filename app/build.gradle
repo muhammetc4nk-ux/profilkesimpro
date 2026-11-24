@@ -10,9 +10,8 @@ android {
         applicationId 'com.profilkesim.pro'
         minSdk 23
         targetSdk 34
-        versionCode 3
-        versionName '2.1.0'
-        manifestPlaceholders = [appLabel: 'Profil Kesim Pro', appIcon: '@drawable/cannuryapi_icon']
+        versionCode 4
+        versionName '2.1.1'
     }
 
     def workshopKey = providers.environmentVariable('ATOLYE_KEYSTORE_FILE').orNull
@@ -33,9 +32,8 @@ android {
 
     buildTypes {
         release {
-            // The workshop APK can be installed beside legacy debug builds.
+            // Keep updates compatible with the installed, signed 2.1.0 APK.
             applicationIdSuffix '.atolye'
-            manifestPlaceholders = [appLabel: 'Kesim Atölye', appIcon: '@drawable/ic_kesim_atolye']
             if (workshopKey && workshopPassword) {
                 signingConfig signingConfigs.workshop
             }

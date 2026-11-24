@@ -166,6 +166,48 @@ public final class CutSheetTest {
   assertEquals(-1, selected.get(1).quantity);
  }
 
+ @Test public void recoversAPhotoOfAThreeColumnCutTableWithACroppedHeading() {
+  int width = 760, height = 345;
+  CutTableGrid.Pixels pixels = (y, colors) -> {
+   Arrays.fill(colors, 0xfffafafa);
+   if (y % 58 == 57) Arrays.fill(colors, 3, 757, 0xffbcbfc5);
+   for (int x : new int[]{3, 408, 630, 756}) colors[x] = 0xff2c3945;
+  };
+  TableOcrRegion region = TableOcrRegion.findWithoutHeading(pixels, width, height);
+  assertNotNull(region);
+  assertEquals(408, region.columnEdge(1));
+  assertEquals(630, region.columnEdge(2));
+  List<CutSheet.Word> words = new ArrayList<>(Arrays.asList(
+   word("Üst kasa", 230, 28), word("3100", 500, 28), word("2", 680, 28),
+   word("T.3102", 230, 87), word("1980", 500, 87), word("5", 680, 87),
+   word("Kanat", 230, 145), word("?,5", 500, 145), word("8", 680, 145)));
+  assertTrue(CutSheet.read(words, width, height, pixels).isEmpty());
+  List<CutSheet.Row> recovered = CutSheet.readRuledWithoutHeading(words, width, height, 408, 630, pixels);
+  assertEquals(3, recovered.size());
+  assertEquals("Üst kasa", recovered.get(0).name);
+  assertEquals(31000, recovered.get(0).length);
+  assertEquals(2, recovered.get(0).quantity);
+  assertNotNull(recovered.get(0).section);
+  assertEquals("T.3102", recovered.get(1).code);
+  assertEquals(-1, recovered.get(2).length);
+ }
+
+ @Test public void refusesAHeaderlessSystemTableAndAmbiguousColumnOrder() {
+  int width = 760, height = 250;
+  List<CutSheet.Word> words = new ArrayList<>(Arrays.asList(
+   word("Üst kasa", 230, 55), word("3100", 500, 55), word("2", 680, 55),
+   word("Dış kasa", 230, 100), word("1980", 500, 100), word("3", 680, 100),
+   word("Kanat", 230, 145), word("570", 500, 145), word("4", 680, 145)));
+  words.add(word("Sistem ölçüsü", 500, 15));
+  assertTrue(CutSheet.readRuledWithoutHeading(words, width, height, 408, 630, null).isEmpty());
+  assertTrue(CutSheet.hasNonCutHeading(words, new CutSheet.Bounds(0, 35, width, height)));
+  assertFalse(CutSheet.hasNonCutHeading(words, new CutSheet.Bounds(520, 35, width, height)));
+  words.remove(words.size() - 1);
+  words.set(1, word("310", 500, 55));
+  words.set(4, word("198", 500, 100));
+  assertTrue(CutSheet.readRuledWithoutHeading(words, width, height, 408, 630, null).isEmpty());
+ }
+
  private static List<CutSheet.Word> header() {
   return Arrays.asList(word("Profil adı", 232, 70), word("Kesim ölçüsü", 500, 70),
    word("Adet", 620, 70), word("Stok boyu", 735, 70));

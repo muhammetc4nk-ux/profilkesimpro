@@ -18,6 +18,8 @@ final class CutSheet {
  private static final Pattern PROFILE_PART = Pattern.compile(
   "\\b(?:PROFIL(?:I|LERI)?|KASA|KANAT|RAY(?:I)?|DIKME|CITA|KAPAK|KUSAK|KAYIT|FITIL|"
    + "BIRLESIM|CEKTIRME|KILIT|KARSILIK|ESIK|LAMEL|BORU|KUTU|ISPANYOLET)\\b");
+ private static final Pattern NON_CUT_COLUMN = Pattern.compile(
+  "\\b(?:SISTEM|BALKON|CAM|STOK|HAM) (?:OLCU\\w*|BOY\\w*|EN|GENISLIK|YUKSEKLIK)\\b");
  private static final Pattern FOOTER = Pattern.compile(
   "^(?:(?:CAM )?BALKON(?: SISTEMI?)? (?:OLCU(?:SU|LERI)?|BOYUT(?:U|LARI)?|GENISLIGI|YUKSEKLIGI|ENI|BOYU)|"
    + "(?:SISTEM|CAM|MONTAJ|BALKON) (?:OLCU\\w*|BOYUT\\w*|GENISLIK|YUKSEKLIK|EN|BOY)|"
@@ -61,6 +63,7 @@ final class CutSheet {
   final int length, quantity; // lengths are tenths of a millimetre
   final Bounds identity;
   Bounds section, lengthCell, quantityCell;
+  boolean lengthConflict, quantityConflict;
 
   Row(String name, String code, int length, int quantity, Bounds identity) {
    this.name = name;
@@ -205,6 +208,41 @@ final class CutSheet {
   return rows;
  }
 
+ static List<Row> readRuledWithoutHeading(List<Word> words, int width, int height, int first, int second,
+                                        CutTableGrid.Pixels pixels) {
+  List<Row> rows = readSelectedColumns(words, width, height, first, second, pixels);
+  if (rows.size() < 3) return Collections.emptyList();
+  int firstData = rows.get(0).identity.top;
+  for (Line line : linesFrom(words)) {
+   if (line.baseline.y() >= firstData) break;
+   String label = identity(join(line.words));
+   if (FOOTER.matcher(label).find() || NON_CUT_COLUMN.matcher(label).find()) return Collections.emptyList();
+  }
+  int definiteLengths = 0, complete = 0;
+  for (Row row : rows) {
+   if (!PROFILE_PART.matcher(identity(row.name)).find() && !INLINE_CODE.matcher(row.code).matches()) {
+    return Collections.emptyList();
+   }
+   if (row.length > 10000) definiteLengths++;
+   if (row.length > 0 && row.quantity >= 0) complete++;
+  }
+  // Lengths larger than a valid quantity establish the column order without guessing.
+  return definiteLengths >= 2 && complete * 3 >= rows.size() * 2 ? rows : Collections.emptyList();
+ }
+
+ static boolean hasNonCutHeading(List<Word> words, Bounds table) {
+  int margin = Math.max(16, table.height() / 7);
+  List<Word> heading = new ArrayList<>();
+  for (Word word : words) {
+   if (word.box.x() >= table.left && word.box.x() < table.right
+     && word.box.y() >= table.top - margin && word.box.y() < table.top + margin) heading.add(word);
+  }
+  for (Line line : linesFrom(heading)) {
+   if (NON_CUT_COLUMN.matcher(identity(join(line.words))).find()) return true;
+  }
+  return false;
+ }
+
  private static Column selectedColumn(Field field, int x, int height, String label) {
   return new Column(field, new Bounds(x - 1, -height, x + 1, 0), label);
  }
@@ -321,7 +359,8 @@ final class CutSheet {
   if (label.matches("PROFIL (?:KESITI|KESIT|SEKLI|GORSELI|RESMI|CIZIMI)|KESIT(?: SEKLI| GORSELI)?|SEKIL|GORSEL|RESIM|CIZIM")) return Field.SECTION;
   if (label.matches("(?:PROFIL|PROFILE) (?:KODU|KOD|NO|CODE|REF)|(?:MALZEME|PARCA) KODU|KOD(?:U)?|CODE")) return Field.CODE;
   if (label.matches("PROFIL(?: ADI| ISMI| CINSI| TURU| TANIMI| KODU ADI| ADI KODU)?|(?:MALZEME|PARCA)(?: ADI| ISMI| CINSI| TANIMI)?|ACIKLAMA|PROFILE(?: NAME)?|DESCRIPTION")) return Field.NAME;
-  if (label.matches("(?:KESIM|KESILECEK|PARCA) (?:OLCU(?:SU)?|BOY(?:U)?|UZUNLUK|UZUNLUGU|EBAT(?:I)?)(?: MM)?|(?:OLCU(?:SU)?|BOY|UZUNLUK|CUT LENGTH|LENGTH)(?: MM)?|L MM")) return Field.LENGTH;
+  if (label.matches("KESIM MM|(?:KESIM|KESILECEK|PARCA) (?:OLCU(?:SU)?|BOY(?:U)?|UZUNLUK|UZUNLUGU|EBAT(?:I)?)(?: MM)?"
+    + "|(?:OLCU(?:SU)?|BOY(?:U)?|UZUNLUK|EBAT|CUT LENGTH|CUT SIZE|LENGTH)(?: MM)?|L MM")) return Field.LENGTH;
   if (label.matches("(?:KESIM |PARCA )?ADET(?:I)?(?: PCS)?|MIKTAR(?: ADET)?|SAYI(?:SI)?|QTY|QUANTITY|PCS")) return Field.QUANTITY;
   if (label.matches("(?:SISTEM|BALKON|CAM|HAM|STOK|PROFIL) (?:OLCU\\w*|BOY\\w*|UZUNLUGU|EN|YUKSEKLIK|ADET\\w*)(?: MM)?|"
     + "(?:SON|GENEL )?TOPLAM|(?:SIRA )?NO|BOYUT|AGIRLIK|FIRE|OLCU BIRIMI|BIRIM|RENK|GENISLIK|YUKSEKLIK")) return Field.OTHER;

@@ -28,7 +28,7 @@ final class LedTrace extends View {
  }
 
  void setActive(boolean active) {
-  if (active) animate(ValueAnimator.INFINITE, 10600);
+  if (active) animate(ValueAnimator.INFINITE, 4400);
   else if (animator != null) {
    animator.cancel();
    animator = null;
@@ -80,9 +80,10 @@ final class LedTrace extends View {
    float y = getHeight() - 5.6f * density;
    canvas.drawLine(x, y, x + 3.0f * density, y - 3.0f * density, paint);
   }
-  trace(canvas, length, phase, .14f, 0xff83f5e8);
-  trace(canvas, length, (phase + .53f) % 1f, .085f, 0xffffcf8e);
-  trace(canvas, length, (phase + .81f) % 1f, .06f, 0xffb6a3ff);
+  trace(canvas, length, phase, .16f, 0xff52ffe0);
+  trace(canvas, length, (phase + .41f) % 1f, .09f, 0xffffa663);
+  trace(canvas, length, (phase + .68f) % 1f, .10f, 0xffa685ff);
+  trace(canvas, length, (phase + .86f) % 1f, .05f, 0xffff7cc9);
  }
 
  private void trace(Canvas canvas, float length, float position, float span, int color) {
