@@ -40,7 +40,7 @@ public class MainActivity extends Activity {
  final Map<Integer, Uri> photoSources = new LinkedHashMap<>();
  final Map<Integer, CutPhotoReader.Result> scans = new LinkedHashMap<>();
  static class CutRow {
-  final String code, name;
+  String code, name;
   final int length, qty;
   final Bitmap icon;
   String[] draft;
@@ -518,7 +518,7 @@ public class MainActivity extends Activity {
    return;
   }
   page("Fotoğraflardan kesim listesi");
-  note("Bir veya daha fazla kesim föyü ekleyin. Aynı profiller tek kesim planında birleşir.");
+  note("Kesim föyü veya el yazılı liste ekleyin. Aynı profiller tek kesim planında birleşir.");
   addPhotoButtons(() -> {});
   button("Elle satır ekle", () -> showDetected());
   button("Ana menü", () -> home());
@@ -698,7 +698,7 @@ public class MainActivity extends Activity {
  private void acceptScan(int number, CutPhotoReader.Result result) {
   scans.put(number, result);
   if (result.rows.isEmpty()) {
-   failedPhotos.put(number, "Kesim satırı bulunamadı. Tablo alanını veya sütunları işaretleyip yeniden tarayabilirsiniz.");
+   failedPhotos.put(number, "Kesim satırı bulunamadı. Liste alanını seçip yeniden tarayabilirsiniz.");
   } else {
    detected.put(number, result.rows);
    failedPhotos.remove(number);
@@ -750,7 +750,7 @@ public class MainActivity extends Activity {
   content.setPadding(dp(15), dp(3), dp(15), dp(8));
   boolean columns = mode == DrawingMeasureView.Mode.COLUMNS;
   String corners = columns ? "Tablonun iki karşı köşesini seçin. Sütunlar soldan sağa profil, ölçü ve adet olmalı."
-   : "Başlık dahil tablonun iki karşı köşesini seçin. İki parmakla yakınlaştırabilirsiniz.";
+   : "Listenin iki karşı köşesini seçin. Varsa başlığı dahil edin. İki parmakla yakınlaştırabilirsiniz.";
   TextView directions = planLabel(content, corners, 14, Color.DKGRAY);
   DrawingMeasureView[] view = new DrawingMeasureView[1];
   DrawingMeasureView picker = new DrawingMeasureView(this, image, () -> {
@@ -787,7 +787,7 @@ public class MainActivity extends Activity {
   CutPhotoReader.Result scan = scans.get(number);
   if (scan != null && scan.preview != null) {
    card.addView(new PhotoScanView(this, scan.preview, scan.highlights, false), new LinearLayout.LayoutParams(-1, dp(167)));
-   photoSelectionButton(card, "Tablo alanını seç ve yeniden tara", () -> selectCutArea(number, scan.original, DrawingMeasureView.Mode.AREA));
+   photoSelectionButton(card, "Liste alanını seç ve yeniden tara", () -> selectCutArea(number, scan.original, DrawingMeasureView.Mode.AREA));
    if (status != null) photoSelectionButton(card, "Profil, ölçü ve adet sütunlarını seç", () ->
     selectCutArea(number, scan.original, DrawingMeasureView.Mode.COLUMNS));
   }
@@ -824,7 +824,7 @@ public class MainActivity extends Activity {
   card.addView(button, size);
  }
 
- void profileHeading(LinearLayout card, String name, Bitmap icon) {
+ LinearLayout profileHeading(LinearLayout card, String name, Bitmap icon) {
   LinearLayout heading = new LinearLayout(this);
   heading.setGravity(Gravity.CENTER_VERTICAL);
   card.addView(heading, new LinearLayout.LayoutParams(-1, -2));
@@ -844,6 +844,38 @@ public class MainActivity extends Activity {
   label.setTypeface(null, Typeface.BOLD);
   label.setPadding(0, dp(5), 0, dp(5));
   heading.addView(label, new LinearLayout.LayoutParams(0, -2, 1f));
+  return heading;
+ }
+
+ private void editPhotoProfile(CutRow row) {
+  LinearLayout form = new LinearLayout(this);
+  form.setOrientation(LinearLayout.VERTICAL);
+  form.setPadding(dp(20), dp(8), dp(20), 0);
+  EditText name = new EditText(this), code = new EditText(this);
+  name.setHint("Profil adı");
+  name.setText(row.name);
+  code.setHint("Profil kodu (varsa)");
+  code.setText(row.code);
+  name.setSingleLine(true);
+  code.setSingleLine(true);
+  form.addView(name, new LinearLayout.LayoutParams(-1, -2));
+  form.addView(code, new LinearLayout.LayoutParams(-1, -2));
+  android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
+   .setTitle("Profili düzenle").setView(form).setNegativeButton("Vazgeç", null).setPositiveButton("Kaydet", null).create();
+  dialog.setOnShowListener(d -> dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+   String newName = name.getText().toString().trim();
+   String newCode = code.getText().toString().trim().toUpperCase(Locale.ROOT);
+   if (newName.isEmpty() && newCode.isEmpty()) {
+    name.setError("Profil adını veya kodunu yazın.");
+    return;
+   }
+   savePhotoReview.run();
+   row.name = newName;
+   row.code = newCode;
+   dialog.dismiss();
+   showDetected();
+  }));
+  dialog.show();
  }
 
  static final class ProfileCutPlan {
@@ -886,7 +918,14 @@ public class MainActivity extends Activity {
    for (CutRow row : photo.getValue()) {
     LinearLayout profile = planCard(body, 0xff121f38, 0xff244361, 0xff5685a4);
     String heading = row.code.isEmpty() ? row.name : row.name.isEmpty() ? row.code : row.code + "\n" + row.name;
-    profileHeading(profile, heading, row.icon);
+    LinearLayout profileHeader = profileHeading(profile, heading, row.icon);
+    TextView edit = text("Düzelt", 13);
+    edit.setTextColor(0xff9deef1);
+    edit.setMinHeight(dp(48));
+    edit.setGravity(Gravity.CENTER);
+    edit.setContentDescription("Profil adını ve kodunu düzelt");
+    edit.setOnClickListener(v -> editPhotoProfile(row));
+    profileHeader.addView(edit, new LinearLayout.LayoutParams(-2, -2));
     addProfileStockInput(profile, profileStockKey(row), stocks);
     String[] values = row.draft != null ? row.draft : new String[]{
      row.length < 0 ? "" : ShopDimensions.mm(row.length), row.qty < 0 ? "" : String.valueOf(row.qty)};
@@ -1012,12 +1051,9 @@ public class MainActivity extends Activity {
    for (CutRow row : photo.getValue()) {
     String label = (row.code + " " + row.name).trim();
     String context = label + " · Fotoğraf " + photo.getKey();
-    int size = ShopDimensions.tenths(row.draft[0], context + " kesim ölçüsü");
     int quantity = cutNumber(row.draft[1], context + " kesim adedi");
-    if (quantity == 0) {
-     if (size < 0) throw new IllegalArgumentException(context + ": geçerli bir kesim ölçüsü girin.");
-     continue;
-    }
+    if (quantity == 0) continue;
+    int size = ShopDimensions.tenths(row.draft[0], context + " kesim ölçüsü");
     String key = profileStockKey(row);
     int stock = ShopDimensions.tenths(stocks.get(key), label + " stok boyu");
     validateCut(size, quantity, stock, context);

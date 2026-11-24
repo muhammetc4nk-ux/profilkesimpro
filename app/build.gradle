@@ -10,8 +10,8 @@ android {
         applicationId 'com.profilkesim.pro'
         minSdk 23
         targetSdk 34
-        versionCode 4
-        versionName '2.1.1'
+        versionCode 5
+        versionName '2.1.2'
     }
 
     def workshopKey = providers.environmentVariable('ATOLYE_KEYSTORE_FILE').orNull

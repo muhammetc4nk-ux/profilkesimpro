@@ -53,6 +53,14 @@ public final class PhotoCutPlanTest {
   assertEquals(60000, plan.pack(44).get(0).used);
  }
 
+ @Test public void zeroQuantityDoesNotRequireAMeasurement() {
+  Map<Integer, List<MainActivity.CutRow>> photos = new LinkedHashMap<>();
+  photos.put(1, Arrays.asList(row("K100", "Üst kasa", "2600", "1"), row("K200", "Yan dikme", "", "0")));
+  List<MainActivity.ProfileCutPlan> plans = plans(photos);
+  assertEquals(1, plans.size());
+  assertEquals(Arrays.asList(26000), plans.get(0).pieces);
+ }
+
  private static List<MainActivity.ProfileCutPlan> plans(Map<Integer, List<MainActivity.CutRow>> photos) {
   Map<String, String> stocks = new HashMap<>();
   for (List<MainActivity.CutRow> rows : photos.values()) {

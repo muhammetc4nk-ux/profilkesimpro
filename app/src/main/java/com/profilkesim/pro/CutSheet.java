@@ -19,7 +19,14 @@ final class CutSheet {
   "\\b(?:PROFIL(?:I|LERI)?|KASA|KANAT|RAY(?:I)?|DIKME|CITA|KAPAK|KUSAK|KAYIT|FITIL|"
    + "BIRLESIM|CEKTIRME|KILIT|KARSILIK|ESIK|LAMEL|BORU|KUTU|ISPANYOLET)\\b");
  private static final Pattern NON_CUT_COLUMN = Pattern.compile(
-  "\\b(?:SISTEM|BALKON|CAM|STOK|HAM) (?:OLCU\\w*|BOY\\w*|EN|GENISLIK|YUKSEKLIK)\\b");
+  "\\b(?:(?:SISTEM|BALKON|CAM|STOK|HAM) (?:OLCU\\w*|BOY\\w*|EN|GENISLIK|YUKSEKLIK)"
+   + "|(?:KASA|DOGRAMA) (?:ENI|GENISLIGI|YUKSEKLIGI))\\b");
+ private static final Pattern CUT_CAPTION = Pattern.compile(
+  "^(?:(?:PROFIL )?KESIM (?:OLCU\\w*|BOY\\w*|LISTE\\w*|TABLO\\w*)|KESILECEK PROFIL\\w*)$");
+ private static final String FREE_MEASURE = "[0-9?OIlSs]+(?:[.,][0-9?OIlSs]+)?";
+ private static final Pattern FREE_MARKED = Pattern.compile(
+  "^(.+?)\\s+(" + FREE_MEASURE + "\\s*(?:mm|cm|m)?)\\s*(?:[x×*]\\s*|\\s+)"
+   + "([.,]?" + FREE_MEASURE + ")\\s*(adet|ad|pcs)?$", Pattern.CASE_INSENSITIVE);
  private static final Pattern FOOTER = Pattern.compile(
   "^(?:(?:CAM )?BALKON(?: SISTEMI?)? (?:OLCU(?:SU|LERI)?|BOYUT(?:U|LARI)?|GENISLIGI|YUKSEKLIGI|ENI|BOYU)|"
    + "(?:SISTEM|CAM|MONTAJ|BALKON) (?:OLCU\\w*|BOYUT\\w*|GENISLIK|YUKSEKLIK|EN|BOY)|"
@@ -241,6 +248,161 @@ final class CutSheet {
    if (NON_CUT_COLUMN.matcher(identity(join(line.words))).find()) return true;
   }
   return false;
+ }
+
+ static Bounds cuttingCaption(List<Word> words) {
+  for (Line line : linesFrom(words)) {
+   if (CUT_CAPTION.matcher(identity(join(line.words))).matches()) return bounds(line.words);
+  }
+  return null;
+ }
+
+ static Bounds unitFormHeading(List<Word> words) {
+  for (Word measure : words) {
+   if (!identity(measure.text).matches("OLCU|OLCUSU")) continue;
+   Word profile = headingCell(words, measure, "PROFIL(?: ADI)?", -1);
+   Word quantity = headingCell(words, measure, "MIKTAR|ADET", 1);
+   if (profile == null || quantity == null || headingCell(words, quantity, "BIRIM", 1) == null) continue;
+   int height = Math.max(5, measure.box.height());
+   int top = Math.min(profile.box.top, measure.box.top) - height;
+   return new Bounds(profile.box.left, top - height, quantity.box.right, top);
+  }
+  return null;
+ }
+
+ private static Word headingCell(List<Word> words, Word center, String label, int direction) {
+  Word closest = null;
+  int best = Integer.MAX_VALUE;
+  for (Word word : words) {
+   int gap = direction * (word.box.x() - center.box.x());
+   if (gap <= 0 || gap >= best || Math.abs(word.box.y() - center.box.y()) > Math.max(word.box.height(), center.box.height()) * 1.4f
+     || !identity(word.text).matches(label)) continue;
+   closest = word;
+   best = gap;
+  }
+  return closest;
+ }
+
+ static List<Row> readFreeList(List<Word> words, boolean selected) {
+  List<Row> rows = new ArrayList<>();
+  List<AlignedRow> unmarked = new ArrayList<>();
+  boolean heading = false;
+  for (Line line : linesFrom(words)) {
+   String text = join(line.words);
+   String label = identity(text);
+   if (CUT_CAPTION.matcher(label).matches()) {
+    if (heading && !rows.isEmpty()) break;
+    heading = true;
+    continue;
+   }
+   if (FOOTER.matcher(label).find() || NON_CUT_COLUMN.matcher(label).find()) {
+    if (heading && !rows.isEmpty()) break;
+    continue;
+   }
+   Matcher match = FREE_MARKED.matcher(text);
+   if (!match.matches()) continue;
+   String name = match.group(1).replaceFirst("\\s*[:=–-]\\s*$", "").trim();
+   String code = "";
+   Matcher codeMatch = INLINE_CODE.matcher(name);
+   if (codeMatch.find()) {
+    code = normalizeCode(codeMatch.group());
+    name = (name.substring(0, codeMatch.start()) + " " + name.substring(codeMatch.end()))
+     .replaceAll("^[\\s/|:()–-]+|[\\s/|:()–-]+$", "").replaceAll("\\s+", " ");
+   }
+   String profile = identity(name);
+   if (FORM_METADATA.matcher(profile).find()
+     || (!PROFILE_PART.matcher(profile).find() && code.isEmpty() && !(selected || heading))) continue;
+   if (name.isEmpty() && code.isEmpty()) continue;
+   String separator = text.substring(match.end(2), match.start(3));
+   boolean marked = separator.matches("(?i).*?[x×*].*") || match.group(4) != null;
+   int length = freeNumber(line.words, match.group(2), match.start(2), match.end(2), false);
+   int count = freeNumber(line.words, match.group(3), match.start(3), match.end(3), true);
+   if (length < 0 && count < 0) continue;
+   Row row = new Row(name, code, length, count, bounds(line.words));
+   if (marked || heading || selected) {
+    rows.add(row);
+   } else if (length > 0 && count >= 0) {
+    Bounds lengthBox = wordAt(line.words, match.start(2)), countBox = wordAt(line.words, match.start(3));
+    if (lengthBox != countBox && countBox.left > lengthBox.x()) unmarked.add(new AlignedRow(row, lengthBox, countBox));
+   }
+  }
+  for (AlignedRow line : unmarked) {
+   for (AlignedRow other : unmarked) {
+    if (line != other && (line.row.length > 10000 || other.row.length > 10000) && line.aligned(other)) {
+     rows.add(line.row);
+     break;
+    }
+   }
+  }
+  Collections.sort(rows, (a, b) -> Integer.compare(a.identity.y(), b.identity.y()));
+  return rows;
+ }
+
+ private static Bounds wordAt(List<Word> words, int offset) {
+  for (Word word : words) {
+   int width = word.text.trim().length();
+   if (offset < width) return word.box;
+   offset -= width + 1;
+  }
+  return words.get(words.size() - 1).box;
+ }
+
+ private static final class AlignedRow {
+  final Row row;
+  final Bounds length, quantity;
+  AlignedRow(Row row, Bounds length, Bounds quantity) {
+   this.row = row;
+   this.length = length;
+   this.quantity = quantity;
+  }
+  boolean aligned(AlignedRow other) {
+   int tolerance = Math.max(length.height(), other.length.height()) * 2;
+   return Math.abs(length.x() - other.length.x()) <= tolerance
+    && Math.abs(quantity.x() - other.quantity.x()) <= tolerance;
+  }
+ }
+
+ private static int freeNumber(List<Word> words, String value, int start, int end, boolean quantity) {
+  float confidence = 1f;
+  int at = 0;
+  for (Word word : words) {
+   int next = at + word.text.trim().length();
+   if (at < end && next > start) confidence = Math.min(confidence, word.confidence);
+   at = next + 1;
+  }
+  return number(Collections.singletonList(new Word(value.trim(), words.get(0).box, confidence)), quantity);
+ }
+
+ static List<Row> readUnitForm(List<Word> words, int[] x, List<Integer> bandEdges) {
+  List<Row> rows = new ArrayList<>();
+  List<Column> columns = new ArrayList<>();
+  columns.add(selectedColumn(Field.NAME, (x[1] + x[2]) / 2, 12, "PROFIL"));
+  columns.add(selectedColumn(Field.LENGTH, (x[2] + x[3]) / 2, 12, "OLCU"));
+  columns.add(selectedColumn(Field.QUANTITY, (x[4] + x[5]) / 2, 12, "MIKTAR"));
+  Header header = new Header(columns);
+  List<Integer> rules = new ArrayList<>();
+  for (int i = 1; i < x.length - 1; i++) rules.add(x[i]);
+  CutTableGrid grid = new CutTableGrid(x[0], x[6], bandEdges.get(bandEdges.size() - 1), rules);
+  for (int band = 1; band < bandEdges.size(); band++) {
+   int top = bandEdges.get(band - 1), bottom = bandEdges.get(band);
+   List<Word> names = new ArrayList<>(), values = new ArrayList<>();
+   for (Word word : words) {
+    if (word.box.y() <= top || word.box.y() >= bottom) continue;
+    if (word.box.x() > x[1] && word.box.x() < x[2]) names.add(word);
+    else values.add(word);
+   }
+   List<Word> sorted = new ArrayList<>();
+   for (Line line : linesFrom(names)) sorted.addAll(line.words);
+   sorted.addAll(values);
+   Row row = header.readRow(sorted, grid);
+   if (row == null) continue;
+   int inset = Math.max(3, (bottom - top) / 19);
+   row.section = new Bounds(x[0] + inset, top + inset, x[1] - inset, bottom - inset);
+   row.lengthCell = new Bounds(x[2] + inset, top + inset, x[3] - inset, bottom - inset);
+   row.quantityCell = new Bounds(x[4] + inset, top + inset, x[5] - inset, bottom - inset);
+   rows.add(row);
+  }
+  return rows;
  }
 
  private static Column selectedColumn(Field field, int x, int height, String label) {

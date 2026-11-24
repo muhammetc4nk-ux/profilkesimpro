@@ -208,6 +208,76 @@ public final class CutSheetTest {
   assertTrue(CutSheet.readRuledWithoutHeading(words, width, height, 408, 630, null).isEmpty());
  }
 
+ @Test public void readsLineListsWithOrWithoutARuledTable() {
+  List<CutSheet.Word> photo = Arrays.asList(
+   word("Balkon genişliği 4400 x 1800", 218, 20),
+   word("Kasa B15082 2634 × 2", 180, 60),
+   word("Kanat 83O mm 6 adet", 182, 100),
+   word("Orta kayıt 125,5 cm x 3", 225, 140),
+   word("Ray 1450 x .4", 202, 159),
+   word("Stok boyu 6000 x 2", 185, 168));
+  List<CutSheet.Row> rows = CutSheet.readFreeList(photo, false);
+  assertEquals(4, rows.size());
+  assertEquals("B15082", rows.get(0).code);
+  assertEquals(26340, rows.get(0).length);
+  assertEquals(2, rows.get(0).quantity);
+  assertEquals(-1, rows.get(1).length);
+  assertEquals(6, rows.get(1).quantity);
+  assertEquals(12550, rows.get(2).length);
+  assertEquals(14500, rows.get(3).length);
+  assertEquals(-1, rows.get(3).quantity);
+ }
+
+ @Test public void readsBlankSeparatedMeasurementsInAnExplicitlySelectedList() {
+  List<CutSheet.Word> lines = Arrays.asList(word("Üst kasa 2450 2", 250, 81), word("Cam ölçüsü 900 3", 250, 109));
+  assertTrue(CutSheet.readFreeList(lines, false).isEmpty());
+  List<CutSheet.Row> rows = CutSheet.readFreeList(lines, true);
+  assertEquals(1, rows.size());
+  assertEquals(24500, rows.get(0).length);
+  assertEquals(2, rows.get(0).quantity);
+ }
+
+ @Test public void recognizesRepeatedAlignedHandwrittenColumnsWithoutAHeading() {
+  List<CutSheet.Word> lines = Arrays.asList(
+   word("Kasa", 81, 52), word("2450", 233, 53), word("2", 318, 55),
+   word("Kanat", 87, 91), word("831", 229, 90), word("6", 322, 93),
+   word("Ray", 84, 135), word("1840", 220, 135), word("8", 408, 136));
+  List<CutSheet.Row> rows = CutSheet.readFreeList(lines, false);
+  assertEquals(2, rows.size());
+  assertEquals(24500, rows.get(0).length);
+  assertEquals(6, rows.get(1).quantity);
+ }
+
+ @Test public void usesOnlyNumericCellsInAFormWithSeparateUnits() {
+  List<CutSheet.Word> photo = Arrays.asList(
+   word("Cam ölçüleri", 270, 25), word("2180", 475, 25), word("3", 626, 25),
+   word("Profil kesim ölçüleri", 380, 91),
+   word("B15082-- 42*123 Kasa üst profili", 268, 146), word("2634", 465, 146),
+   word("mm", 538, 146), word("2", 622, 146), word("adet", 723, 146),
+   word("B15085-- 96*26 Kanat profili", 272, 193), word("831", 465, 193),
+   word("7016", 535, 193), word("6", 622, 193), word("adet", 723, 193));
+  assertNotNull(CutSheet.cuttingCaption(photo));
+  List<CutSheet.Row> rows = CutSheet.readUnitForm(photo, new int[]{0, 140, 422, 510, 565, 680, 765},
+   Arrays.asList(122, 170, 215));
+  assertEquals(2, rows.size());
+  assertEquals("B15082", rows.get(0).code);
+  assertEquals(26340, rows.get(0).length);
+  assertEquals(2, rows.get(0).quantity);
+  assertEquals(8310, rows.get(1).length);
+  assertEquals(6, rows.get(1).quantity);
+  assertTrue(rows.get(1).section.right < 140);
+ }
+
+ @Test public void locatesAnUnclearCutHeadingUsingThePrintedColumnLabels() {
+  List<CutSheet.Word> words = Arrays.asList(
+   word("CAM", 250, 65), word("ÖLÇÜ", 457, 64), word("MİKTAR", 612, 64), word("BİRİM", 715, 64),
+   word("PROFİL", 220, 140), word("ÖLÇÜ", 455, 132), word("MİKTAR", 613, 127), word("BİRİM", 715, 125));
+  CutSheet.Bounds heading = CutSheet.unitFormHeading(words);
+  assertNotNull(heading);
+  assertTrue(heading.y() > 100);
+  assertTrue(heading.bottom < 130);
+ }
+
  private static List<CutSheet.Word> header() {
   return Arrays.asList(word("Profil adı", 232, 70), word("Kesim ölçüsü", 500, 70),
    word("Adet", 620, 70), word("Stok boyu", 735, 70));

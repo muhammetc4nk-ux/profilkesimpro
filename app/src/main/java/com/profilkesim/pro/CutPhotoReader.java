@@ -101,6 +101,11 @@ final class CutPhotoReader {
    Words raw = words(InputImage.fromBitmap(oriented, 0), 0, 0, 1, recognizer);
    Candidate clean = candidate(raw, oriented);
    Candidate best = prefer(isolated, clean);
+   CutSheet.Bounds caption = CutSheet.cuttingCaption(raw.elements);
+   if (caption != null) {
+    Result form = scanUnitForm(oriented, thumb, caption, best.rows.size(), recognizer);
+    if (form != null) return form;
+   }
    if (!best.complete() && (turn % 2 == 0 || best.score() > 0)) {
     best = prefer(best, enhanced(oriented, recognizer));
    }
@@ -126,10 +131,225 @@ final class CutPhotoReader {
     Result recovered = scanRuledWithoutHeading(oriented, thumb, raw, best.rows.size(), recognizer);
     if (recovered != null) return recovered;
    }
+   if (!best.complete() || (best.rows.size() <= 2 && oriented.getHeight() > oriented.getWidth() * 1.6f)) {
+    Result document = scanDocument(oriented, thumb, crop != null, raw, best.rows.size(), recognizer);
+    if (document != null) return document;
+   }
    if (best.score() > 0) return result(best, thumb, oriented, recognizer);
    if (turn > 0) oriented.recycle();
   }
   return new Result(Collections.emptyList(), thumb, thumb, Collections.emptyList());
+ }
+
+ private static Result scanDocument(Bitmap image, Bitmap thumb, boolean selected, Words raw, int previousRows,
+                                    TextRecognizer recognizer) throws InterruptedException {
+  Bitmap page = paperImage(image);
+  Bitmap normalized = localContrast(page);
+  try {
+   Words clear = words(InputImage.fromBitmap(normalized, 0), 0, 0, 1, recognizer);
+   CutSheet.Bounds caption = CutSheet.cuttingCaption(clear.elements);
+   if (caption == null) caption = CutSheet.unitFormHeading(clear.elements);
+   if (caption == null && page != image) {
+    Words paperWords = words(InputImage.fromBitmap(page, 0), 0, 0, 1, recognizer);
+    caption = CutSheet.cuttingCaption(paperWords.elements);
+    if (caption == null) caption = CutSheet.unitFormHeading(paperWords.elements);
+   }
+   if (caption != null) {
+    Result form = scanUnitForm(page, thumb, caption, previousRows, recognizer);
+    if (form != null) return form;
+   }
+   if (previousRows > 0) return null;
+   Candidate table = candidate(clear, page);
+   if (!table.rows.isEmpty()) return result(table, thumb, page, recognizer);
+   Candidate direct = new Candidate(CutSheet.readFreeList(raw.elements, selected), null);
+   Candidate enhanced = new Candidate(CutSheet.readFreeList(clear.elements, selected), null);
+   if (!enhanced.rows.isEmpty() && enhanced.score() >= direct.score()) return result(enhanced, thumb, page, recognizer);
+   return direct.rows.isEmpty() ? null : result(direct, thumb, image, recognizer);
+  } finally {
+   normalized.recycle();
+  }
+ }
+
+ private static Result scanUnitForm(Bitmap image, Bitmap thumb, CutSheet.Bounds caption, int previousRows,
+                                   TextRecognizer recognizer) throws InterruptedException {
+  float scale = Math.min(1f, Math.min(610f / image.getWidth(), 1450f / image.getHeight()));
+  Bitmap small = Bitmap.createScaledBitmap(image, Math.max(1, Math.round(image.getWidth() * scale)),
+   Math.max(1, Math.round(image.getHeight() * scale)), true);
+  int[][] grey = greyRows(small);
+  if (small != image) small.recycle();
+  CutSheet.Bounds anchor = new CutSheet.Bounds(Math.round(caption.left * scale), Math.round(caption.top * scale),
+   Math.round(caption.right * scale), Math.round(caption.bottom * scale));
+  CutFormGeometry layout = CutFormGeometry.find(grey, anchor);
+  if (layout == null || layout.columns.size() != 7) return null;
+  float[] from = layout.corners.clone();
+  for (int i = 0; i < from.length; i++) from[i] /= scale;
+  int width = Math.round(Math.max(from[2] - from[0], from[4] - from[6]));
+  int height = Math.round(Math.max(from[5] - from[3], from[7] - from[1]));
+  if (width < 200 || height < 120 || width > 3100 || height > 3100) return null;
+  Matrix mapping = new Matrix();
+  if (!mapping.setPolyToPoly(from, 0, new float[]{0, 0, width, 0, width, height, 0, height}, 0, 4)) return null;
+  int[] x = new int[7];
+  for (int i = 0; i < x.length; i++) {
+   float[] point = {layout.columns.get(i).position / scale, layout.columnSampleY / scale};
+   mapping.mapPoints(point);
+   x[i] = Math.max(0, Math.min(width, Math.round(point[0])));
+   if (i > 0 && x[i] - x[i - 1] < 18) return null;
+  }
+  List<Integer> bandEdges = new ArrayList<>();
+  for (int i = 1; i < layout.rows.size(); i++) {
+   float[] point = {layout.rowSampleX / scale, layout.rows.get(i).position / scale};
+   mapping.mapPoints(point);
+   int y = Math.round(point[1]);
+   if (y > 0 && y < height && (bandEdges.isEmpty() || y - bandEdges.get(bandEdges.size() - 1) >= 15)) bandEdges.add(y);
+  }
+  if (bandEdges.size() < 4) return null;
+  bandEdges.add(height);
+  Bitmap form = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+  Canvas flat = new Canvas(form);
+  flat.drawColor(Color.WHITE);
+  flat.drawBitmap(image, mapping, FILTER);
+  Bitmap cleaned = localContrast(form, true);
+  try {
+   Canvas clean = new Canvas(cleaned);
+   Paint eraser = new Paint();
+   eraser.setColor(Color.WHITE);
+   for (int y : bandEdges) clean.drawRect(0, y - 4f, width, y + 4f, eraser);
+   int bodyTop = bandEdges.get(0);
+   CutTableGrid.Pixels pixels = pixels(cleaned);
+   List<CutSheet.Word> unitLength = formColumn(cleaned, pixels, x, 3, bodyTop, recognizer);
+   List<CutSheet.Word> unitCount = formColumn(cleaned, pixels, x, 5, bodyTop, recognizer);
+   if (unitHits(unitLength, "MM") < 2 || unitHits(unitCount, "ADET") < 2) {
+    form.recycle();
+    return null;
+   }
+   List<CutSheet.Word> data = new ArrayList<>();
+   for (int field : new int[]{1, 2, 4}) data.addAll(formColumn(cleaned, pixels, x, field, bodyTop, recognizer));
+   List<CutSheet.Row> rows = CutSheet.readUnitForm(data, x, bandEdges);
+   if (rows.size() <= previousRows || rows.size() < 2) {
+    form.recycle();
+    return null;
+   }
+   List<MainActivity.CutRow> cuts = new ArrayList<>();
+   List<RectF> highlights = new ArrayList<>();
+   for (CutSheet.Row row : rows) {
+    int length = row.length >= 0 ? row.length : retryFormNumber(cleaned, pixels, row.lengthCell, false, recognizer);
+    int quantity = row.quantity >= 0 ? row.quantity : retryFormNumber(cleaned, pixels, row.quantityCell, true, recognizer);
+    Bitmap icon = valid(row.section, form) ? thumbnail(Bitmap.createBitmap(form, row.section.left, row.section.top,
+     row.section.right - row.section.left, row.section.height()), 300) : null;
+    if (icon != null) highlights.add(normalized(row.section, form));
+    if (valid(row.lengthCell, form)) highlights.add(normalized(row.lengthCell, form));
+    if (valid(row.quantityCell, form)) highlights.add(normalized(row.quantityCell, form));
+    cuts.add(new MainActivity.CutRow(row.code, row.name, length, quantity, icon));
+   }
+   Bitmap preview = thumbnail(form, 840);
+   if (preview != form) form.recycle();
+   return new Result(cuts, thumb, preview, highlights);
+  } finally {
+   cleaned.recycle();
+  }
+ }
+
+ private static List<CutSheet.Word> formColumn(Bitmap image, CutTableGrid.Pixels pixels, int[] x, int field,
+                                               int top, TextRecognizer recognizer) throws InterruptedException {
+  int inset = Math.max(4, image.getWidth() / 130);
+  CutSheet.Bounds box = new CutSheet.Bounds(x[field] + inset, top, x[field + 1] - inset, image.getHeight());
+  return extract(image, pixels, null, box, 1.7f, recognizer);
+ }
+
+ private static int unitHits(List<CutSheet.Word> words, String unit) {
+  int matches = 0;
+  for (CutSheet.Word word : words) if (CutSheet.identity(word.text).equals(unit)) matches++;
+  return matches;
+ }
+
+ private static int retryFormNumber(Bitmap image, CutTableGrid.Pixels pixels, CutSheet.Bounds cell,
+                                    boolean quantity, TextRecognizer recognizer) throws InterruptedException {
+  if (!valid(cell, image)) return -1;
+  int wide = retry(image, pixels, null, cell, quantity, recognizer);
+  int insetX = (cell.right - cell.left) / 5, insetY = cell.height() / 5;
+  CutSheet.Bounds center = new CutSheet.Bounds(cell.left + insetX, cell.top + insetY,
+   cell.right - insetX, cell.bottom - insetY);
+  List<CutSheet.Word> read = extract(image, pixels, null, center, 3.4f, recognizer);
+  for (CutSheet.Word word : read) {
+   if (word.box.left <= center.left + 2 || word.box.right >= center.right - 2) return wide;
+  }
+  return agreement(wide, CutSheet.number(read, quantity));
+ }
+
+ private static int[][] greyRows(Bitmap image) { return greyRows(image, false); }
+
+ private static int[][] greyRows(Bitmap image, boolean ignoreBlueNotes) {
+  int w = image.getWidth(), h = image.getHeight();
+  int[][] grey = new int[h][w];
+  for (int y = 0; y < h; y++) {
+   int[] values = grey[y];
+   image.getPixels(values, 0, w, 0, y, w, 1);
+   for (int x = 0; x < w; x++) {
+    int c = values[x], r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+    values[x] = ignoreBlueNotes && b - r >= 10 && b - g >= 4 ? 255 : (3 * r + 6 * g + b) / 10;
+   }
+  }
+  return grey;
+ }
+
+ private static Bitmap paperImage(Bitmap original) {
+  int longest = Math.max(original.getHeight(), original.getWidth());
+  int limit = Math.min(3000, Math.round(longest * Math.min(1f, 1500f / original.getWidth())));
+  Bitmap image = thumbnail(original, limit);
+  Bitmap probe = thumbnail(image, 470);
+  int[][] grey = greyRows(probe);
+  int width = probe.getWidth(), height = probe.getHeight();
+  int first = 0, last = 0, start = -1, previous = 0;
+  for (int y = 0; y < height; y++) {
+   int pale = 0;
+   for (int x = width / 4; x < width * 3 / 4; x++) if (grey[y][x] >= 158) pale++;
+   if (pale > width * .32f) {
+    if (start < 0 || y - previous > 6) start = y;
+    previous = y;
+    if (y - start > last - first) {
+     first = start;
+     last = y;
+    }
+   }
+  }
+  if (probe != image) probe.recycle();
+  if (last - first < height * .35f || last - first > height * .91f) return image;
+  int top = Math.max(0, (first - 5) * image.getHeight() / height);
+  int bottom = Math.min(image.getHeight(), (last + 7) * image.getHeight() / height);
+  return Bitmap.createBitmap(image, 0, top, image.getWidth(), bottom - top);
+ }
+
+ private static Bitmap localContrast(Bitmap source) { return localContrast(source, false); }
+
+ private static Bitmap localContrast(Bitmap source, boolean ignoreBlueNotes) {
+  int w = source.getWidth(), h = source.getHeight(), radius = Math.max(7, w / 95);
+  int[][] grey = greyRows(source, ignoreBlueNotes), horizontal = new int[h][w];
+  int[] sum = new int[w], row = new int[w];
+  Bitmap output = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+  int diameter = radius * 2 + 1;
+  for (int y = 0; y < h; y++) {
+   int total = grey[y][0] * radius;
+   for (int i = 0; i <= radius; i++) total += grey[y][Math.min(i, w - 1)];
+   for (int x = 0; x < w; x++) {
+    horizontal[y][x] = total / diameter;
+    total += grey[y][Math.min(w - 1, x + radius + 1)] - grey[y][Math.max(0, x - radius)];
+   }
+  }
+  for (int i = -radius; i <= radius; i++) {
+   int[] line = horizontal[Math.max(0, Math.min(h - 1, i))];
+   for (int x = 0; x < w; x++) sum[x] += line[x];
+  }
+  for (int y = 0; y < h; y++) {
+   int[] add = horizontal[Math.min(h - 1, y + radius + 1)], drop = horizontal[Math.max(0, y - radius)];
+   for (int x = 0; x < w; x++) {
+    int ink = Math.max(0, sum[x] / diameter - grey[y][x] - 3);
+    int level = Math.max(0, 255 - ink * 10);
+    row[x] = Color.rgb(level, level, level);
+    sum[x] += add[x] - drop[x];
+   }
+   output.setPixels(row, 0, w, 0, y, w, 1);
+  }
+  return output;
  }
 
  private static Candidate enhanced(Bitmap image, TextRecognizer recognizer) throws InterruptedException {
