@@ -324,11 +324,13 @@ final class TemaWorkshop {
   TemaCatalog.Profile[][] groups = {series.frames,series.mullions,series.sashes};
   int[] picks = profileIndices.clone();
   Runnable[] refreshDrawing={()->{}};
+  Runnable[] beforeProfileChange={()->{}};
+  Button[] profileButtons=new Button[3];
   String[] names = {"Kasa","Orta kayıt","Kanat"};
   for(int i=0;i<3;i++){
    final int role=i;
-   Button b=new Button(app); b.setAllCaps(false); b.setText(names[i]+" · "+groups[i][picks[i]].label()); panel.addView(b);
-   b.setOnClickListener(v->chooseProfile(names[role],groups[role],picks[role],index->{picks[role]=index;b.setText(names[role]+" · "+groups[role][index].label());refreshDrawing[0].run();}));
+   Button b=new Button(app); b.setAllCaps(false); b.setText(names[i]+" · "+groups[i][picks[i]].label()); panel.addView(b);profileButtons[i]=b;
+   b.setOnClickListener(v->chooseProfile(names[role],groups[role],picks[role],index->{beforeProfileChange[0].run();picks[role]=index;b.setText(names[role]+" · "+groups[role][index].label());refreshDrawing[0].run();}));
   }
   java.util.TreeSet<Integer> xs=new java.util.TreeSet<>(), ys=new java.util.TreeSet<>();
   java.util.Set<Integer> openings=new java.util.HashSet<>();
@@ -368,15 +370,19 @@ final class TemaWorkshop {
    for(int i=0;i<2;i++)sizes[i].setText(saved.getString(sizeKeys[i]));
   }catch(org.json.JSONException | RuntimeException ignored){}
 
-  Runnable checkpoint=()->{
+  java.util.ArrayDeque<Runnable> redo=new java.util.ArrayDeque<>();
+  java.util.function.Supplier<Runnable> snapshot=()->{
    java.util.TreeSet<Integer> oldX=new java.util.TreeSet<>(xs),oldY=new java.util.TreeSet<>(ys);
    java.util.Set<Integer> oldO=new java.util.HashSet<>(openings),oldL=new java.util.HashSet<>(leftCells),oldE=new java.util.HashSet<>(emptyCells);
    java.util.Map<String,Integer> oldP=new java.util.HashMap<>(lineProfiles);
    java.util.Map<Integer,Integer> oldGaps=new java.util.HashMap<>(gaps);
    java.util.ArrayList<int[]> oldLines=new java.util.ArrayList<>();for(int[] q:localLines)oldLines.add(q.clone());
    boolean oldFrame=frameAdded[0];int[] oldPicks=picks.clone();
-   undo.push(()->{xs.clear();xs.addAll(oldX);ys.clear();ys.addAll(oldY);openings.clear();openings.addAll(oldO);leftCells.clear();leftCells.addAll(oldL);emptyCells.clear();emptyCells.addAll(oldE);lineProfiles.clear();lineProfiles.putAll(oldP);gaps.clear();gaps.putAll(oldGaps);localLines.clear();localLines.addAll(oldLines);frameAdded[0]=oldFrame;System.arraycopy(oldPicks,0,picks,0,picks.length);});
+   String[] oldSizes={sizes[0].getText().toString(),sizes[1].getText().toString()};
+   return ()->{xs.clear();xs.addAll(oldX);ys.clear();ys.addAll(oldY);openings.clear();openings.addAll(oldO);leftCells.clear();leftCells.addAll(oldL);emptyCells.clear();emptyCells.addAll(oldE);lineProfiles.clear();lineProfiles.putAll(oldP);gaps.clear();gaps.putAll(oldGaps);localLines.clear();localLines.addAll(oldLines);frameAdded[0]=oldFrame;System.arraycopy(oldPicks,0,picks,0,picks.length);for(int i=0;i<3;i++)profileButtons[i].setText(names[i]+" · "+groups[i][picks[i]].label());for(int i=0;i<2;i++)sizes[i].setText(oldSizes[i]);};
   };
+  Runnable checkpoint=()->{undo.push(snapshot.get());redo.clear();};
+  beforeProfileChange[0]=checkpoint;
   TextView drawingStatus=new TextView(app);drawingStatus.setText("Önce kasa ekleyin.");panel.addView(drawingStatus);
   EditText jointEdit=new EditText(app); jointEdit.setInputType(SIGNED); jointEdit.setText(fields.get("joint").getText());
   app.planLabel(panel,"Kasa bağlantı payı (mm/uç)",14,Color.DKGRAY);panel.addView(jointEdit);
@@ -449,6 +455,7 @@ final class TemaWorkshop {
     if(x<=0||x>=1000||y<=0||y>=1000)return true;
     checkpoint.run();
     if(mode[0]==0||mode[0]==1){
+     if((mode[0]==0&&xs.contains(x))||(mode[0]==1&&ys.contains(y))){undo.pop();return true;}
      openings.clear();leftCells.clear();emptyCells.clear();gaps.clear();
      int l=xs.floor(x)==null?0:xs.floor(x),r=xs.ceiling(x)==null?1000:xs.ceiling(x);
      int u=ys.floor(y)==null?0:ys.floor(y),d=ys.ceiling(y)==null?1000:ys.ceiling(y);
@@ -458,18 +465,22 @@ final class TemaWorkshop {
     }
     else if(mode[0]==3){Integer nearest=null;int distance=60;boolean vertical=true;for(int q:xs)if(Math.abs(q-x)<distance){nearest=q;distance=Math.abs(q-x);vertical=true;}for(int q:ys)if(Math.abs(q-y)<distance){nearest=q;distance=Math.abs(q-y);vertical=false;}if(nearest!=null){if(vertical)xs.remove(nearest);else ys.remove(nearest);openings.clear();leftCells.clear();emptyCells.clear();}}
     else {int cell=hit.apply(x,y);if(mode[0]==4){openings.remove(cell);leftCells.remove(cell);emptyCells.add(cell);}else if(mode[0]==5){openings.remove(cell);leftCells.remove(cell);emptyCells.remove(cell);}else{emptyCells.remove(cell);openings.add(cell);if(mode[0]==2)leftCells.add(cell);else leftCells.remove(cell);}}
-    drawingStatus.setText("Kasa: 1 | Dikey: "+xs.size()+" | Yatay: "+ys.size()+" | Kanat: "+openings.size());invalidate();return true;
+    drawingStatus.setText("Kasa: 1 | Dikey: "+xs.size()+" | Yatay: "+ys.size()+" | Kanat: "+openings.size());persistDrawing.run();invalidate();return true;
    }
   };
   refreshDrawing[0]=board::invalidate;
-  Button undoButton=new Button(app);undoButton.setText("↶ Geri al · son işlemi sil");panel.addView(undoButton);
-  undoButton.setOnClickListener(v->{if(undo.isEmpty()){toast("Geri alınacak işlem yok.");return;}undo.pop().run();drawingStatus.setText("Son işlem geri alındı.");board.invalidate();});
+  LinearLayout historyTools=new LinearLayout(app);panel.addView(historyTools);
+  Button undoButton=new Button(app);undoButton.setText("↶ Geri al");historyTools.addView(undoButton,new LinearLayout.LayoutParams(0,app.dp(52),1));
+  Button redoButton=new Button(app);redoButton.setText("↷ İleri al");historyTools.addView(redoButton,new LinearLayout.LayoutParams(0,app.dp(52),1));
+  redoButton.setOnClickListener(v->{if(redo.isEmpty()){toast("İleri alınacak işlem yok.");return;}undo.push(snapshot.get());redo.pop().run();persistDrawing.run();board.invalidate();});
+  undoButton.setOnClickListener(v->{if(undo.isEmpty()){toast("Geri alınacak işlem yok.");return;}redo.push(snapshot.get());undo.pop().run();persistDrawing.run();drawingStatus.setText("Son işlem geri alındı.");board.invalidate();});
   Button frameButton=new Button(app);frameButton.setText("+ Kasa ekle");panel.addView(frameButton);frameButton.setOnClickListener(v->{checkpoint.run();frameAdded[0]=true;drawingStatus.setText("Kasa eklendi: "+groups[0][picks[0]].label());board.invalidate();});
   Button sashButton=new Button(app);sashButton.setText("+ Kanat ekle (ilk boş bölme)");panel.addView(sashButton);sashButton.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}int count=bays.get().size();for(int i=1;i<=count;i++)if(!openings.contains(i)){checkpoint.run();openings.add(i);drawingStatus.setText("Kanat: "+openings.size()+" / "+count);board.invalidate();return;}toast("Tüm bölmelerde kanat var.");});
   panel.addView(board,new LinearLayout.LayoutParams(-1,app.dp(400)));
   LinearLayout toolsRow=new LinearLayout(app);toolsRow.setOrientation(LinearLayout.HORIZONTAL);panel.addView(toolsRow);
-  String[] modes={"Dikey kayıt ekle","Yatay kayıt ekle","Sol menteşeli kanat","Profil sil","Boş kasa","Sabit cam","Sağ menteşeli kanat","Çizgiye dokun · profil değiştir","Kanat kasa boşluğu · kanada dokun"};
-  for(int i=0;i<modes.length;i++){final int m=i;Button b=new Button(app);b.setAllCaps(false);b.setText(modes[i]);if(i%2==0&&i!=0){toolsRow=new LinearLayout(app);toolsRow.setOrientation(LinearLayout.HORIZONTAL);panel.addView(toolsRow);}toolsRow.addView(b,new LinearLayout.LayoutParams(0,app.dp(60),1));b.setOnClickListener(v->{mode[0]=m;drawingStatus.setText("Seçili araç: "+modes[m]);});}
+  String[] modes={"↕ Dikey kayıt","↔ Yatay kayıt","Sol kanat","Sil","Boş kasa","Sabit cam","Sağ kanat","Profil seç","Kanat boşluğu"};
+  Button[] toolButtons=new Button[modes.length];
+  for(int i=0;i<modes.length;i++){final int m=i;Button b=new Button(app);b.setAllCaps(false);b.setText(modes[i]);toolButtons[i]=b;b.setTextColor(Color.WHITE);b.setBackground(app.rgbPanel(i==mode[0]?0xff087e79:0xff173041,0xff245462,series.accent));if(i%3==0&&i!=0){toolsRow=new LinearLayout(app);toolsRow.setOrientation(LinearLayout.HORIZONTAL);panel.addView(toolsRow);}toolsRow.addView(b,new LinearLayout.LayoutParams(0,app.dp(60),1));b.setOnClickListener(v->{mode[0]=m;for(int j=0;j<toolButtons.length;j++)toolButtons[j].setBackground(app.rgbPanel(j==m?0xff087e79:0xff173041,0xff245462,series.accent));drawingStatus.setText("Seçili araç: "+modes[m]+" · çizime dokunun.");});}
 
   Button addV=new Button(app);addV.setText("+ Dikey kayıt (eşit böl)");panel.addView(addV);addV.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}if(xs.size()>=12)return;checkpoint.run();int n=xs.size()+2;xs.clear();for(int i=1;i<n;i++)xs.add(Math.round(1000f*i/n));openings.clear();leftCells.clear();emptyCells.clear();drawingStatus.setText("Dikey: "+xs.size()+" | Yatay: "+ys.size());board.invalidate();});
   Button addH=new Button(app);addH.setText("+ Yatay kayıt (eşit böl)");panel.addView(addH);addH.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}if(ys.size()>=12)return;checkpoint.run();int n=ys.size()+2;ys.clear();for(int i=1;i<n;i++)ys.add(Math.round(1000f*i/n));openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();});
@@ -483,7 +494,7 @@ final class TemaWorkshop {
     if(!xs.isEmpty()||!ys.isEmpty())throw new IllegalArgumentException("Bölmeli kasada dış ölçüleri kullanın.");
     int w=ShopDimensions.tenths(nw.getText().toString(),"Net en"),h=ShopDimensions.tenths(nh.getText().toString(),"Net boy");
     if(w<=0||h<=0)throw new IllegalArgumentException("Net ölçüler pozitif olmalı.");
-    int face=workingFace(groups[0][picks[0]]);sizes[0].setText(mm(w+2*face));sizes[1].setText(mm(h+2*face));frameAdded[0]=true;board.invalidate();
+    checkpoint.run();int face=workingFace(groups[0][picks[0]]);sizes[0].setText(mm(w+2*face));sizes[1].setText(mm(h+2*face));frameAdded[0]=true;board.invalidate();
    }catch(IllegalArgumentException ex){toast(ex.getMessage());}}).show();
   });
   Button clear=new Button(app);clear.setText("Çizimi temizle");panel.addView(clear);clear.setOnClickListener(v->{checkpoint.run();frameAdded[0]=false;localLines.clear();lineProfiles.clear();xs.clear();ys.clear();openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();});
