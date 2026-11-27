@@ -11,7 +11,20 @@ final class TemaJoinery {
  enum Corner { MITER, VERTICAL_FULL, HORIZONTAL_FULL }
  enum Continuous { VERTICAL, HORIZONTAL }
 
+ static final class LocalBay {
+  final int width,height; final boolean sash,empty;
+  final int glassLeft,glassRight,glassTop,glassBottom;
+  LocalBay(int width,int height,boolean sash,boolean empty,int l,int r,int t,int b){
+   this.width=width;this.height=height;this.sash=sash;this.empty=empty;glassLeft=l;glassRight=r;glassTop=t;glassBottom=b;
+  }
+ }
+ static final class LocalRecord {
+  final boolean vertical; final int length;
+  LocalRecord(boolean vertical,int length){this.vertical=vertical;this.length=length;}
+ }
  static final class Order {
+  List<LocalBay> localBays=Collections.emptyList();
+  List<LocalRecord> localRecords=Collections.emptyList();
   int width, height, quantity;
   String frameCode, mullionCode, sashCode;
   int frameFace, mullionFace, sashFace;
@@ -128,6 +141,20 @@ final class TemaJoinery {
   if (!o.openingSashes.isEmpty() && o.sashFace <= 0) throw new IllegalArgumentException("Kanat yüz ölçüsü sıfırdan büyük olmalı.");
   int innerWidth = o.width - 2 * o.frameFace;
   int innerHeight = o.height - 2 * o.frameFace;
+  if(!o.localBays.isEmpty()){
+   Plan plan=new Plan(Collections.singletonList(innerWidth),Collections.singletonList(innerHeight));
+   addRectangle(plan,o.frameCode,"Kasa",o.width,o.height,o.frameFace,o.corner,o.quantity);
+   for(LocalRecord record:o.localRecords){
+    plan.addCut(o.mullionCode,record.vertical?"Dikey orta kayıt":"Yatay orta kayıt",record.length,90,o.quantity);
+    plan.mullionEnds+=2*o.quantity;
+   }
+   int number=0;
+   for(LocalBay bay:o.localBays){
+    number++;if(bay.empty)continue;
+    addPaneDimensions(o,plan,number,bay.width,bay.height,bay.sash,bay.glassLeft+bay.glassRight,bay.glassTop+bay.glassBottom);
+   }
+   return plan;
+  }
   List<Integer> columns = openings(innerWidth - o.vertical * o.mullionFace, o.vertical + 1, o.columnOpenings, "Yatay");
   List<Integer> rows = openings(innerHeight - o.horizontal * o.mullionFace, o.horizontal + 1, o.rowOpenings, "Dikey");
   Plan plan = new Plan(columns, rows);
@@ -198,6 +225,11 @@ final class TemaJoinery {
   int width = plan.columns.get(x), height = plan.rows.get(y);
   if (o.emptyCells.contains(number)) return;
   boolean sash = o.openingSashes.contains(number);
+  addPaneDimensions(o,plan,number,width,height,sash,
+   (x==0?o.frameGlass:o.mullionGlass)+(x==plan.columns.size()-1?o.frameGlass:o.mullionGlass),
+   (y==0?o.frameGlass:o.mullionGlass)+(y==plan.rows.size()-1?o.frameGlass:o.mullionGlass));
+ }
+ private static void addPaneDimensions(Order o,Plan plan,int number,int width,int height,boolean sash,int glassX,int glassY){
   if (sash) {
    if (o.adapterCode != null) {
     addRectangle(plan, o.adapterCode, "Kanat adaptörü", width, height, 0, Corner.MITER, o.quantity);
@@ -213,10 +245,8 @@ final class TemaJoinery {
    height += 2 * (o.sashGlass - o.sashFace);
   } else {
    addBead(plan, o.fixedBead, "Sabit cam çıtası", width, height, o.quantity);
-   width += (x == 0 ? o.frameGlass : o.mullionGlass)
-    + (x == plan.columns.size() - 1 ? o.frameGlass : o.mullionGlass);
-   height += (y == 0 ? o.frameGlass : o.mullionGlass)
-    + (y == plan.rows.size() - 1 ? o.frameGlass : o.mullionGlass);
+   width += glassX;
+   height += glassY;
   }
   if (width <= 0 || height <= 0) throw new IllegalArgumentException(number + ". hücrenin net cam ölçüsünü kontrol edin.");
   plan.panes.add(new Pane(number, width, height, sash));
