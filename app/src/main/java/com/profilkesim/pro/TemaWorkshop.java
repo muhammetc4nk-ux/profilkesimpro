@@ -339,6 +339,7 @@ final class TemaWorkshop {
     c.drawColor(0xffe8f1f5); paint.setColor(0xffcbd9e1);paint.setStrokeWidth(1);for(int i=0;i<20;i++){float px=left+(right-left)*i/20f,py=top+(bottom-top)*i/20f;c.drawLine(px,top,px,bottom,paint);c.drawLine(left,py,right,py,paint);} paint.setColor(0xff34495e); paint.setStrokeWidth(7);paint.setStyle(android.graphics.Paint.Style.STROKE);
     c.drawRect(left,top,right,bottom,paint);
     paint.setStyle(android.graphics.Paint.Style.FILL);paint.setTextSize(14);c.drawText(sizes[0].getText()+" mm",left+10,18,paint);c.drawText(sizes[1].getText()+" mm",left+10,bottom+18,paint);paint.setStyle(android.graphics.Paint.Style.STROKE);
+    paint.setColor(0xff1565c0);paint.setStrokeWidth(9);
     for(int x:xs){float px=left+(right-left)*x/1000f;c.drawLine(px,top,px,bottom,paint);}
     for(int y:ys){float py=top+(bottom-top)*y/1000f;c.drawLine(left,py,right,py,paint);}
     java.util.ArrayList<Integer> a=new java.util.ArrayList<>(xs),b=new java.util.ArrayList<>(ys);a.add(0,0);a.add(1000);b.add(0,0);b.add(1000);
@@ -349,7 +350,10 @@ final class TemaWorkshop {
     }
    }
    @Override public boolean onTouchEvent(android.view.MotionEvent e){
-    if(e.getAction()!=android.view.MotionEvent.ACTION_UP)return true;
+    if(e.getActionMasked()==android.view.MotionEvent.ACTION_DOWN){getParent().requestDisallowInterceptTouchEvent(true);return true;}
+    if(e.getActionMasked()==android.view.MotionEvent.ACTION_CANCEL){getParent().requestDisallowInterceptTouchEvent(false);return true;}
+    if(e.getActionMasked()!=android.view.MotionEvent.ACTION_UP)return true;
+    getParent().requestDisallowInterceptTouchEvent(false);
     int x=Math.round(1000*(e.getX()-left)/(right-left)),y=Math.round(1000*(e.getY()-top)/(bottom-top));
     if(x<=0||x>=1000||y<=0||y>=1000)return true;
     if(mode[0]==0){if(xs.size()<12)xs.add(x);openings.clear();}
@@ -361,7 +365,9 @@ final class TemaWorkshop {
   };
   String[] modes={"Dikey kayıt ekle","Yatay kayıt ekle","Kanat ekle / kaldır","Profil sil"};
   for(int i=0;i<modes.length;i++){final int m=i;Button b=new Button(app);b.setText(modes[i]);panel.addView(b);b.setOnClickListener(v->{mode[0]=m;toast(modes[m]);});}
-  panel.addView(board,new LinearLayout.LayoutParams(-1,app.dp(420)));
+  panel.addView(board,new LinearLayout.LayoutParams(-1,app.dp(320)));
+  Button addV=new Button(app);addV.setText("+ Dikey kayıt (eşit böl)");panel.addView(addV);addV.setOnClickListener(v->{if(xs.size()>=12)return;int n=xs.size()+2;xs.clear();for(int i=1;i<n;i++)xs.add(Math.round(1000f*i/n));openings.clear();board.invalidate();});
+  Button addH=new Button(app);addH.setText("+ Yatay kayıt (eşit böl)");panel.addView(addH);addH.setOnClickListener(v->{if(ys.size()>=12)return;int n=ys.size()+2;ys.clear();for(int i=1;i<n;i++)ys.add(Math.round(1000f*i/n));openings.clear();board.invalidate();});
   for(EditText size:sizes)size.addTextChangedListener(watcher(board::invalidate));
   Button exact=new Button(app);exact.setText("Kayıt konumunu mm olarak gir");panel.addView(exact);exact.setOnClickListener(v->{EditText pos=new EditText(app);pos.setInputType(DECIMAL);new AlertDialog.Builder(app).setTitle("Kasa içi net konum (mm)").setView(pos).setNegativeButton("Vazgeç",null).setPositiveButton("Ekle",(d,k)->{try{boolean vertical=mode[0]!=1;int total=ShopDimensions.tenths(sizes[vertical?0:1].getText().toString(),"Dış ölçü")-2*workingFace(groups[0][picks[0]]);int point=Math.round(1000f*ShopDimensions.tenths(pos.getText().toString(),"Konum")/total);java.util.TreeSet<Integer> target=vertical?xs:ys;if(point<=0||point>=1000||target.size()>=12)throw new IllegalArgumentException("Konum kasa içinde olmalı.");target.add(point);openings.clear();board.invalidate();}catch(IllegalArgumentException ex){toast(ex.getMessage());}}).show();});
   Button clear=new Button(app);clear.setText("Çizimi temizle");panel.addView(clear);clear.setOnClickListener(v->{xs.clear();ys.clear();openings.clear();board.invalidate();});
