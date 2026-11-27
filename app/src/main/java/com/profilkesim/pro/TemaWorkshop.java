@@ -383,6 +383,17 @@ final class TemaWorkshop {
   Button addH=new Button(app);addH.setText("+ Yatay kayıt (eşit böl)");panel.addView(addH);addH.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}if(ys.size()>=12)return;int n=ys.size()+2;ys.clear();for(int i=1;i<n;i++)ys.add(Math.round(1000f*i/n));openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();});
   for(EditText size:sizes)size.addTextChangedListener(watcher(board::invalidate));
   Button exact=new Button(app);exact.setText("Kayıt konumunu mm olarak gir");panel.addView(exact);exact.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}EditText pos=new EditText(app);pos.setInputType(DECIMAL);new AlertDialog.Builder(app).setTitle("Kasa içi net konum (mm)").setView(pos).setNegativeButton("Vazgeç",null).setPositiveButton("Ekle",(d,k)->{try{boolean vertical=mode[0]!=1;int total=ShopDimensions.tenths(sizes[vertical?0:1].getText().toString(),"Dış ölçü")-2*workingFace(groups[0][picks[0]]);int point=Math.round(1000f*ShopDimensions.tenths(pos.getText().toString(),"Konum")/total);java.util.TreeSet<Integer> target=vertical?xs:ys;if(point<=0||point>=1000||target.size()>=12)throw new IllegalArgumentException("Konum kasa içinde olmalı.");target.add(point);openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();}catch(IllegalArgumentException ex){toast(ex.getMessage());}}).show();});
+  Button netSizes=new Button(app);netSizes.setText("Kasa içi net en ve boy gir");panel.addView(netSizes);
+  netSizes.setOnClickListener(v->{
+   LinearLayout p=new LinearLayout(app);p.setOrientation(LinearLayout.VERTICAL);
+   EditText nw=new EditText(app),nh=new EditText(app);nw.setInputType(DECIMAL);nh.setInputType(DECIMAL);nw.setHint("Net en (mm)");nh.setHint("Net boy (mm)");p.addView(nw);p.addView(nh);
+   new AlertDialog.Builder(app).setTitle("Kasa içi net açıklık").setView(p).setNegativeButton("Vazgeç",null).setPositiveButton("Uygula",(d,k)->{try{
+    if(!xs.isEmpty()||!ys.isEmpty())throw new IllegalArgumentException("Bölmeli kasada dış ölçüleri kullanın.");
+    int w=ShopDimensions.tenths(nw.getText().toString(),"Net en"),h=ShopDimensions.tenths(nh.getText().toString(),"Net boy");
+    if(w<=0||h<=0)throw new IllegalArgumentException("Net ölçüler pozitif olmalı.");
+    int face=workingFace(groups[0][picks[0]]);sizes[0].setText(mm(w+2*face));sizes[1].setText(mm(h+2*face));frameAdded[0]=true;board.invalidate();
+   }catch(IllegalArgumentException ex){toast(ex.getMessage());}}).show();
+  });
   Button clear=new Button(app);clear.setText("Çizimi temizle");panel.addView(clear);clear.setOnClickListener(v->{frameAdded[0]=false;xs.clear();ys.clear();openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();});
   AlertDialog dialog=new AlertDialog.Builder(app).setTitle("Kendin çiz · "+series.label).setView(scroll).setNegativeButton("Vazgeç",null).setPositiveButton("Kesim hesapla",null).create();
   dialog.setOnShowListener(v->dialog.getButton(-1).setOnClickListener(w->{
