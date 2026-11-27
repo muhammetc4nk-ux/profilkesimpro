@@ -429,7 +429,7 @@ final class TemaWorkshop {
     c.save();c.translate((x+X)/2,(y+Y)/2);if(Math.abs(dy)>Math.abs(dx))c.rotate(-90);dim.setStyle(android.graphics.Paint.Style.FILL);dim.setTextSize(app.dp(10));dim.setTextAlign(android.graphics.Paint.Align.CENTER);float w=dim.measureText(label)/2+app.dp(3);dim.setColor(0xfff8fafc);c.drawRoundRect(-w,-app.dp(8),w,app.dp(8),4,4,dim);dim.setColor(0xff075985);c.drawText(label,0,app.dp(3),dim);c.restore();
    }
    @Override protected void onDraw(android.graphics.Canvas c){
-    super.onDraw(c); left=app.dp(38);top=app.dp(48);right=getWidth()-app.dp(38);bottom=getHeight()-app.dp(38);try{float ratio=Float.parseFloat(sizes[0].getText().toString().replace(',','.'))/Float.parseFloat(sizes[1].getText().toString().replace(',','.'));if(ratio>0&&Float.isFinite(ratio)){float w=right-left,h=bottom-top;if(w/h>ratio){float d=(w-h*ratio)/2;left+=d;right-=d;}else{float d=(h-w/ratio)/2;top+=d;bottom-=d;}}}catch(RuntimeException ignored){} paint.setStyle(android.graphics.Paint.Style.FILL);
+    super.onDraw(c); left=app.dp(30);top=app.dp(42);right=getWidth()-app.dp(24);bottom=getHeight()-app.dp(28);try{float ratio=Float.parseFloat(sizes[0].getText().toString().replace(',','.'))/Float.parseFloat(sizes[1].getText().toString().replace(',','.'));if(ratio>0&&Float.isFinite(ratio)){float w=right-left,h=bottom-top;if(w/h>ratio){float d=(w-h*ratio)/2;left+=d;right-=d;}else{float d=(h-w/ratio)/2;top+=d;bottom-=d;}}}catch(RuntimeException ignored){} paint.setStyle(android.graphics.Paint.Style.FILL);
     c.drawColor(0xffe8f1f5); paint.setColor(0xffcbd9e1);paint.setStrokeWidth(1);for(int i=0;i<20;i++){float px=left+(right-left)*i/20f,py=top+(bottom-top)*i/20f;c.drawLine(px,top,px,bottom,paint);c.drawLine(left,py,right,py,paint);} paint.setColor(0xff34495e); paint.setStrokeWidth(7);paint.setStyle(android.graphics.Paint.Style.STROKE);
     if(!frameAdded[0])return;
     paint.setStyle(android.graphics.Paint.Style.FILL);
@@ -449,12 +449,12 @@ final class TemaWorkshop {
     for(int i=0;i<cells.size();i++)if(openings.contains(i+1)){
      int[] z=cells.get(i);
      float l=left+(right-left)*z[0]/1000f+7,r=left+(right-left)*z[2]/1000f-7,t=top+(bottom-top)*z[1]/1000f+7,d=top+(bottom-top)*z[3]/1000f-7;
-     c.drawRect(l,t,r,d,paint);profileLabel(c,groups[2][lineProfiles.getOrDefault("s"+(i+1),picks[2])].code,l+3,t+14);boolean isLeft=leftCells.contains(i+1);float hinge=isLeft?l:r,handle=isLeft?r:l;c.drawLine(hinge,t,handle,(t+d)/2,paint);c.drawLine(handle,(t+d)/2,hinge,d,paint);
+     if(r<=l||d<=t)continue; c.save();c.clipRect(l,t,r,d);paint.setStyle(android.graphics.Paint.Style.STROKE);paint.setColor(0xff087e79);paint.setStrokeWidth(app.dp(3));c.drawRect(l,t,r,d,paint);profileLabel(c,groups[2][lineProfiles.getOrDefault("s"+(i+1),picks[2])].code,l+3,t+14);boolean isLeft=leftCells.contains(i+1);float hinge=isLeft?l:r,handle=isLeft?r:l;c.drawLine(hinge,t,handle,(t+d)/2,paint);c.drawLine(handle,(t+d)/2,hinge,d,paint);c.restore();
     }
     paint.setStyle(android.graphics.Paint.Style.FILL);
     for(int[] z:cells){try{int[] n=net.apply(z);float cx=left+(right-left)*(z[0]+z[2])/2000f,cy=top+(bottom-top)*(z[1]+z[3])/2000f;
      float l=left+(right-left)*z[0]/1000f,r=left+(right-left)*z[2]/1000f,t=top+(bottom-top)*z[1]/1000f,bm=top+(bottom-top)*z[3]/1000f;if(r-l>app.dp(65)&&bm-t>app.dp(65)){measure(c,l,t+(bm-t)*0.25f,r,t+(bm-t)*0.25f,"Net "+mm(n[0]));measure(c,l+(r-l)*0.22f,t,l+(r-l)*0.22f,bm,"Net "+mm(n[1]));}
-     String label=mm(n[0])+" × "+mm(n[1]);paint.setTextSize(app.dp(12));float w=paint.measureText(label)/2+app.dp(5);
+     String label=mm(n[0])+" × "+mm(n[1]);paint.setTextSize(app.dp(12));float available=r-l-app.dp(12);if(available<app.dp(25)||bm-t<app.dp(28))continue;paint.setTextSize(Math.min(app.dp(12),app.dp(12)*available/Math.max(1,paint.measureText(label))));float w=paint.measureText(label)/2+app.dp(4);
      paint.setColor(0xfff8fafc);c.drawRoundRect(cx-w,cy-app.dp(12),cx+w,cy+app.dp(12),5,5,paint);paint.setColor(0xff173041);c.drawText(label,cx-w+app.dp(5),cy+app.dp(4),paint);
     }catch(RuntimeException ignored){}}
    }
@@ -524,7 +524,7 @@ final class TemaWorkshop {
      else{if(l==0&&r==1000&&localLines.isEmpty())ys.add(y);else localLines.add(new int[]{l,y,r,y,picks[1]});}
     }
     else if(mode[0]==3){Integer nearest=null;int distance=60;boolean vertical=true;for(int q:xs)if(Math.abs(q-x)<distance){nearest=q;distance=Math.abs(q-x);vertical=true;}for(int q:ys)if(Math.abs(q-y)<distance){nearest=q;distance=Math.abs(q-y);vertical=false;}if(nearest!=null){if(vertical)xs.remove(nearest);else ys.remove(nearest);openings.clear();leftCells.clear();emptyCells.clear();}}
-    else {int cell=hit.apply(x,y);if(mode[0]==4){openings.remove(cell);leftCells.remove(cell);emptyCells.add(cell);}else if(mode[0]==5){openings.remove(cell);leftCells.remove(cell);emptyCells.remove(cell);}else{emptyCells.remove(cell);openings.add(cell);if(mode[0]==2)leftCells.add(cell);else leftCells.remove(cell);}}
+    else {int cell=hit.apply(x,y);if(mode[0]==4){openings.remove(cell);leftCells.remove(cell);emptyCells.add(cell);}else if(mode[0]==5){openings.remove(cell);leftCells.remove(cell);emptyCells.remove(cell);}else{if(cell==0){undo.pop();return true;}emptyCells.remove(cell);openings.add(cell);if(mode[0]==2)leftCells.add(cell);else leftCells.remove(cell);}}
     drawingStatus.setText("Kasa: 1 | Dikey: "+xs.size()+" | Yatay: "+ys.size()+" | Kanat: "+openings.size());persistDrawing.run();invalidate();return true;
    }
   };
@@ -605,12 +605,12 @@ final class TemaWorkshop {
   panel.setPadding(app.dp(3),app.dp(3),app.dp(3),app.dp(3));
   for(int i=0;i<panel.getChildCount();i++){
    android.view.View child=panel.getChildAt(i);
-   if(child instanceof Button){Button b=(Button)child;b.setAllCaps(false);b.setTextSize(11);b.setMinHeight(0);b.setMinimumHeight(0);b.setPadding(app.dp(3),0,app.dp(3),0);b.setGravity(android.view.Gravity.CENTER_VERTICAL|android.view.Gravity.START);b.setLayoutParams(new LinearLayout.LayoutParams(-1,-2));}
+   if(child instanceof Button){Button b=(Button)child;b.setAllCaps(false);b.setTextSize(12);b.setSingleLine(false);b.setMaxLines(6);b.setMinHeight(app.dp(48));b.setMinimumHeight(app.dp(48));b.setPadding(app.dp(8),app.dp(9),app.dp(8),app.dp(9));b.setGravity(android.view.Gravity.CENTER);b.setTextColor(Color.WHITE);boolean tool=false;for(Button tb:toolButtons)if(tb==b)tool=true;if(!tool)b.setBackground(app.rgbPanel(0xff173041,0xff245462,series.accent));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(app.dp(3),app.dp(3),app.dp(3),app.dp(3));b.setLayoutParams(lp);}
    else if(child instanceof EditText){((EditText)child).setTextSize(12);}
    else if(child instanceof android.widget.TextView){((android.widget.TextView)child).setTextSize(11);}
   }
   LinearLayout workspace=new LinearLayout(app);workspace.setOrientation(LinearLayout.HORIZONTAL);
-  scroll.setFillViewport(true);workspace.addView(scroll,new LinearLayout.LayoutParams(app.dp(112),-1));
+  scroll.setFillViewport(true);panel.setBackgroundColor(0xffe1eaf0);int screen=app.getResources().getDisplayMetrics().widthPixels;int sidebar=Math.min(app.dp(180),Math.max(app.dp(112),screen/3));workspace.addView(scroll,new LinearLayout.LayoutParams(sidebar,-1));
   LinearLayout canvasPane=new LinearLayout(app);canvasPane.setOrientation(LinearLayout.VERTICAL);workspace.addView(canvasPane,new LinearLayout.LayoutParams(0,-1,1));
   canvasPane.addView(board,new LinearLayout.LayoutParams(-1,0,1));
   AlertDialog dialog=new AlertDialog.Builder(app).setTitle("Kendin çiz · "+series.label).setView(workspace).setNegativeButton("Kaydet ve çık",null).setPositiveButton("Kesim hesapla",null).create();
