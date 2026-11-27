@@ -16,6 +16,8 @@ final class TemaJoinery {
   String frameCode, mullionCode, sashCode;
   int frameFace, mullionFace, sashFace;
   int vertical, horizontal, joint;
+  Integer frameJoint, mullionJoint;
+  Set<Integer> emptyCells = Collections.emptySet();
   int frameGlass, mullionGlass, sashGlass, sashGap;
   boolean glassSizesVerified;
   Bead fixedBead, sashBead;
@@ -171,17 +173,21 @@ final class TemaJoinery {
  }
 
  private static void addMullions(Order o, Plan plan, int innerWidth, int innerHeight) {
-  int adjustment = 2 * o.joint;
+  int f = o.frameJoint == null ? o.joint : o.frameJoint;
+  int m = o.mullionJoint == null ? o.joint : o.mullionJoint;
+  int adjustment = 2 * f;
   if (o.continuous == Continuous.VERTICAL) {
    if (o.vertical > 0) plan.addCut(o.mullionCode, "Dikey orta kayıt", innerHeight + adjustment, 90, o.vertical * o.quantity);
-   if (o.horizontal > 0) for (int width : plan.columns) {
-    plan.addCut(o.mullionCode, "Yatay orta kayıt", width + adjustment, 90, o.horizontal * o.quantity);
+   if (o.horizontal > 0) for (int i=0; i<plan.columns.size(); i++) {
+    int width=plan.columns.get(i);
+    plan.addCut(o.mullionCode, "Yatay orta kayıt", width + (i==0?f:m) + (i==plan.columns.size()-1?f:m), 90, o.horizontal * o.quantity);
    }
    plan.mullionEnds = 2 * (o.vertical + o.horizontal * plan.columns.size()) * o.quantity;
   } else {
    if (o.horizontal > 0) plan.addCut(o.mullionCode, "Yatay orta kayıt", innerWidth + adjustment, 90, o.horizontal * o.quantity);
-   if (o.vertical > 0) for (int height : plan.rows) {
-    plan.addCut(o.mullionCode, "Dikey orta kayıt", height + adjustment, 90, o.vertical * o.quantity);
+   if (o.vertical > 0) for (int i=0; i<plan.rows.size(); i++) {
+    int height=plan.rows.get(i);
+    plan.addCut(o.mullionCode, "Dikey orta kayıt", height + (i==0?f:m) + (i==plan.rows.size()-1?f:m), 90, o.vertical * o.quantity);
    }
    plan.mullionEnds = 2 * (o.horizontal + o.vertical * plan.rows.size()) * o.quantity;
   }
@@ -190,6 +196,7 @@ final class TemaJoinery {
  private static void addPane(Order o, Plan plan, int x, int y) {
   int number = y * plan.columns.size() + x + 1;
   int width = plan.columns.get(x), height = plan.rows.get(y);
+  if (o.emptyCells.contains(number)) return;
   boolean sash = o.openingSashes.contains(number);
   if (sash) {
    if (o.adapterCode != null) {
