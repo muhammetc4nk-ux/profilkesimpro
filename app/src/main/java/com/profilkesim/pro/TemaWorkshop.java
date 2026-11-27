@@ -323,11 +323,12 @@ final class TemaWorkshop {
   }
   TemaCatalog.Profile[][] groups = {series.frames,series.mullions,series.sashes};
   int[] picks = profileIndices.clone();
+  Runnable[] refreshDrawing={()->{}};
   String[] names = {"Kasa","Orta kayıt","Kanat"};
   for(int i=0;i<3;i++){
    final int role=i;
    Button b=new Button(app); b.setAllCaps(false); b.setText(names[i]+" · "+groups[i][picks[i]].label()); panel.addView(b);
-   b.setOnClickListener(v->chooseProfile(names[role],groups[role],picks[role],index->{picks[role]=index;b.setText(names[role]+" · "+groups[role][index].label());}));
+   b.setOnClickListener(v->chooseProfile(names[role],groups[role],picks[role],index->{picks[role]=index;b.setText(names[role]+" · "+groups[role][index].label());refreshDrawing[0].run();}));
   }
   java.util.TreeSet<Integer> xs=new java.util.TreeSet<>(), ys=new java.util.TreeSet<>();
   java.util.Set<Integer> openings=new java.util.HashSet<>();
@@ -348,16 +349,20 @@ final class TemaWorkshop {
     c.drawColor(0xffe8f1f5); paint.setColor(0xffcbd9e1);paint.setStrokeWidth(1);for(int i=0;i<20;i++){float px=left+(right-left)*i/20f,py=top+(bottom-top)*i/20f;c.drawLine(px,top,px,bottom,paint);c.drawLine(left,py,right,py,paint);} paint.setColor(0xff34495e); paint.setStrokeWidth(7);paint.setStyle(android.graphics.Paint.Style.STROKE);
     if(!frameAdded[0])return;
     c.drawRect(left,top,right,bottom,paint);
+    profileLabel(c,groups[0][picks[0]].code,left+8,top+15);
     paint.setStyle(android.graphics.Paint.Style.FILL);paint.setTextSize(14);c.drawText(sizes[0].getText()+" mm",left+10,18,paint);c.drawText(sizes[1].getText()+" mm",left+10,bottom+18,paint);paint.setStyle(android.graphics.Paint.Style.STROKE);
     paint.setColor(0xff1565c0);paint.setStrokeWidth(9);
-    for(int x:xs){float px=left+(right-left)*x/1000f;c.drawLine(px,top,px,bottom,paint);}
-    for(int y:ys){float py=top+(bottom-top)*y/1000f;c.drawLine(left,py,right,py,paint);}
+    for(int x:xs){float px=left+(right-left)*x/1000f;c.drawLine(px,top,px,bottom,paint);profileLabel(c,groups[1][picks[1]].code,px+4,top+30);}
+    for(int y:ys){float py=top+(bottom-top)*y/1000f;c.drawLine(left,py,right,py,paint);profileLabel(c,groups[1][picks[1]].code,left+8,py-5);}
     java.util.ArrayList<Integer> a=new java.util.ArrayList<>(xs),b=new java.util.ArrayList<>(ys);a.add(0,0);a.add(1000);b.add(0,0);b.add(1000);
     paint.setColor(0xff008577);paint.setStrokeWidth(3);
     for(int y=0;y<b.size()-1;y++)for(int x=0;x<a.size()-1;x++)if(openings.contains(y*(a.size()-1)+x+1)){
      float l=left+(right-left)*a.get(x)/1000f+7,r=left+(right-left)*a.get(x+1)/1000f-7,t=top+(bottom-top)*b.get(y)/1000f+7,d=top+(bottom-top)*b.get(y+1)/1000f-7;
-     c.drawRect(l,t,r,d,paint);boolean isLeft=leftCells.contains(y*(a.size()-1)+x+1);float hinge=isLeft?l:r,handle=isLeft?r:l;c.drawLine(hinge,t,handle,(t+d)/2,paint);c.drawLine(handle,(t+d)/2,hinge,d,paint);
+     c.drawRect(l,t,r,d,paint);profileLabel(c,groups[2][picks[2]].code,l+3,t+14);boolean isLeft=leftCells.contains(y*(a.size()-1)+x+1);float hinge=isLeft?l:r,handle=isLeft?r:l;c.drawLine(hinge,t,handle,(t+d)/2,paint);c.drawLine(handle,(t+d)/2,hinge,d,paint);
     }
+   }
+   private void profileLabel(android.graphics.Canvas c,String code,float x,float y){
+    android.graphics.Paint label=new android.graphics.Paint(3);label.setColor(0xff172b3c);label.setTextSize(app.dp(10));label.setStyle(android.graphics.Paint.Style.FILL);c.drawText(code,x,y,label);
    }
    @Override public boolean onTouchEvent(android.view.MotionEvent e){
     if(e.getActionMasked()==android.view.MotionEvent.ACTION_DOWN){getParent().requestDisallowInterceptTouchEvent(true);return true;}
@@ -374,6 +379,7 @@ final class TemaWorkshop {
     drawingStatus.setText("Kasa: 1 | Dikey: "+xs.size()+" | Yatay: "+ys.size()+" | Kanat: "+openings.size());invalidate();return true;
    }
   };
+  refreshDrawing[0]=board::invalidate;
   Button frameButton=new Button(app);frameButton.setText("+ Kasa ekle");panel.addView(frameButton);frameButton.setOnClickListener(v->{frameAdded[0]=true;drawingStatus.setText("Kasa eklendi: "+groups[0][picks[0]].label());board.invalidate();});
   Button sashButton=new Button(app);sashButton.setText("+ Kanat ekle (ilk boş bölme)");panel.addView(sashButton);sashButton.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}int count=(xs.size()+1)*(ys.size()+1);for(int i=1;i<=count;i++)if(openings.add(i)){drawingStatus.setText("Kanat: "+openings.size()+" / "+count);board.invalidate();return;}toast("Tüm bölmelerde kanat var.");});
   String[] modes={"Dikey kayıt ekle","Yatay kayıt ekle","Sol menteşeli kanat","Profil sil","Boş kasa","Sabit cam","Sağ menteşeli kanat"};
