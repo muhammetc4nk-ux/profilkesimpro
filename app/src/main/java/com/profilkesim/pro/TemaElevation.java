@@ -218,9 +218,15 @@ final class TemaElevation {
  void profileLabel(Canvas c, String code, int face, boolean vertical, float x, float y, float span, int background) {
   TemaCatalog.Profile profile = series.find(code);
   if (face <= 0 && profile != null) face = profile.face;
-  String measure = face > 0 ? " · " + ShopDimensions.mm(face) + " mm" : "";
-  String text = (profile == null ? code : profile.name) + measure;
-  drawProfileText(c, text, code + measure, "", "", vertical, x, y, span, background);
+  String name = series.nameOf(code);
+  String width = face > 0 ? ShopDimensions.mm(face) + " mm" : "";
+  String combined = width.isEmpty() ? name : name + " · " + width;
+  paint.setTextSize(10 * annotationDensity);
+  if (paint.measureText(combined) <= (span - 8 * annotationDensity) / .8f) {
+   drawProfileText(c, combined, combined, "", "", vertical, x, y, span, background);
+  } else {
+   drawProfileText(c, name, name, width, width, vertical, x, y, span, background);
+  }
  }
 
  void fabricationLabel(Canvas c, TemaJoinery.ProfileMark mark, float x, float y, float span, int background) {

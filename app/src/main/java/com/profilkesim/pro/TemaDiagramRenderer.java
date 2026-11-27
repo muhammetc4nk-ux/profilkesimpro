@@ -105,10 +105,9 @@ final class TemaDiagramRenderer {
   drawChip(canvas, glass, center, middle + 8 * density, width, color, 11);
   if (rows >= 4) {
    drawChip(canvas, "İç " + size(pane.insideWidth, pane.insideHeight), center, middle - 24 * density, width, color, 10);
-   if (pane.beadCode != null) elevation.accessoryLabel(canvas, pane.beadCode, center, middle + 24 * density, width, color);
   }
-  if (rows >= 6 && pane.adapterCode != null) {
-   elevation.accessoryLabel(canvas, pane.adapterCode, center, middle + 40 * density, width, color);
+  if (rows >= 4 && pane.adapterCode != null) {
+   elevation.accessoryLabel(canvas, pane.adapterCode, center, middle + 24 * density, width, color);
   }
  }
 

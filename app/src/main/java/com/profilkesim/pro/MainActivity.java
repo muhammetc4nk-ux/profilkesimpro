@@ -28,8 +28,8 @@ public class MainActivity extends Activity {
  private boolean rgbRunning;
  private TemaWorkshop temaWorkshop;
  private final Map<TemaCatalog.Series, TemaWorkshop> temaWorkshops = new java.util.EnumMap<>(TemaCatalog.Series.class);
- private final PhotoReview generalReview = new PhotoReview("Fotoğraflardan kesim listesi", null, null);
- private final PhotoReview albertReview = new PhotoReview("Albert Genau İmalat Kesim Listesi", null, null);
+ private final PhotoReview generalReview = new PhotoReview("Fotoğraflardan kesim listesi", null, null, null);
+ private final PhotoReview albertReview = new PhotoReview("Albert Genau İmalat Kesim Listesi", null, null, null);
  private PhotoReview photoReview = generalReview;
  private static final int SAVE_TEMA_PDF = 48;
  private java.io.File pendingTemaPdf;
@@ -41,6 +41,7 @@ public class MainActivity extends Activity {
 
  private static final class PhotoReview {
   final String title;
+  final TemaCatalog.Series series;
   final PhotoResult<Map<Integer, List<CutRow>>> accept;
   final Runnable back;
   final Map<Integer, List<CutRow>> detected = new LinkedHashMap<>();
@@ -52,10 +53,22 @@ public class MainActivity extends Activity {
   Uri cameraUri;
   int photoNumber;
 
-  PhotoReview(String title, PhotoResult<Map<Integer, List<CutRow>>> accept, Runnable back) {
+  PhotoReview(String title, TemaCatalog.Series series, PhotoResult<Map<Integer, List<CutRow>>> accept, Runnable back) {
    this.title = title;
+   this.series = series;
    this.accept = accept;
    this.back = back;
+  }
+
+  boolean shows(CutRow row) {
+   return series == null || !series.isBead(TemaCatalog.normalizeCode(row.code), row.name);
+  }
+
+  String profileTitle(CutRow row) {
+   if (series == null) return row.code.isEmpty() ? row.name : row.name.isEmpty() ? row.code : row.code + "\n" + row.name;
+   TemaCatalog.Profile profile = series.find(TemaCatalog.normalizeCode(row.code));
+   if (profile != null) return profile.label();
+   return row.name.isEmpty() ? "Özel profil" : row.name;
   }
 
   String sourceName(int number) {
@@ -576,8 +589,8 @@ public class MainActivity extends Activity {
   photo();
  }
 
- void openTemaCutReview(String series, PhotoResult<Map<Integer, List<CutRow>>> accept, Runnable back) {
-  openPhotoReview(new PhotoReview("Tema " + series + " · Kesim listesi tara", accept, back));
+ void openTemaCutReview(TemaCatalog.Series series, PhotoResult<Map<Integer, List<CutRow>>> accept, Runnable back) {
+  openPhotoReview(new PhotoReview("Tema " + series.label + " · Kesim listesi tara", series, accept, back));
  }
 
  private void photo() {
@@ -1134,7 +1147,9 @@ public class MainActivity extends Activity {
   page(photoReview.title + " · Kontrol");
   pageBack = photoReview.back == null ? null : this::closeTemaCutReview;
   int rowCount = 0;
-  for (List<CutRow> rows : photoReview.detected.values()) rowCount += rows.size();
+  for (List<CutRow> rows : photoReview.detected.values()) {
+   for (CutRow row : rows) if (photoReview.shows(row)) rowCount++;
+  }
   note(photoReview.detected.size() + " kaynak okundu · " + rowCount + " profil satırı");
   for (Map.Entry<Integer, String> failed : photoReview.failedPhotos.entrySet()) showPhotoSource(failed.getKey(), failed.getValue());
 
@@ -1143,17 +1158,19 @@ public class MainActivity extends Activity {
   Map<Integer, CheckBox> confirmations = new LinkedHashMap<>();
   addPhotoButtons(() -> { if (savePhotoReview != null) savePhotoReview.run(); });
   boolean tema = photoReview.accept != null;
-  if (!photoReview.detected.isEmpty()) note("Her kaynağın satırlarını kontrol edip onaylayın.");
+  if (rowCount > 0) note("Her kaynağın satırlarını kontrol edip onaylayın.");
   if (tema) note("Onaylanan her kaynak bir poz olur. Stok boyu ve testere payı Tema ekranından alınır.");
 
   for (Map.Entry<Integer, List<CutRow>> photo : photoReview.detected.entrySet()) {
    int number = photo.getKey();
    showPhotoSource(number, null);
    CheckBox confirmed = new CheckBox(this);
+   boolean visible = false;
    for (CutRow row : photo.getValue()) {
+    if (!photoReview.shows(row)) continue;
+    visible = true;
     LinearLayout profile = planCard(body, 0xff121f38, 0xff244361, 0xff5685a4);
-    String heading = row.code.isEmpty() ? row.name : row.name.isEmpty() ? row.code : row.code + "\n" + row.name;
-    LinearLayout profileHeader = profileHeading(profile, heading, row.icon);
+    LinearLayout profileHeader = profileHeading(profile, photoReview.profileTitle(row), row.icon);
     TextView edit = text("Düzelt", 13);
     edit.setTextColor(0xff9deef1);
     edit.setMinHeight(dp(48));
@@ -1182,6 +1199,10 @@ public class MainActivity extends Activity {
     quantity.addTextChangedListener(invalidateConfirmation);
     fields.put(row, new EditText[]{measure, quantity});
    }
+   if (!visible) {
+    note("Bu kaynakta aktarılacak profil satırı yok.");
+    continue;
+   }
    confirmed.setText(photoReview.sourceName(number) + " için ölçüleri ve adetleri kontrol ettim.");
    confirmed.setTextColor(0xffeffaff);
    confirmed.setButtonTintList(android.content.res.ColorStateList.valueOf(0xff5af4ca));
@@ -1189,7 +1210,7 @@ public class MainActivity extends Activity {
    confirmations.put(number, confirmed);
   }
 
-  if (!photoReview.detected.isEmpty()) button(tema ? "Onayla ve pozlara ekle" : "Tüm kaynakları birlikte optimize et", () -> {
+  if (rowCount > 0) button(tema ? "Onayla ve pozlara ekle" : "Tüm kaynakları birlikte optimize et", () -> {
    if (!photoReview.failedPhotos.isEmpty()) {
     Toast.makeText(this, "Okunamayan listeyi yeniden tarayın veya kaynağı plandan çıkarın.", Toast.LENGTH_LONG).show();
     return;

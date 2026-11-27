@@ -52,7 +52,7 @@ final class TemaPdfExport {
    pages.heading("Profil kesimleri");
    for (TemaJoinery.Cut cut : plan.cuts) {
     String angles = cut.angle == cut.endAngle ? cut.angle + "°" : cut.angle + "° / " + cut.endAngle + "°";
-    pages.line(series.nameOf(cut.code) + " · " + cut.role,
+    pages.line(series.displayOf(cut.code) + " · " + cut.role,
      mm(cut.length) + " mm × " + cut.quantity + " adet · " + angles, true);
    }
    if (!plan.panes.isEmpty()) {

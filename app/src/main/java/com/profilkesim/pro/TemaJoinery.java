@@ -67,16 +67,15 @@ final class TemaJoinery {
  static final class Pane {
   final int number, width, height, insideWidth, insideHeight;
   final TemaLayout.Section sash;
-  final String beadCode, adapterCode;
+  final String adapterCode;
 
-  Pane(int number, int insideWidth, int insideHeight, TemaLayout.Section sash, Bead bead, String adapterCode) {
+  Pane(int number, int insideWidth, int insideHeight, TemaLayout.Section sash, String adapterCode) {
    this.number = number;
    this.insideWidth = insideWidth;
    this.insideHeight = insideHeight;
    this.width = insideWidth - GLASS_DEDUCTION;
    this.height = insideHeight - GLASS_DEDUCTION;
    this.sash = sash;
-   this.beadCode = bead == null ? null : bead.code;
    this.adapterCode = adapterCode;
   }
  }
@@ -354,7 +353,7 @@ final class TemaJoinery {
    width -= 2 * sash.face;
    height -= 2 * sash.face;
   }
-  Pane pane = new Pane(number, width, height, sash, bead, opening ? o.adapterCode : null);
+  Pane pane = new Pane(number, width, height, sash, opening ? o.adapterCode : null);
   if (pane.width <= 0 || pane.height <= 0) {
    throw new IllegalArgumentException(number + ". bölmede cam için iç en ve boydan 10 mm düşülemiyor.");
   }

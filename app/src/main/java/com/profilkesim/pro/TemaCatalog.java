@@ -51,7 +51,21 @@ final class TemaCatalog {
 
   String nameOf(String code) {
    Profile profile = find(code);
-   return profile == null ? "Özel profil " + code : profile.name;
+   return profile == null ? "Özel profil" : profile.name;
+  }
+
+  String displayOf(String code) {
+   Profile profile = find(code);
+   return profile == null ? "Özel profil" : profile.label();
+  }
+
+  boolean isBead(String code) {
+   for (Profile bead : beads) if (bead.code.equals(code)) return true;
+   return false;
+  }
+
+  boolean isBead(String code, String name) {
+   return isBead(code) || (" " + CutSheet.identity(name) + " ").matches(".* (CITA|CITASI|CITALAR|CITALARI) .*");
   }
 
   Profile find(String code) {
@@ -77,7 +91,7 @@ final class TemaCatalog {
    this.image = image;
   }
 
-  String label() { return code + " · " + name; }
+  String label() { return name + " · " + ShopDimensions.mm(face) + " mm"; }
 
   String dimensions() {
    String section = ShopDimensions.mm(face) + " × " + ShopDimensions.mm(depth) + " mm";
