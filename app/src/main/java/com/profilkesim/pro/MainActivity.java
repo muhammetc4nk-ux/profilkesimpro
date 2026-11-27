@@ -487,7 +487,31 @@ public class MainActivity extends Activity {
   if (savePhotoReview != null) savePhotoReview.run();
   home();
  }
+ private String historyId;
+ private android.os.Bundle historyRestore;
+ void saveHistory(String kind, android.os.Bundle data) {
+  if(historyId==null)historyId=java.util.UUID.randomUUID().toString();
+  android.os.Parcel parcel=android.os.Parcel.obtain();
+  try {parcel.writeBundle(data);getSharedPreferences("operation_history",MODE_PRIVATE).edit().putString(historyId,kind+"|"+System.currentTimeMillis()+"|"+android.util.Base64.encodeToString(parcel.marshall(),android.util.Base64.NO_WRAP)).apply();}finally{parcel.recycle();}
+ }
+ private void saveFields(String kind, EditText... fields){android.os.Bundle b=new android.os.Bundle();for(int i=0;i<fields.length;i++)b.putString("f"+i,fields[i].getText().toString());saveHistory(kind,b);}
+ private void restoreFields(EditText... fields){if(historyRestore==null)return;for(int i=0;i<fields.length;i++)if(historyRestore.containsKey("f"+i))fields[i].setText(historyRestore.getString("f"+i));historyRestore=null;}
+ private void history(){
+  page("İşlem geçmişi");
+  android.content.SharedPreferences prefs=getSharedPreferences("operation_history",MODE_PRIVATE);
+  java.util.List<java.util.Map.Entry<String,?>> entries=new java.util.ArrayList<>(prefs.getAll().entrySet());
+  entries.sort((a,b)->Long.compare(Long.parseLong(b.getValue().toString().split("\\|",3)[1]),Long.parseLong(a.getValue().toString().split("\\|",3)[1])));
+  if(entries.isEmpty())note("Henüz kayıt yok.");
+  for(java.util.Map.Entry<String,?> entry:entries){
+   String[] parts=entry.getValue().toString().split("\\|",3);
+   String label=parts[0]+" · "+new java.text.SimpleDateFormat("dd.MM.yyyy HH:mm",java.util.Locale.getDefault()).format(new java.util.Date(Long.parseLong(parts[1])));
+   button(label+" — Düzenle",()->{android.os.Parcel parcel=android.os.Parcel.obtain();try{byte[] bytes=android.util.Base64.decode(parts[2],android.util.Base64.DEFAULT);parcel.unmarshall(bytes,0,bytes.length);parcel.setDataPosition(0);historyRestore=parcel.readBundle(getClassLoader());historyId=entry.getKey();switch(parts[0]){case "Optimizasyon":opt();break;case "Kanat bölme":panels();break;case "Cam m²":glass();break;default:for(TemaCatalog.Series series:TemaCatalog.Series.values())if(parts[0].equals(series.label)){temaWorkshop=temaWorkshops.get(series);android.os.Bundle state=historyRestore;historyRestore=null;temaWorkshop.restoreHistory(state);break;}}}finally{parcel.recycle();}});
+   button("Sil — "+label,()->new android.app.AlertDialog.Builder(this).setMessage("Bu işlem silinsin mi?").setNegativeButton("Vazgeç",null).setPositiveButton("Sil",(d,w)->{prefs.edit().remove(entry.getKey()).apply();history();}).show());
+  }
+  button("Ana menü",()->home());
+ }
  void home(){
+  historyId=null;historyRestore=null;
   page(getApplicationInfo().loadLabel(getPackageManager()).toString(), true);
   String version = "";
   try {
@@ -498,6 +522,7 @@ public class MainActivity extends Activity {
   description.setShadowLayer(dp(7), 0, dp(1), 0xff07131d);
   description.setPadding(dp(9), 0, dp(8), dp(18));
   body.addView(description);
+  homeButton("İşlem geçmişi", android.R.drawable.ic_menu_recent_history, () -> history());
   temaMenu(TemaCatalog.Series.ALDOKS);
   temaMenu(TemaCatalog.Series.C60);
   homeButton("Fotoğraftan kesim listesi oku", android.R.drawable.ic_menu_camera, () -> photo());
@@ -1389,6 +1414,7 @@ public class MainActivity extends Activity {
   cuts.setSingleLine(false);
   cuts.setMinLines(4);
   cuts.getLayoutParams().height = dp(140);
+  restoreFields(profileName,stock,kerf,cuts);
   button("Kesim planı oluştur", () -> {
    try {
     List<Integer> stocks = ShopDimensions.stocks(stock.getText().toString());
@@ -1414,6 +1440,7 @@ public class MainActivity extends Activity {
      remaining += bar.remaining();
      if (common != bar.stock) common = 0;
     }
+    saveFields("Optimizasyon",profileName,stock,kerf,cuts);
     page("Kesim optimizasyon sonucu");
     planSummary(common, saw, bars.size(), pieces.size(), net, remaining, ShopDimensions.PER_MM);
     String name = profileName.getText().toString().trim();
@@ -1423,7 +1450,7 @@ public class MainActivity extends Activity {
      CutPacking.Bar bar = bars.get(i);
      planBar(profile, i + 1, bar.pieces, bar.stock, saw, bar.remaining(), i < 12, ShopDimensions.PER_MM);
     }
-    button("Yeni kesim planı", () -> opt());
+    button("Yeni kesim planı", () -> {historyId=null;opt();});
     button("Ana menü", () -> home());
    } catch (IllegalArgumentException error) {
     Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show();
@@ -1457,11 +1484,12 @@ public class MainActivity extends Activity {
    for (GlassRow row : rows) row.result.setVisibility(android.view.View.GONE);
   };
   addGlassRow(cards, rows, clearResults);
+  if(historyRestore!=null){int count=historyRestore.getInt("count",1);while(rows.size()<count)addGlassRow(cards,rows,clearResults);for(int i=0;i<rows.size();i++){GlassRow r=rows.get(i);r.width.setText(historyRestore.getString("w"+i,""));r.height.setText(historyRestore.getString("h"+i,""));r.quantity.setText(historyRestore.getString("q"+i,"1"));}historyRestore=null;}
   button("Cam ekle", () -> {
    clearResults.run();
    addGlassRow(cards, rows, clearResults);
   });
-  button("Toplam m² hesapla", () -> calculateGlass(rows, total));
+  button("Toplam m² hesapla", () -> {calculateGlass(rows,total);if(total.getVisibility()==View.VISIBLE){android.os.Bundle b=new android.os.Bundle();b.putInt("count",rows.size());for(int i=0;i<rows.size();i++){GlassRow r=rows.get(i);b.putString("w"+i,r.width.getText().toString());b.putString("h"+i,r.height.getText().toString());b.putString("q"+i,r.quantity.getText().toString());}saveHistory("Cam m²",b);}});
   total.setTypeface(null, Typeface.BOLD);
   total.setTextColor(0xffa7ffdd);
   addTextPanel(total, 0xff122a42, 0xff17525a, 0xff4cf0c2);
@@ -1567,6 +1595,7 @@ public class MainActivity extends Activity {
   w.setInputType(decimal);
   ded.setInputType(decimal);
   n.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+  restoreFields(w,n,ded);
   TextView answer = text("", 16);
   answer.setTextColor(0xffeffaff);
   answer.setVisibility(View.GONE);
@@ -1583,6 +1612,7 @@ public class MainActivity extends Activity {
     int base = net / count, extra = net % count;
     String widths = extra == 0 ? count + " × " + ShopDimensions.mm(base) + " mm"
      : extra + " × " + ShopDimensions.mm(base + 1) + " mm  ·  " + (count - extra) + " × " + ShopDimensions.mm(base) + " mm";
+    saveFields("Kanat bölme",w,n,ded);
     answer.setText("Net açıklık " + ShopDimensions.mm(net) + " mm\n" + widths);
     answer.setVisibility(View.VISIBLE);
    } catch (IllegalArgumentException e) {
