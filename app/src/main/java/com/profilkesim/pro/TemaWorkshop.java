@@ -87,6 +87,7 @@ final class TemaWorkshop {
   LinearLayout sizeRow = horizontal(dimensions);
   shortField(column(sizeRow), "width", "Genişlik (mm)", "", DECIMAL);
   shortField(column(sizeRow), "height", "Yükseklik (mm)", "", DECIMAL);
+  chooseButton(dimensions, "KENDİN ÇİZ", this::drawEditor);
   shortField(dimensions, "qty", "Doğrama adedi", "1", InputType.TYPE_CLASS_NUMBER);
   photoCard = section("Çizimden ölçü al");
   showPhotoCard();
@@ -302,6 +303,84 @@ final class TemaWorkshop {
    }
   }));
   dialog.show();
+ }
+
+ private void drawEditor() {
+  ScrollView scroll = new ScrollView(app);
+  LinearLayout panel = new LinearLayout(app);
+  panel.setOrientation(LinearLayout.VERTICAL);
+  panel.setPadding(app.dp(12), app.dp(8), app.dp(12), app.dp(8));
+  scroll.addView(panel);
+  EditText[] sizes = new EditText[2];
+  String[] sizeKeys = {"width", "height"};
+  for (int i=0;i<2;i++) {
+   app.planLabel(panel, i==0?"Dış genişlik (mm)":"Dış yükseklik (mm)",14,Color.DKGRAY);
+   sizes[i]=new EditText(app); sizes[i].setInputType(DECIMAL);
+   sizes[i].setText(fields.get(sizeKeys[i]).getText()); panel.addView(sizes[i]);
+  }
+  TemaCatalog.Profile[][] groups = {series.frames,series.mullions,series.sashes};
+  int[] picks = profileIndices.clone();
+  String[] names = {"Kasa","Orta kayıt","Kanat"};
+  for(int i=0;i<3;i++){
+   final int role=i;
+   Button b=new Button(app); b.setAllCaps(false); b.setText(names[i]+" · "+groups[i][picks[i]].label()); panel.addView(b);
+   b.setOnClickListener(v->chooseProfile(names[role],groups[role],picks[role],index->{picks[role]=index;b.setText(names[role]+" · "+groups[role][index].label());}));
+  }
+  java.util.TreeSet<Integer> xs=new java.util.TreeSet<>(), ys=new java.util.TreeSet<>();
+  java.util.Set<Integer> openings=new java.util.HashSet<>();
+  int[] mode={0};
+  android.view.View board=new android.view.View(app){
+   android.graphics.Paint paint=new android.graphics.Paint(3);
+   float left=24,top=24,right,bottom;
+   @Override protected void onDraw(android.graphics.Canvas c){
+    super.onDraw(c); right=getWidth()-24; bottom=getHeight()-24;
+    c.drawColor(0xffe8f1f5); paint.setColor(0xff34495e); paint.setStrokeWidth(7);paint.setStyle(android.graphics.Paint.Style.STROKE);
+    c.drawRect(left,top,right,bottom,paint);
+    for(int x:xs){float px=left+(right-left)*x/1000f;c.drawLine(px,top,px,bottom,paint);}
+    for(int y:ys){float py=top+(bottom-top)*y/1000f;c.drawLine(left,py,right,py,paint);}
+    java.util.ArrayList<Integer> a=new java.util.ArrayList<>(xs),b=new java.util.ArrayList<>(ys);a.add(0,0);a.add(1000);b.add(0,0);b.add(1000);
+    paint.setColor(0xff008577);paint.setStrokeWidth(3);
+    for(int y=0;y<b.size()-1;y++)for(int x=0;x<a.size()-1;x++)if(openings.contains(y*(a.size()-1)+x+1)){
+     float l=left+(right-left)*a.get(x)/1000f+7,r=left+(right-left)*a.get(x+1)/1000f-7,t=top+(bottom-top)*b.get(y)/1000f+7,d=top+(bottom-top)*b.get(y+1)/1000f-7;
+     c.drawRect(l,t,r,d,paint);c.drawLine(l,t,r,(t+d)/2,paint);c.drawLine(r,(t+d)/2,l,d,paint);
+    }
+   }
+   @Override public boolean onTouchEvent(android.view.MotionEvent e){
+    if(e.getAction()!=android.view.MotionEvent.ACTION_UP)return true;
+    int x=Math.round(1000*(e.getX()-left)/(right-left)),y=Math.round(1000*(e.getY()-top)/(bottom-top));
+    if(x<=0||x>=1000||y<=0||y>=1000)return true;
+    if(mode[0]==0){if(xs.size()<12)xs.add(x);openings.clear();}
+    else if(mode[0]==1){if(ys.size()<12)ys.add(y);openings.clear();}
+    else {int cell=ys.headSet(y).size()*(xs.size()+1)+xs.headSet(x).size()+1;if(!openings.add(cell))openings.remove(cell);}
+    invalidate();return true;
+   }
+  };
+  String[] modes={"Dikey kayıt ekle","Yatay kayıt ekle","Kanat ekle / kaldır"};
+  for(int i=0;i<3;i++){final int m=i;Button b=new Button(app);b.setText(modes[i]);panel.addView(b);b.setOnClickListener(v->{mode[0]=m;toast(modes[m]);});}
+  panel.addView(board,new LinearLayout.LayoutParams(-1,app.dp(300)));
+  Button clear=new Button(app);clear.setText("Çizimi temizle");panel.addView(clear);clear.setOnClickListener(v->{xs.clear();ys.clear();openings.clear();board.invalidate();});
+  AlertDialog dialog=new AlertDialog.Builder(app).setTitle("Kendin çiz · "+series.label).setView(scroll).setNegativeButton("Vazgeç",null).setPositiveButton("Kesim hesapla",null).create();
+  dialog.setOnShowListener(v->dialog.getButton(-1).setOnClickListener(w->{
+   try{
+    int width=ShopDimensions.tenths(sizes[0].getText().toString(),"Dış en"),height=ShopDimensions.tenths(sizes[1].getText().toString(),"Dış yükseklik");
+    int frame=workingFace(groups[0][picks[0]]),record=workingFace(groups[1][picks[1]]);
+    String cols=drawSpans(xs,width-2*frame-xs.size()*record),rows=drawSpans(ys,height-2*frame-ys.size()*record);
+    for(int i=0;i<2;i++)fields.get(sizeKeys[i]).setText(sizes[i].getText());
+    for(int i=0;i<3;i++){profileIndices[i]=picks[i];fields.get("code"+i).setText(groups[i][picks[i]].code);fields.get("face"+i).setText(mm(workingFace(groups[i][picks[i]])));}
+    fields.get("vertical").setText(String.valueOf(xs.size()));fields.get("horizontal").setText(String.valueOf(ys.size()));
+    fields.get("columns").setText(cols);fields.get("rows").setText(rows);
+    chosenSashes.clear();chosenSashes.addAll(openings);expectedFixed=-1;updateLayout();invalidate();dialog.dismiss();
+    toast("Çizim aktarıldı. Montaj ve fiş paylarını kontrol edip hesaplayın.");
+   }catch(IllegalArgumentException ex){toast(ex.getMessage());}
+  }));dialog.show();
+ }
+
+ private String drawSpans(java.util.TreeSet<Integer> points,int total){
+  if(total<=0)throw new IllegalArgumentException("Profil payları dış ölçüyü aşıyor.");
+  StringBuilder result=new StringBuilder();int previous=0;
+  java.util.ArrayList<Integer> ends=new java.util.ArrayList<>(points);ends.add(1000);
+  for(int end:ends){int next=Math.round(total*end/1000f);if(next<=previous)throw new IllegalArgumentException("Bölme çok dar.");if(result.length()>0)result.append(";");result.append(mm(next-previous));previous=next;}
+  return result.toString();
  }
 
  private void dimensionDialog() {
