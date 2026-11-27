@@ -4,9 +4,9 @@
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 <uses-permission android:name="android.permission.WAKE_LOCK" />
 <application
- android:icon="@drawable/cannuryapi_icon"
- android:label="Profil Kesim Pro"
- android:roundIcon="@drawable/cannuryapi_icon"
+ android:icon="@drawable/kesim_icon"
+ android:label="Kesim Listesi Optimizasyon"
+ android:roundIcon="@drawable/kesim_icon"
  android:theme="@android:style/Theme.Material.Light.NoActionBar"
  android:allowBackup="true"
  android:supportsRtl="true">
