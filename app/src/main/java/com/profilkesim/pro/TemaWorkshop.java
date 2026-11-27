@@ -329,13 +329,16 @@ final class TemaWorkshop {
   java.util.TreeSet<Integer> xs=new java.util.TreeSet<>(), ys=new java.util.TreeSet<>();
   java.util.Set<Integer> openings=new java.util.HashSet<>();
   int[] mode={0};
+  EditText jointEdit=new EditText(app); jointEdit.setInputType(SIGNED); jointEdit.setText(fields.get("joint").getText());
+  app.planLabel(panel,"Fiş bağlantı payı (mm/uç)",14,Color.DKGRAY);panel.addView(jointEdit);
   android.view.View board=new android.view.View(app){
    android.graphics.Paint paint=new android.graphics.Paint(3);
    float left=24,top=24,right,bottom;
    @Override protected void onDraw(android.graphics.Canvas c){
     super.onDraw(c); right=getWidth()-24; bottom=getHeight()-24;
-    c.drawColor(0xffe8f1f5); paint.setColor(0xff34495e); paint.setStrokeWidth(7);paint.setStyle(android.graphics.Paint.Style.STROKE);
+    c.drawColor(0xffe8f1f5); paint.setColor(0xffcbd9e1);paint.setStrokeWidth(1);for(int i=0;i<20;i++){float px=left+(right-left)*i/20f,py=top+(bottom-top)*i/20f;c.drawLine(px,top,px,bottom,paint);c.drawLine(left,py,right,py,paint);} paint.setColor(0xff34495e); paint.setStrokeWidth(7);paint.setStyle(android.graphics.Paint.Style.STROKE);
     c.drawRect(left,top,right,bottom,paint);
+    paint.setStyle(android.graphics.Paint.Style.FILL);paint.setTextSize(14);c.drawText(sizes[0].getText()+" mm",left+10,18,paint);c.drawText(sizes[1].getText()+" mm",left+10,bottom+18,paint);paint.setStyle(android.graphics.Paint.Style.STROKE);
     for(int x:xs){float px=left+(right-left)*x/1000f;c.drawLine(px,top,px,bottom,paint);}
     for(int y:ys){float py=top+(bottom-top)*y/1000f;c.drawLine(left,py,right,py,paint);}
     java.util.ArrayList<Integer> a=new java.util.ArrayList<>(xs),b=new java.util.ArrayList<>(ys);a.add(0,0);a.add(1000);b.add(0,0);b.add(1000);
@@ -351,13 +354,16 @@ final class TemaWorkshop {
     if(x<=0||x>=1000||y<=0||y>=1000)return true;
     if(mode[0]==0){if(xs.size()<12)xs.add(x);openings.clear();}
     else if(mode[0]==1){if(ys.size()<12)ys.add(y);openings.clear();}
+    else if(mode[0]==3){Integer nearest=null;int distance=60;boolean vertical=true;for(int q:xs)if(Math.abs(q-x)<distance){nearest=q;distance=Math.abs(q-x);vertical=true;}for(int q:ys)if(Math.abs(q-y)<distance){nearest=q;distance=Math.abs(q-y);vertical=false;}if(nearest!=null){if(vertical)xs.remove(nearest);else ys.remove(nearest);openings.clear();}}
     else {int cell=ys.headSet(y).size()*(xs.size()+1)+xs.headSet(x).size()+1;if(!openings.add(cell))openings.remove(cell);}
     invalidate();return true;
    }
   };
-  String[] modes={"Dikey kayıt ekle","Yatay kayıt ekle","Kanat ekle / kaldır"};
-  for(int i=0;i<3;i++){final int m=i;Button b=new Button(app);b.setText(modes[i]);panel.addView(b);b.setOnClickListener(v->{mode[0]=m;toast(modes[m]);});}
-  panel.addView(board,new LinearLayout.LayoutParams(-1,app.dp(300)));
+  String[] modes={"Dikey kayıt ekle","Yatay kayıt ekle","Kanat ekle / kaldır","Profil sil"};
+  for(int i=0;i<modes.length;i++){final int m=i;Button b=new Button(app);b.setText(modes[i]);panel.addView(b);b.setOnClickListener(v->{mode[0]=m;toast(modes[m]);});}
+  panel.addView(board,new LinearLayout.LayoutParams(-1,app.dp(420)));
+  for(EditText size:sizes)size.addTextChangedListener(watcher(board::invalidate));
+  Button exact=new Button(app);exact.setText("Kayıt konumunu mm olarak gir");panel.addView(exact);exact.setOnClickListener(v->{EditText pos=new EditText(app);pos.setInputType(DECIMAL);new AlertDialog.Builder(app).setTitle("Kasa içi net konum (mm)").setView(pos).setNegativeButton("Vazgeç",null).setPositiveButton("Ekle",(d,k)->{try{boolean vertical=mode[0]!=1;int total=ShopDimensions.tenths(sizes[vertical?0:1].getText().toString(),"Dış ölçü")-2*workingFace(groups[0][picks[0]]);int point=Math.round(1000f*ShopDimensions.tenths(pos.getText().toString(),"Konum")/total);java.util.TreeSet<Integer> target=vertical?xs:ys;if(point<=0||point>=1000||target.size()>=12)throw new IllegalArgumentException("Konum kasa içinde olmalı.");target.add(point);openings.clear();board.invalidate();}catch(IllegalArgumentException ex){toast(ex.getMessage());}}).show();});
   Button clear=new Button(app);clear.setText("Çizimi temizle");panel.addView(clear);clear.setOnClickListener(v->{xs.clear();ys.clear();openings.clear();board.invalidate();});
   AlertDialog dialog=new AlertDialog.Builder(app).setTitle("Kendin çiz · "+series.label).setView(scroll).setNegativeButton("Vazgeç",null).setPositiveButton("Kesim hesapla",null).create();
   dialog.setOnShowListener(v->dialog.getButton(-1).setOnClickListener(w->{
@@ -368,7 +374,7 @@ final class TemaWorkshop {
     for(int i=0;i<2;i++)fields.get(sizeKeys[i]).setText(sizes[i].getText());
     for(int i=0;i<3;i++){profileIndices[i]=picks[i];fields.get("code"+i).setText(groups[i][picks[i]].code);fields.get("face"+i).setText(mm(workingFace(groups[i][picks[i]])));}
     fields.get("vertical").setText(String.valueOf(xs.size()));fields.get("horizontal").setText(String.valueOf(ys.size()));
-    fields.get("columns").setText(cols);fields.get("rows").setText(rows);
+    fields.get("columns").setText(cols);fields.get("rows").setText(rows);fields.get("joint").setText(jointEdit.getText());
     chosenSashes.clear();chosenSashes.addAll(openings);expectedFixed=-1;updateLayout();invalidate();dialog.dismiss();
     toast("Çizim aktarıldı. Montaj ve fiş paylarını kontrol edip hesaplayın.");
    }catch(IllegalArgumentException ex){toast(ex.getMessage());}
