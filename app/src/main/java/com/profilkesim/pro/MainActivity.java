@@ -31,6 +31,9 @@ public class MainActivity extends Activity {
  private final PhotoReview generalReview = new PhotoReview("Fotoğraflardan kesim listesi", null, null);
  private final PhotoReview albertReview = new PhotoReview("Albert Genau İmalat Kesim Listesi", null, null);
  private PhotoReview photoReview = generalReview;
+ private static final int SAVE_TEMA_PDF = 48;
+ private java.io.File pendingTemaPdf;
+ private boolean preparingTemaPdf;
  private boolean photoBatchRunning;
  private LinearLayout scanPanel;
  private Runnable savePhotoReview;
@@ -452,6 +455,13 @@ public class MainActivity extends Activity {
   getWindow().setNavigationBarColor(0xff081620);
   setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC);
   getPreferences(MODE_PRIVATE).registerOnSharedPreferenceChangeListener(musicSettingsChanged);
+  if (state != null) {
+   String cachedPdf = state.getString("pendingTemaPdf");
+   if (cachedPdf != null && cachedPdf.startsWith("tema_pdf_") && cachedPdf.equals(new java.io.File(cachedPdf).getName())) {
+    java.io.File candidate = new java.io.File(getCacheDir(), cachedPdf);
+    if (candidate.isFile()) pendingTemaPdf = candidate;
+   }
+  }
   for (TemaCatalog.Series series : TemaCatalog.Series.values()) {
    TemaWorkshop workshop = new TemaWorkshop(this, series);
    temaWorkshops.put(series, workshop);
@@ -466,6 +476,7 @@ public class MainActivity extends Activity {
  }
  @Override protected void onSaveInstanceState(Bundle out) {
   super.onSaveInstanceState(out);
+  if (pendingTemaPdf != null) out.putString("pendingTemaPdf", pendingTemaPdf.getName());
   for (Map.Entry<TemaCatalog.Series, TemaWorkshop> entry : temaWorkshops.entrySet()) {
    Bundle workshop = new Bundle();
    entry.getValue().saveState(workshop);
@@ -640,8 +651,126 @@ public class MainActivity extends Activity {
   startActivityForResult(camera, request);
  }
 
+ void exportTemaPdf(String name, TemaCatalog.Series series, TemaJoinery.Order order,
+                     TemaJoinery.Plan plan, Set<Integer> leftHinges) {
+  if (preparingTemaPdf || pendingTemaPdf != null) {
+   pdfMessage("Önce açık PDF kaydetme işlemini tamamlayın.");
+   return;
+  }
+  preparingTemaPdf = true;
+  String safeName = name.replaceAll("[^\\p{L}\\p{N} ._()-]", "_").trim();
+  String fileName = "Tema-" + series.label + "-" + (safeName.isEmpty() ? "Poz" : safeName) + ".pdf";
+  pdfMessage("PDF hazırlanıyor…");
+  new Thread(() -> {
+   if (android.os.Build.VERSION.SDK_INT >= 29) {
+    saveTemaPdfToDownloads(fileName, name, series, order, plan, leftHinges);
+    return;
+   }
+   java.io.File file = null;
+   try {
+    file = java.io.File.createTempFile("tema_pdf_", ".pdf", getCacheDir());
+    try (java.io.OutputStream output = new java.io.FileOutputStream(file)) {
+     TemaPdfExport.write(output, name, series, order, plan, leftHinges);
+    }
+   } catch (java.io.IOException | RuntimeException error) {
+    if (file != null) file.delete();
+    completePdfWrite(false, fileName, false);
+    return;
+   }
+   java.io.File prepared = file;
+   runOnUiThread(() -> {
+    preparingTemaPdf = false;
+    if (isDestroyed() || isFinishing()) {
+     prepared.delete();
+     return;
+    }
+    pendingTemaPdf = prepared;
+    Intent save = new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("application/pdf")
+     .addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE, fileName);
+    try {
+     startActivityForResult(save, SAVE_TEMA_PDF);
+    } catch (android.content.ActivityNotFoundException error) {
+     pendingTemaPdf = null;
+     prepared.delete();
+     pdfMessage("PDF kaydetme ekranı açılamadı.");
+    }
+   });
+  }, "tema-pdf").start();
+ }
+
+ @android.annotation.TargetApi(29)
+ private void saveTemaPdfToDownloads(String fileName, String name, TemaCatalog.Series series, TemaJoinery.Order order,
+                                    TemaJoinery.Plan plan, Set<Integer> leftHinges) {
+  android.content.ContentValues metadata = new android.content.ContentValues();
+  metadata.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+  metadata.put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf");
+  metadata.put(MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS);
+  metadata.put(MediaStore.MediaColumns.IS_PENDING, 1);
+  Uri uri = null;
+  try {
+   uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, metadata);
+   if (uri == null) throw new java.io.IOException("İndirilenler klasörü açılamadı.");
+   try (java.io.OutputStream output = getContentResolver().openOutputStream(uri)) {
+    if (output == null) throw new java.io.IOException("PDF dosyası açılamadı.");
+    TemaPdfExport.write(output, name, series, order, plan, leftHinges);
+   }
+   android.content.ContentValues completed = new android.content.ContentValues();
+   completed.put(MediaStore.MediaColumns.IS_PENDING, 0);
+   if (getContentResolver().update(uri, completed, null, null) != 1) {
+    throw new java.io.IOException("PDF kaydedilemedi.");
+   }
+   completePdfWrite(true, fileName, true);
+  } catch (java.io.IOException | RuntimeException error) {
+   if (uri != null) {
+    try { getContentResolver().delete(uri, null, null); } catch (RuntimeException ignored) { }
+   }
+   completePdfWrite(false, fileName, true);
+  }
+ }
+
+ private void finishTemaPdf(int result, Intent data) {
+  java.io.File file = pendingTemaPdf;
+  pendingTemaPdf = null;
+  if (file == null) return;
+  Uri uri = result == RESULT_OK && data != null ? data.getData() : null;
+  if (uri == null) { file.delete(); return; }
+  preparingTemaPdf = true;
+  new Thread(() -> {
+   boolean saved = false;
+   try (java.io.InputStream input = new java.io.FileInputStream(file);
+        java.io.OutputStream output = getContentResolver().openOutputStream(uri)) {
+    if (output == null) throw new java.io.IOException("PDF dosyası açılamadı.");
+    byte[] buffer = new byte[8192];
+    for (int count; (count = input.read(buffer)) != -1;) output.write(buffer, 0, count);
+    output.flush();
+    saved = true;
+   } catch (java.io.IOException | RuntimeException error) {
+    saved = false;
+   } finally {
+    file.delete();
+   }
+   completePdfWrite(saved, "", false);
+  }, "tema-pdf-save").start();
+ }
+
+ private void completePdfWrite(boolean saved, String fileName, boolean downloads) {
+  runOnUiThread(() -> {
+   preparingTemaPdf = false;
+   pdfMessage(saved ? downloads ? "İndirilenler’e kaydedildi · " + fileName : "PDF kaydedildi."
+    : "PDF kaydedilemedi. Çizimi yeniden dışa aktarın.");
+  });
+ }
+
+ private void pdfMessage(String text) {
+  Toast.makeText(getApplicationContext(), text, Toast.LENGTH_LONG).show();
+ }
+
  @Override protected void onActivityResult(int request, int result, Intent data) {
   super.onActivityResult(request, result, data);
+  if (request == SAVE_TEMA_PDF) {
+   finishTemaPdf(result, data);
+   return;
+  }
   if (temaWorkshop != null && temaWorkshop.handlePhotoResult(request, result, data)) return;
   if (result != RESULT_OK || photoBatchRunning) return;
   LinkedHashSet<Uri> selected = new LinkedHashSet<>();

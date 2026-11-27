@@ -49,6 +49,11 @@ final class TemaCatalog {
    this.beads = beads;
   }
 
+  String nameOf(String code) {
+   Profile profile = find(code);
+   return profile == null ? "Özel profil " + code : profile.name;
+  }
+
   Profile find(String code) {
    if (this == C60 && C60_ADAPTER.code.equals(code)) return C60_ADAPTER;
    for (Profile[] group : new Profile[][]{frames, mullions, sashes, beads}) {

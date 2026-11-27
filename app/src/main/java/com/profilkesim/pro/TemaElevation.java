@@ -215,18 +215,41 @@ final class TemaElevation {
   canvas.drawLine(x, y, targetX, targetY, paint);
  }
 
- void profileLabel(Canvas c, String code, int face, int cut, boolean vertical, float x, float y, float span, int background) {
+ void profileLabel(Canvas c, String code, int face, boolean vertical, float x, float y, float span, int background) {
   TemaCatalog.Profile profile = series.find(code);
   if (face <= 0 && profile != null) face = profile.face;
   String measure = face > 0 ? " · " + ShopDimensions.mm(face) + " mm" : "";
   String text = (profile == null ? code : profile.name) + measure;
-  String detail = cut > 0 ? code + " · Kesim " + ShopDimensions.mm(cut) + " mm" : "";
+  drawProfileText(c, text, code + measure, "", "", vertical, x, y, span, background);
+ }
+
+ void fabricationLabel(Canvas c, TemaJoinery.ProfileMark mark, float x, float y, float span, int background) {
+  String name = series.nameOf(mark.code);
+  String allowance = mark.allowanceText();
+  String detail = allowance + " · Kesim " + ShopDimensions.mm(mark.length) + " mm";
+  drawProfileText(c, name, name, detail, allowance, mark.vertical, x, y, span, background);
+ }
+
+ void accessoryLabel(Canvas c, String code, float x, float y, float span, int background) {
+  TemaCatalog.Profile profile = series.find(code);
+  String name = series.nameOf(code);
+  String face = profile == null ? "" : ShopDimensions.mm(profile.face) + " mm";
+  drawProfileText(c, name, name, face, face, false, x, y, span, background);
+ }
+
+ private void drawProfileText(Canvas c, String text, String shortName, String detail, String shortDetail, boolean vertical,
+                              float x, float y, float span, int background) {
   paint.setTextAlign(Paint.Align.CENTER);
   paint.setTextSize(10 * annotationDensity);
   float max = span - 8 * annotationDensity;
   if (max <= 0) return;
-  if (paint.measureText(text) > max / .8f) text = code + measure;
-  if (!detail.isEmpty() && paint.measureText(detail) > max / .8f) detail = ShopDimensions.mm(cut) + " mm";
+  if (paint.measureText(text) > max / .8f) text = shortName;
+  if (paint.measureText(detail) > max / .8f) detail = shortDetail;
+  if (paint.measureText(text) > max / .76f) {
+   int count = paint.breakText(text, true, Math.max(0f, max / .76f - paint.measureText("…")), null);
+   if (count < 2) return;
+   text = text.substring(0, count) + "…";
+  }
   float width = Math.max(paint.measureText(text), paint.measureText(detail));
   if (width <= 0) return;
   float sizeRatio = Math.min(1f, max / width);

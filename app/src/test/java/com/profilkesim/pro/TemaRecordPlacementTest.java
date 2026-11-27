@@ -40,6 +40,7 @@ public final class TemaRecordPlacementTest {
   TemaJoinery.Plan plan = TemaJoinery.calculate(order);
   TemaJoinery.ProfileMark mark = plan.profileMarks.stream().filter(m -> m.code.equals(added.code)).findFirst().get();
   assertEquals(765, mark.face);
+  assertEquals("Pay 38,2 + 38,3 mm", mark.allowanceText());
   assertEquals(layout.bays.get(0).width(), mark.length);
   assertEquals(layout.height - 2 * frame.face, layout.bays.get(1).height());
   assertEquals(mark.length, plan.cuts.stream().filter(cut -> cut.code.equals(added.code)).findFirst().get().length);

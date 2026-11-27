@@ -7,7 +7,8 @@ import java.util.List;
 
 final class ShopDimensions {
  static final int PER_MM = 10;
- private static final BigDecimal LIMIT = BigDecimal.valueOf(100_000);
+ static final int MAX_TENTHS = 100_000 * PER_MM;
+ private static final BigDecimal LIMIT = BigDecimal.valueOf(MAX_TENTHS / PER_MM);
 
  private ShopDimensions() {}
 

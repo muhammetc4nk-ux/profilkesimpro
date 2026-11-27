@@ -154,6 +154,7 @@ final class TemaWorkshop {
    }
    if (!position.cuts.isEmpty()) chooseButton(column(actions), "Föyü aç", () -> openPositionSheet(position));
    chooseButton(column(actions), "Poz ayarları", () -> positionOptions(position));
+   if (position.drawing != null) chooseButton(card, "Çizimi PDF al", () -> exportSavedDrawing(position));
   }
   if (!readyCuts().isEmpty()) app.button("Birleşik stok planını aç", () -> openOptimization(null));
   photoCard = section("Çizim dosyasından ölçü al");
@@ -338,6 +339,12 @@ final class TemaWorkshop {
   java.util.function.Supplier<TemaLayout> geometry = () -> new TemaLayout(
    ShopDimensions.tenths(sizes[0].getText().toString(),"En"), ShopDimensions.tenths(sizes[1].getText().toString(),"Boy"),
    editorFrame.get(), DRAWING_SCALE, bays.get(), layoutRecords(records.get()), openings);
+  TemaOpeningResize.Resolver resizeLayout = drawing -> new TemaLayout(drawing.width, drawing.height,
+   frame(section(groups[0][picks[0]]), drawing.profiles), DRAWING_SCALE,
+   drawing.cells(), layoutRecords(drawing.records(picks[1])), openings);
+  java.util.function.Supplier<TemaOpeningResize.Drawing> resizeDrawing = () -> new TemaOpeningResize.Drawing(
+   ShopDimensions.tenths(sizes[0].getText().toString(), "Dış en"),
+   ShopDimensions.tenths(sizes[1].getText().toString(), "Dış boy"), DRAWING_SCALE, xs, ys, localLines, lineProfiles);
   java.util.function.Function<int[],int[]> net = cell -> {
    TemaLayout layout = geometry.get();
    List<int[]> coordinates = bays.get();
@@ -402,7 +409,7 @@ final class TemaWorkshop {
      if (paint.measureText(text) <= inside.width() - app.dp(4)) c.drawText(text, inside.centerX(), inside.centerY(), paint);
      TemaCatalog.Profile bead = series.beads[profileIndices[sash == null ? 3 : 4]];
      if (inside.height() > app.dp(42)) {
-      elevation.profileLabel(c, bead.code, bead.face, 0, false, inside.centerX(), inside.bottom - app.dp(11),
+      elevation.profileLabel(c, bead.code, bead.face, false, inside.centerX(), inside.bottom - app.dp(11),
        inside.width(), 0xdd243b4c);
      }
     }
@@ -451,7 +458,7 @@ final class TemaWorkshop {
 
    private void labelProfile(android.graphics.Canvas c, TemaLayout.Section section, boolean vertical,
                              float x, float y, float span, int color) {
-    elevation.profileLabel(c, section.code, section.face, 0, vertical, x, y, span, color);
+    elevation.profileLabel(c, section.code, section.face, vertical, x, y, span, color);
    }
 
    private void drawRecordGuide(android.graphics.Canvas canvas) {
@@ -552,6 +559,70 @@ final class TemaWorkshop {
     persistDrawing.run();
     invalidate();
    }
+   private void editOpening(int index) {
+    try {
+     TemaOpeningResize.Drawing current = resizeDrawing.get();
+     TemaLayout layout = resizeLayout.layout(current);
+     TemaLayout.Opening bay = layout.bays.get(index);
+     int[] deductions = new int[layout.bays.size()];
+     for (int i = 0; i < deductions.length; i++) {
+      int number = i + 1;
+      if (emptyCells.contains(number)) continue;
+      TemaCatalog.Profile sash = openings.contains(number) ? groups[2][lineProfiles.getOrDefault("s" + number, picks[2])] : null;
+      deductions[i] = TemaJoinery.glassAllowance(sash == null ? null : section(sash));
+     }
+     LinearLayout form = new LinearLayout(app);
+     form.setOrientation(LinearLayout.VERTICAL);
+     form.setPadding(app.dp(18), app.dp(8), app.dp(18), app.dp(8));
+     CheckBox glass = new CheckBox(app);
+     glass.setText("Cam kesim ölçüsü gir");
+     if (deductions[index] > 0) form.addView(glass);
+     EditText en = new EditText(app), boy = new EditText(app);
+     addDimensionFields(form, en, boy, bay.width(), bay.height());
+     glass.setOnCheckedChangeListener((button, checked) -> {
+      int allowance = checked ? deductions[index] : 0;
+      en.setHint(checked ? "Cam kesim eni (mm)" : "İç en (mm)");
+      boy.setHint(checked ? "Cam kesim boyu (mm)" : "İç boy (mm)");
+      en.setText(bay.width() > allowance ? mm(bay.width() - allowance) : "");
+      boy.setText(bay.height() > allowance ? mm(bay.height() - allowance) : "");
+     });
+     showResizeDialog(index, current, deductions, form, en, boy, glass);
+    } catch (IllegalArgumentException error) {
+     toast(error.getMessage());
+    }
+   }
+
+   private void showResizeDialog(int index, TemaOpeningResize.Drawing current, int[] deductions,
+                                 LinearLayout form, EditText en, EditText boy, CheckBox glass) {
+    TextView feedback = app.planLabel(form, "", 13, 0xffa92843);
+    AlertDialog dialog = new AlertDialog.Builder(app).setTitle((index + 1) + ". bölme ölçüsü")
+     .setView(form).setNegativeButton("Vazgeç", null).setPositiveButton("Uygula", null).create();
+    dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+     try {
+      int allowance = glass.isChecked() ? deductions[index] : 0;
+      int width = ShopDimensions.tenths(en.getText().toString(), "En");
+      int height = ShopDimensions.tenths(boy.getText().toString(), "Boy");
+      if (width <= 0 || height <= 0) throw new IllegalArgumentException("Ölçüler sıfırdan büyük olmalı.");
+      TemaOpeningResize.Drawing changed = TemaOpeningResize.resize(current, index, width + allowance,
+       height + allowance, deductions, resizeLayout);
+      checkpoint.run();
+      xs.clear(); xs.addAll(changed.columns);
+      ys.clear(); ys.addAll(changed.rows);
+      localLines.clear(); localLines.addAll(changed.local);
+      lineProfiles.clear(); lineProfiles.putAll(changed.profiles);
+      sizes[0].setText(mm(changed.width));
+      sizes[1].setText(mm(changed.height));
+      persistDrawing.run();
+      drawingStatus.setText("Ölçüler güncellendi · Dış kasa " + mm(changed.width) + " × " + mm(changed.height) + " mm");
+      dialog.dismiss();
+      invalidate();
+     } catch (IllegalArgumentException error) {
+      feedback.setText(error.getMessage());
+     }
+    }));
+    dialog.show();
+   }
+
    @Override protected void tap(float touchX, float touchY){
     if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}
     if (innerRight <= innerLeft || innerBottom <= innerTop
@@ -563,55 +634,10 @@ final class TemaWorkshop {
     if (mode[0] == 0 || mode[0] == 1) { placeRecord(x, y, tolX, tolY); return; }
     if (mode[0] == 3) { deleteRecord(x, y, tolX, tolY); return; }
     if(y>DRAWING_SCALE && touchY<=bottom && mode[0]!=7)y=DRAWING_SCALE-1;
-    if(mode[0]==8){
-     int cell=hit.apply(x,y);if(cell==0)return;int[] z=bays.get().get(cell-1);
-     try{int[] n=net.apply(z);LinearLayout p=new LinearLayout(app);p.setOrientation(LinearLayout.VERTICAL);
-      EditText en=new EditText(app),boy=new EditText(app);en.setInputType(DECIMAL);boy.setInputType(DECIMAL);en.setHint("Net en (mm)");boy.setHint("Net boy (mm)");en.setText(mm(n[0]));boy.setText(mm(n[1]));p.addView(en);p.addView(boy);
-      new AlertDialog.Builder(app).setTitle(cell+". bölme net ölçüsü (mm)").setView(p).setNegativeButton("Vazgeç",null).setPositiveButton("Uygula",(d,k)->{
-       Runnable restore=snapshot.get();int countBefore=bays.get().size();
-       try{int[] wanted={ShopDimensions.tenths(en.getText().toString(),"Net en"),ShopDimensions.tenths(boy.getText().toString(),"Net boy")};
-        for(int axis=0;axis<2;axis++){if(wanted[axis]<=0)throw new IllegalArgumentException("Ölçü pozitif olmalı.");if(wanted[axis]==n[axis])continue;
-         int lo=z[axis],hi=z[axis+2],delta=Math.round(1000000f*(wanted[axis]-n[axis])/n[axis+2]);
-         int old=hi<1000000?hi:lo, next=hi<1000000?hi+delta:lo-delta;
-         java.util.TreeSet<Integer> bounds=axis==0?xs:ys;
-         Integer upper=bounds.higher(old);
-         if(hi<1000000&&lo>0&&(next>=1000000||(upper!=null&&next>=upper)||next<=lo)){old=lo;next=lo-delta;}
-         if(delta==0)continue;
-         if(old==0||old==1000000||next<=0||next>=1000000)throw new IllegalArgumentException("Dış kasa ölçüsünü veya komşu kaydı kontrol edin.");
-         java.util.TreeSet<Integer> set = axis == 0 ? xs : ys;
-         if (set.contains(old)) {
-          Integer prev = set.lower(old), after = set.higher(old);
-          if ((prev != null && next <= prev) || (after != null && next >= after)) {
-           throw new IllegalArgumentException("Kayıt diğer bölmeyi geçemez.");
-          }
-          set.remove(old);
-          set.add(next);
-          String prefix = axis == 0 ? "v" : "h";
-          Integer profile = lineProfiles.remove(prefix + old);
-          if (profile != null) lineProfiles.put(prefix + next, profile);
-          TemaRecordPlacement.moveEndpoints(localLines, null, axis, old, next, 0, DRAWING_SCALE);
-         } else {
-          int cross = 1 - axis;
-          int[] selected = null;
-          for (int[] record : localLines) {
-           if (record[axis] == old && record[axis + 2] == old && record[cross] <= z[cross] && record[cross + 2] >= z[cross + 2]) {
-            selected = record;
-            break;
-           }
-          }
-          if (selected == null) throw new IllegalArgumentException("Bölme sınırı bulunamadı.");
-          TemaRecordPlacement.moveEndpoints(localLines, selected, axis, old, next, selected[cross], selected[cross + 2]);
-         }
-         if (!TemaRecordPlacement.connected(records.get(), DRAWING_SCALE)) {
-          throw new IllegalArgumentException("Kayıt uçları mevcut profillere bağlanmalı.");
-         }
-        }
-        java.util.ArrayList<int[]> updated=bays.get();if(updated.size()!=countBefore)throw new IllegalArgumentException("Bölme yapısı değişemez."); 
-        for(int[] b:updated){int[] a=net.apply(b);if(a[0]<=0||a[1]<=0)throw new IllegalArgumentException("Komşu bölme çok dar.");}
-        undo.push(restore);redo.clear();persistDrawing.run();invalidate();
-       }catch(RuntimeException ex){restore.run();invalidate();toast(ex.getMessage());}
-      }).show();
-     }catch(RuntimeException ex){toast(ex.getMessage());}return;
+    if (mode[0] == 8) {
+     int cell = hit.apply(x, y);
+     if (cell != 0) editOpening(cell - 1);
+     return;
     }
     if(mode[0]==7){
      String key=null;int role=1;int best=65000;
@@ -726,19 +752,42 @@ final class TemaWorkshop {
    pendingRecord[0] = null;
    board.invalidate();
   }));
-  Button netSizes=new Button(app);netSizes.setText("Kasa içi net en ve boy gir");panel.addView(netSizes);
-  netSizes.setOnClickListener(v->{
-   LinearLayout p=new LinearLayout(app);p.setOrientation(LinearLayout.VERTICAL);
-   EditText nw=new EditText(app),nh=new EditText(app);nw.setInputType(DECIMAL);nh.setInputType(DECIMAL);nw.setHint("Net en (mm)");nh.setHint("Net boy (mm)");p.addView(nw);p.addView(nh);
-   new AlertDialog.Builder(app).setTitle("Kasa içi net açıklık").setView(p).setNegativeButton("Vazgeç",null).setPositiveButton("Uygula",(d,k)->{try{
-    if(!xs.isEmpty()||!ys.isEmpty()||!localLines.isEmpty())throw new IllegalArgumentException("Bölmeli kasada dış ölçüleri kullanın.");
-    int w=ShopDimensions.tenths(nw.getText().toString(),"Net en"),h=ShopDimensions.tenths(nh.getText().toString(),"Net boy");
-    if(w<=0||h<=0)throw new IllegalArgumentException("Net ölçüler pozitif olmalı.");
-    checkpoint.run();TemaLayout.Frame selected=editorFrame.get();
-    sizes[0].setText(mm(w+selected.left.face+selected.right.face));
-    sizes[1].setText(mm(h+selected.top.face+(openings.contains(1)?0:selected.bottom.face)));
-    frameAdded[0]=true;board.invalidate();
-   }catch(IllegalArgumentException ex){toast(ex.getMessage());}}).show();
+  Button netSizes = new Button(app);
+  netSizes.setText("Kasa içi net en ve boy gir");
+  panel.addView(netSizes);
+  netSizes.setOnClickListener(v -> {
+   LinearLayout inputs = new LinearLayout(app);
+   inputs.setOrientation(LinearLayout.VERTICAL);
+   inputs.setPadding(app.dp(18), app.dp(8), app.dp(18), app.dp(8));
+   int initialWidth = 0, initialHeight = 0;
+   try {
+    TemaLayout current = geometry.get();
+    initialWidth = current.innerWidth;
+    initialHeight = current.innerHeight;
+   } catch (IllegalArgumentException ignored) { }
+   EditText width = new EditText(app), height = new EditText(app);
+   addDimensionFields(inputs, width, height, initialWidth, initialHeight);
+   TextView feedback = app.planLabel(inputs, "", 13, 0xffa92843);
+   AlertDialog dialog = new AlertDialog.Builder(app).setTitle("Kasanın toplam iç açıklığı")
+    .setView(inputs).setNegativeButton("Vazgeç", null).setPositiveButton("Uygula", null).create();
+   dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button -> {
+    try {
+     int[] outside = TemaOpeningResize.outside(editorFrame.get(), bays.get(), openings, DRAWING_SCALE,
+      ShopDimensions.tenths(width.getText().toString(), "İç en"), ShopDimensions.tenths(height.getText().toString(), "İç boy"));
+     new TemaLayout(outside[0], outside[1], editorFrame.get(), DRAWING_SCALE, bays.get(), layoutRecords(records.get()), openings);
+     checkpoint.run();
+     sizes[0].setText(mm(outside[0]));
+     sizes[1].setText(mm(outside[1]));
+     frameAdded[0] = true;
+     persistDrawing.run();
+     drawingStatus.setText("Kasa ve bölmeler yeni iç ölçüye göre güncellendi.");
+     dialog.dismiss();
+     board.invalidate();
+    } catch (IllegalArgumentException error) {
+     feedback.setText(error.getMessage());
+    }
+   }));
+   dialog.show();
   });
   Button clear=new Button(app);clear.setText("Çizimi temizle");panel.addView(clear);clear.setOnClickListener(v->{pendingRecord[0]=null;checkpoint.run();frameAdded[0]=false;localLines.clear();lineProfiles.clear();xs.clear();ys.clear();openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();});
   buildAdvanced(panel);
@@ -841,6 +890,23 @@ final class TemaWorkshop {
    editingPosition.drawing = snapshotDraft();
    savePositions();
   };
+  Button pdf = new Button(app);
+  pdf.setText("Çizimi PDF al");
+  styleTool(pdf, false);
+  LinearLayout.LayoutParams pdfSize = new LinearLayout.LayoutParams(-2, app.dp(42));
+  pdfSize.setMargins(app.dp(2), app.dp(2), app.dp(2), app.dp(2));
+  ribbon.addView(pdf, 0, pdfSize);
+  pdf.setOnClickListener(v -> {
+   try {
+    if (!frameAdded[0]) throw new IllegalArgumentException("Önce kasa ekleyin.");
+    if (pendingRecord[0] != null) throw new IllegalArgumentException("PDF için kaydın ikinci ucunu seçin.");
+    saveDraft.run();
+    TemaJoinery.Order order = createOrder();
+    exportDrawing(editingPosition, order, buildPlan(order));
+   } catch (IllegalArgumentException error) {
+    toast(error.getMessage());
+   }
+  });
   boolean[] handled = {false};
   AlertDialog dialog = new AlertDialog.Builder(app).setTitle(editingPosition.name + " · " + series.label)
    .setView(workspace).setNegativeButton("Taslağı kaydet", null)
@@ -969,6 +1035,18 @@ final class TemaWorkshop {
    result.append(coordinates[i]);
   }
   result.append(';');
+ }
+
+ private static void addDimensionFields(LinearLayout form, EditText width, EditText height,
+                                        int initialWidth, int initialHeight) {
+  width.setInputType(DECIMAL);
+  height.setInputType(DECIMAL);
+  width.setHint("İç en (mm)");
+  height.setHint("İç boy (mm)");
+  if (initialWidth > 0) width.setText(mm(initialWidth));
+  if (initialHeight > 0) height.setText(mm(initialHeight));
+  form.addView(width);
+  form.addView(height);
  }
 
  private String cellList(java.util.Set<Integer> cells){StringBuilder b=new StringBuilder();for(int n:cells){if(b.length()>0)b.append(";");b.append(n);}return b.toString();}
@@ -1474,21 +1552,41 @@ final class TemaWorkshop {
   }
  }
 
+ private Set<Integer> leftHinges() {
+  Set<Integer> hinges = new LinkedHashSet<>();
+  for (String cell : value("leftCells").split(";")) {
+   if (!cell.trim().isEmpty()) hinges.add(Integer.parseInt(cell.trim()));
+  }
+  return hinges;
+ }
+
+ private void exportSavedDrawing(TemaPosition position) {
+  try {
+   loadDraft(position.drawing);
+   String serialized = value("editorDrawing");
+   if (!serialized.isEmpty() && !new org.json.JSONObject(serialized).optBoolean("frame")) {
+    throw new IllegalArgumentException("PDF için önce kasa çizimini tamamlayın.");
+   }
+   TemaJoinery.Order order = createOrder();
+   exportDrawing(position, order, buildPlan(order));
+  } catch (org.json.JSONException | IllegalArgumentException error) {
+   toast(error.getMessage());
+  }
+ }
+
+ private void exportDrawing(TemaPosition position, TemaJoinery.Order order, TemaJoinery.Plan plan) {
+  app.exportTemaPdf(position.name, series, order, plan, leftHinges());
+ }
+
  private void showPlan(TemaPosition position, TemaJoinery.Order order, TemaJoinery.Plan plan) {
   app.page(position.name + " · " + series.label + " imalat föyü");
   app.pageBack = this::open;
   LinearLayout drawingCard = section("Doğrama görünüşü");
   app.lightPanel(drawingCard);
-  Set<Integer> leftHinges = new LinkedHashSet<>();
-  String[] leftCells = value("leftCells").split(";");
-  for (TemaJoinery.Pane pane : plan.panes) {
-   for (String cell : leftCells) {
-    if (cell.trim().equals(String.valueOf(pane.number))) leftHinges.add(pane.number);
-   }
-  }
+  Set<Integer> leftHinges = leftHinges();
   drawingCard.addView(new TemaDiagramView(app, order, plan, series, leftHinges),
    new LinearLayout.LayoutParams(-1, app.dp(344)));
-  app.planLabel(drawingCard, "Profil etiketlerinde hesaba giren genişlik ve kesim boyu yazıyor.", 13, 0xffc9dbe3);
+  app.planLabel(drawingCard, "Pay, profilin açıklıktan aldığı ölçüdür. Orta kayıtta iki komşu bölmenin payı ayrı yazılır.", 13, 0xffc9dbe3);
   Button expand = new Button(app);
   expand.setText("Çizimi büyüt");
   expand.setAllCaps(false);
@@ -1496,6 +1594,7 @@ final class TemaWorkshop {
   expand.setBackground(app.rgbPanel(0xff173041, 0xff245462, series.accent));
   drawingCard.addView(expand, new LinearLayout.LayoutParams(-1, app.dp(48)));
   expand.setOnClickListener(view -> showDetailedDrawing(order, plan, leftHinges));
+  chooseButton(drawingCard, "Çizimi PDF al", () -> exportDrawing(position, order, plan));
   app.planLabel(drawingCard, mm(order.width) + " × " + mm(order.height) + " mm  ·  " + order.quantity + " doğrama", 15, 0xffecf5f7);
   int open = order.openingSashes.size();
   int verticalRecords = 0;

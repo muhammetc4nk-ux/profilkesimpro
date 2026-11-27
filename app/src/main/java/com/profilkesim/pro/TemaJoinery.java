@@ -97,6 +97,14 @@ final class TemaJoinery {
    this.vertical = vertical;
    this.role = role;
   }
+
+  String allowanceText() {
+   if (role == ProfileRole.MULLION) {
+    return "Pay " + ShopDimensions.mm(face / 2) + " + " + ShopDimensions.mm(face - face / 2) + " mm";
+   }
+   return "Pay " + ShopDimensions.mm(face) + " mm";
+  }
+
  }
 
  static final class Plan {
@@ -131,6 +139,10 @@ final class TemaJoinery {
  }
 
  private TemaJoinery() {}
+
+ static int glassAllowance(TemaLayout.Section sash) {
+  return GLASS_DEDUCTION + (sash == null ? 0 : 2 * (SASH_GAP + sash.face));
+ }
 
  static void addManualCuts(Plan plan, String input) {
   int lineNumber = 0;
