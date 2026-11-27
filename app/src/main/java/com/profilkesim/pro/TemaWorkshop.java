@@ -388,7 +388,7 @@ final class TemaWorkshop {
     for(int i=0;i<3;i++){profileIndices[i]=picks[i];fields.get("code"+i).setText(groups[i][picks[i]].code);fields.get("face"+i).setText(mm(workingFace(groups[i][picks[i]])));}
     fields.get("vertical").setText(String.valueOf(xs.size()));fields.get("horizontal").setText(String.valueOf(ys.size()));
     fields.get("columns").setText(cols);fields.get("rows").setText(rows);fields.get("joint").setText(jointEdit.getText());
-    chosenSashes.clear();chosenSashes.addAll(openings);expectedFixed=-1;updateLayout();invalidate();dialog.dismiss();
+    chosenSashes.clear();chosenSashes.addAll(openings);expectedFixed=-1;updateLayout();invalidate();Bundle history=new Bundle();saveState(history);history.putBoolean("temaEditing",true);app.saveHistory(series.label,history);dialog.dismiss();
     toast("Çizim aktarıldı. Montaj ve fiş paylarını kontrol edip hesaplayın.");
    }catch(IllegalArgumentException ex){toast(ex.getMessage());}
   }));dialog.show();
@@ -636,6 +636,7 @@ final class TemaWorkshop {
   if (drawingUri != null) out.putString("temaDrawing", drawingUri.toString());
  }
 
+ void restoreHistory(Bundle in){draft.clear();chosenSashes.clear();restoreState(in);}
  boolean restoreState(Bundle in) {
   if (in == null) return false;
   Bundle state = in.getBundle("temaDraft");
@@ -747,6 +748,7 @@ final class TemaWorkshop {
    }
    TemaJoinery.Plan plan = TemaJoinery.calculate(order);
    TemaJoinery.addManualCuts(plan, value("extraCuts"));
+   Bundle history=new Bundle();saveState(history);history.putBoolean("temaEditing",true);app.saveHistory(series.label,history);
    showPlan(order, plan);
   } catch (IllegalArgumentException error) {
    toast(error.getMessage());
