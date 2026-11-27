@@ -338,6 +338,18 @@ final class TemaWorkshop {
   java.util.Map<Integer,Integer> gaps=new java.util.HashMap<>();
   for(String entry:value("individualSashGaps").split(";")){try{String[] pair=entry.split(":");gaps.put(Integer.parseInt(pair[0]),Integer.parseInt(pair[1]));}catch(RuntimeException ignored){}}
   java.util.ArrayList<int[]> localLines=new java.util.ArrayList<>();
+  java.util.function.Supplier<java.util.ArrayList<int[]>> bays=()->{
+   java.util.ArrayList<int[]> cells=new java.util.ArrayList<>();
+   java.util.ArrayList<Integer> ax=new java.util.ArrayList<>(xs),ay=new java.util.ArrayList<>(ys);
+   ax.add(0,0);ax.add(1000);ay.add(0,0);ay.add(1000);
+   for(int j=0;j<ay.size()-1;j++)for(int i=0;i<ax.size()-1;i++)cells.add(new int[]{ax.get(i),ay.get(j),ax.get(i+1),ay.get(j+1)});
+   for(int[] q:localLines)for(int i=0;i<cells.size();i++){int[] z=cells.get(i);
+    if(q[0]==q[2]&&q[0]>z[0]&&q[0]<z[2]&&q[1]<=z[1]&&q[3]>=z[3]){cells.set(i,new int[]{z[0],z[1],q[0],z[3]});cells.add(new int[]{q[0],z[1],z[2],z[3]});}
+    else if(q[1]==q[3]&&q[1]>z[1]&&q[1]<z[3]&&q[0]<=z[0]&&q[2]>=z[2]){cells.set(i,new int[]{z[0],z[1],z[2],q[1]});cells.add(new int[]{z[0],q[1],z[2],z[3]});}
+   }
+   return cells;
+  };
+  java.util.function.BiFunction<Integer,Integer,Integer> hit=(x,y)->{java.util.ArrayList<int[]> cells=bays.get();for(int i=0;i<cells.size();i++){int[] z=cells.get(i);if(x>=z[0]&&x<=z[2]&&y>=z[1]&&y<=z[3])return i+1;}return 0;};
   int[] mode={7};
   boolean[] frameAdded={false};
   Runnable checkpoint=()->{
@@ -345,7 +357,7 @@ final class TemaWorkshop {
    java.util.Set<Integer> oldO=new java.util.HashSet<>(openings),oldL=new java.util.HashSet<>(leftCells),oldE=new java.util.HashSet<>(emptyCells);
    java.util.Map<String,Integer> oldP=new java.util.HashMap<>(lineProfiles);
    java.util.Map<Integer,Integer> oldGaps=new java.util.HashMap<>(gaps);
-   java.util.ArrayList<int[]> oldLines=new java.util.ArrayList<>(localLines);
+   java.util.ArrayList<int[]> oldLines=new java.util.ArrayList<>();for(int[] q:localLines)oldLines.add(q.clone());
    boolean oldFrame=frameAdded[0];int[] oldPicks=picks.clone();
    undo.push(()->{xs.clear();xs.addAll(oldX);ys.clear();ys.addAll(oldY);openings.clear();openings.addAll(oldO);leftCells.clear();leftCells.addAll(oldL);emptyCells.clear();emptyCells.addAll(oldE);lineProfiles.clear();lineProfiles.putAll(oldP);gaps.clear();gaps.putAll(oldGaps);localLines.clear();localLines.addAll(oldLines);frameAdded[0]=oldFrame;System.arraycopy(oldPicks,0,picks,0,picks.length);});
   };
@@ -371,9 +383,11 @@ final class TemaWorkshop {
     for(int[] q:localLines){float x1=left+(right-left)*q[0]/1000f,y1=top+(bottom-top)*q[1]/1000f,x2=left+(right-left)*q[2]/1000f,y2=top+(bottom-top)*q[3]/1000f;c.drawLine(x1,y1,x2,y2,paint);profileLabel(c,groups[1][q[4]].code,x1+4,y1+15);}
     java.util.ArrayList<Integer> a=new java.util.ArrayList<>(xs),b=new java.util.ArrayList<>(ys);a.add(0,0);a.add(1000);b.add(0,0);b.add(1000);
     paint.setColor(0xff008577);paint.setStrokeWidth(3);
-    for(int y=0;y<b.size()-1;y++)for(int x=0;x<a.size()-1;x++)if(openings.contains(y*(a.size()-1)+x+1)){
-     float l=left+(right-left)*a.get(x)/1000f+7,r=left+(right-left)*a.get(x+1)/1000f-7,t=top+(bottom-top)*b.get(y)/1000f+7,d=top+(bottom-top)*b.get(y+1)/1000f-7;
-     c.drawRect(l,t,r,d,paint);profileLabel(c,groups[2][lineProfiles.getOrDefault("s"+(y*(a.size()-1)+x+1),picks[2])].code,l+3,t+14);boolean isLeft=leftCells.contains(y*(a.size()-1)+x+1);float hinge=isLeft?l:r,handle=isLeft?r:l;c.drawLine(hinge,t,handle,(t+d)/2,paint);c.drawLine(handle,(t+d)/2,hinge,d,paint);
+    java.util.ArrayList<int[]> cells=bays.get();
+    for(int i=0;i<cells.size();i++)if(openings.contains(i+1)){
+     int[] z=cells.get(i);
+     float l=left+(right-left)*z[0]/1000f+7,r=left+(right-left)*z[2]/1000f-7,t=top+(bottom-top)*z[1]/1000f+7,d=top+(bottom-top)*z[3]/1000f-7;
+     c.drawRect(l,t,r,d,paint);profileLabel(c,groups[2][lineProfiles.getOrDefault("s"+(i+1),picks[2])].code,l+3,t+14);boolean isLeft=leftCells.contains(i+1);float hinge=isLeft?l:r,handle=isLeft?r:l;c.drawLine(hinge,t,handle,(t+d)/2,paint);c.drawLine(handle,(t+d)/2,hinge,d,paint);
     }
    }
    private void profileLabel(android.graphics.Canvas c,String code,float x,float y){
@@ -387,7 +401,7 @@ final class TemaWorkshop {
     int x=Math.round(1000*(e.getX()-left)/(right-left)),y=Math.round(1000*(e.getY()-top)/(bottom-top));
     if(!frameAdded[0]){toast("Önce kasa ekleyin.");return true;}
     if(mode[0]==8){
-     int cell=ys.headSet(y).size()*(xs.size()+1)+xs.headSet(x).size()+1;
+     int cell=hit.apply(x,y);
      if(!openings.contains(cell)){toast("Önce bir kanat ekleyin.");return true;}
      EditText gap=new EditText(app);gap.setInputType(DECIMAL);gap.setText(gaps.containsKey(cell)?mm(gaps.get(cell)):sashGapEdit.getText().toString());
      new AlertDialog.Builder(app).setTitle(cell+". kanat kasa boşluğu (mm/kenar)").setView(gap).setNegativeButton("Vazgeç",null).setPositiveButton("Uygula",(d,k)->{try{int n=ShopDimensions.tenths(gap.getText().toString(),"Kanat kasa boşluğu");if(n<0)throw new IllegalArgumentException("Boşluk negatif olamaz.");checkpoint.run();gaps.put(cell,n);invalidate();}catch(IllegalArgumentException ex){toast(ex.getMessage());}}).show();return true;
@@ -398,7 +412,7 @@ final class TemaWorkshop {
      for(int q:ys)if(Math.abs(q-y)<best){best=Math.abs(q-y);key="h"+q;}
      int edge=Math.min(Math.min(Math.abs(x),Math.abs(1000-x)),Math.min(Math.abs(y),Math.abs(1000-y)));
      if(edge<best){role=0;key="frame";}
-     if(key==null){int cell=ys.headSet(y).size()*(xs.size()+1)+xs.headSet(x).size()+1;if(openings.contains(cell)){role=2;key="s"+cell;}}
+     if(key==null){int cell=hit.apply(x,y);if(openings.contains(cell)){role=2;key="s"+cell;}}
      if(key==null){toast("Bir profil çizgisine dokunun.");return true;}
      final String selectedKey=key;final int selectedRole=role;
      chooseProfile("Profil değiştir",groups[role],lineProfiles.getOrDefault(key,picks[role]),index->{checkpoint.run();lineProfiles.put(selectedKey,index);invalidate();});return true;
@@ -406,6 +420,7 @@ final class TemaWorkshop {
     if(x<=0||x>=1000||y<=0||y>=1000)return true;
     checkpoint.run();
     if(mode[0]==0||mode[0]==1){
+     openings.clear();leftCells.clear();emptyCells.clear();gaps.clear();
      int l=xs.floor(x)==null?0:xs.floor(x),r=xs.ceiling(x)==null?1000:xs.ceiling(x);
      int u=ys.floor(y)==null?0:ys.floor(y),d=ys.ceiling(y)==null?1000:ys.ceiling(y);
      for(int[] q:localLines){if(q[0]==q[2]&&y>=q[1]&&y<=q[3]){if(q[0]<x)l=Math.max(l,q[0]);if(q[0]>x)r=Math.min(r,q[0]);}if(q[1]==q[3]&&x>=q[0]&&x<=q[2]){if(q[1]<y)u=Math.max(u,q[1]);if(q[1]>y)d=Math.min(d,q[1]);}}
@@ -413,7 +428,7 @@ final class TemaWorkshop {
      else{if(l==0&&r==1000&&localLines.isEmpty())ys.add(y);else localLines.add(new int[]{l,y,r,y,picks[1]});}
     }
     else if(mode[0]==3){Integer nearest=null;int distance=60;boolean vertical=true;for(int q:xs)if(Math.abs(q-x)<distance){nearest=q;distance=Math.abs(q-x);vertical=true;}for(int q:ys)if(Math.abs(q-y)<distance){nearest=q;distance=Math.abs(q-y);vertical=false;}if(nearest!=null){if(vertical)xs.remove(nearest);else ys.remove(nearest);openings.clear();leftCells.clear();emptyCells.clear();}}
-    else {int cell=ys.headSet(y).size()*(xs.size()+1)+xs.headSet(x).size()+1;if(mode[0]==4){openings.remove(cell);leftCells.remove(cell);emptyCells.add(cell);}else if(mode[0]==5){openings.remove(cell);leftCells.remove(cell);emptyCells.remove(cell);}else{emptyCells.remove(cell);openings.add(cell);if(mode[0]==2)leftCells.add(cell);else leftCells.remove(cell);}}
+    else {int cell=hit.apply(x,y);if(mode[0]==4){openings.remove(cell);leftCells.remove(cell);emptyCells.add(cell);}else if(mode[0]==5){openings.remove(cell);leftCells.remove(cell);emptyCells.remove(cell);}else{emptyCells.remove(cell);openings.add(cell);if(mode[0]==2)leftCells.add(cell);else leftCells.remove(cell);}}
     drawingStatus.setText("Kasa: 1 | Dikey: "+xs.size()+" | Yatay: "+ys.size()+" | Kanat: "+openings.size());invalidate();return true;
    }
   };
@@ -421,7 +436,7 @@ final class TemaWorkshop {
   Button undoButton=new Button(app);undoButton.setText("↶ Geri al · son işlemi sil");panel.addView(undoButton);
   undoButton.setOnClickListener(v->{if(undo.isEmpty()){toast("Geri alınacak işlem yok.");return;}undo.pop().run();drawingStatus.setText("Son işlem geri alındı.");board.invalidate();});
   Button frameButton=new Button(app);frameButton.setText("+ Kasa ekle");panel.addView(frameButton);frameButton.setOnClickListener(v->{checkpoint.run();frameAdded[0]=true;drawingStatus.setText("Kasa eklendi: "+groups[0][picks[0]].label());board.invalidate();});
-  Button sashButton=new Button(app);sashButton.setText("+ Kanat ekle (ilk boş bölme)");panel.addView(sashButton);sashButton.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}int count=(xs.size()+1)*(ys.size()+1);for(int i=1;i<=count;i++)if(!openings.contains(i)){checkpoint.run();openings.add(i);drawingStatus.setText("Kanat: "+openings.size()+" / "+count);board.invalidate();return;}toast("Tüm bölmelerde kanat var.");});
+  Button sashButton=new Button(app);sashButton.setText("+ Kanat ekle (ilk boş bölme)");panel.addView(sashButton);sashButton.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}int count=bays.get().size();for(int i=1;i<=count;i++)if(!openings.contains(i)){checkpoint.run();openings.add(i);drawingStatus.setText("Kanat: "+openings.size()+" / "+count);board.invalidate();return;}toast("Tüm bölmelerde kanat var.");});
   String[] modes={"Dikey kayıt ekle","Yatay kayıt ekle","Sol menteşeli kanat","Profil sil","Boş kasa","Sabit cam","Sağ menteşeli kanat","Çizgiye dokun · profil değiştir","Kanat kasa boşluğu · kanada dokun"};
   for(int i=0;i<modes.length;i++){final int m=i;Button b=new Button(app);b.setText(modes[i]);panel.addView(b);b.setOnClickListener(v->{mode[0]=m;toast(modes[m]);});}
   panel.addView(board,new LinearLayout.LayoutParams(-1,app.dp(320)));
