@@ -424,18 +424,18 @@ final class TemaWorkshop {
    float left=24,top=24,right,bottom;
    final android.graphics.Paint dim=new android.graphics.Paint(3);
    private void measure(android.graphics.Canvas c,float x,float y,float X,float Y,String label){
-    dim.setColor(0xff075985);dim.setStrokeWidth(app.dp(1));dim.setStyle(android.graphics.Paint.Style.STROKE);c.drawLine(x,y,X,Y,dim);
+    dim.setColor(0xffc5eaff);dim.setStrokeWidth(app.dp(1));dim.setStyle(android.graphics.Paint.Style.STROKE);c.drawLine(x,y,X,Y,dim);
     float dx=X-x,dy=Y-y,len=(float)Math.hypot(dx,dy);if(len<1)return;dx/=len;dy/=len;float k=app.dp(5);
     for(int i=0;i<2;i++){float px=i==0?x:X,py=i==0?y:Y,sign=i==0?1:-1;c.drawLine(px-dy*k,py+dx*k,px+dy*k,py-dx*k,dim);c.drawLine(px,py,px+sign*dx*k-dy*k/2,py+sign*dy*k+dx*k/2,dim);c.drawLine(px,py,px+sign*dx*k+dy*k/2,py+sign*dy*k-dx*k/2,dim);}
     c.save();c.translate((x+X)/2,(y+Y)/2);if(Math.abs(dy)>Math.abs(dx))c.rotate(-90);dim.setStyle(android.graphics.Paint.Style.FILL);dim.setTextSize(app.dp(10));dim.setTextAlign(android.graphics.Paint.Align.CENTER);float w=dim.measureText(label)/2+app.dp(3);dim.setColor(0xfff8fafc);c.drawRoundRect(-w,-app.dp(8),w,app.dp(8),4,4,dim);dim.setColor(0xff075985);c.drawText(label,0,app.dp(3),dim);c.restore();
    }
    @Override protected void onDraw(android.graphics.Canvas c){
     super.onDraw(c); left=app.dp(30);top=app.dp(42);right=getWidth()-app.dp(24);bottom=getHeight()-app.dp(28);try{float ratio=Float.parseFloat(sizes[0].getText().toString().replace(',','.'))/Float.parseFloat(sizes[1].getText().toString().replace(',','.'));if(ratio>0&&Float.isFinite(ratio)){float w=right-left,h=bottom-top;if(w/h>ratio){float d=(w-h*ratio)/2;left+=d;right-=d;}else{float d=(h-w/ratio)/2;top+=d;bottom-=d;}}}catch(RuntimeException ignored){} paint.setStyle(android.graphics.Paint.Style.FILL);
-    c.drawColor(0xffe8f1f5);paint.setShader(new android.graphics.LinearGradient(0,0,getWidth(),getHeight(),0xfff8fafc,0xffa8bdcf,android.graphics.Shader.TileMode.CLAMP));c.drawRect(0,0,getWidth(),getHeight(),paint);paint.setShader(null); paint.setColor(0xffcbd9e1);paint.setStrokeWidth(1);for(int i=0;i<20;i++){float px=left+(right-left)*i/20f,py=top+(bottom-top)*i/20f;c.drawLine(px,top,px,bottom,paint);c.drawLine(left,py,right,py,paint);} paint.setColor(0xff34495e); paint.setStrokeWidth(7);paint.setStyle(android.graphics.Paint.Style.STROKE);
+    c.drawColor(0xff061426);paint.setShader(new android.graphics.LinearGradient(0,0,getWidth(),getHeight(),0xff07192e,0xff020b18,android.graphics.Shader.TileMode.CLAMP));c.drawRect(0,0,getWidth(),getHeight(),paint);paint.setShader(null); paint.setColor(0xff18334d);paint.setStrokeWidth(1);for(int x=0;x<getWidth();x+=app.dp(20))c.drawLine(x,0,x,getHeight(),paint);for(int y=0;y<getHeight();y+=app.dp(20))c.drawLine(0,y,getWidth(),y,paint); paint.setColor(0xff34495e); paint.setStrokeWidth(7);paint.setStyle(android.graphics.Paint.Style.STROKE);
     if(!frameAdded[0])return;
     paint.setStyle(android.graphics.Paint.Style.FILL);
     for(int depth=app.dp(12);depth>0;depth--){paint.setColor(0xff64748b);c.drawRect(left+depth,top+depth,right+depth,bottom+depth,paint);}
-    paint.setShader(new android.graphics.LinearGradient(left,top,right,bottom,0xffedf8fc,0xffa9cbdc,android.graphics.Shader.TileMode.CLAMP));c.drawRect(left,top,right,bottom,paint);paint.setShader(null);
+    paint.setShader(new android.graphics.LinearGradient(left,top,right,bottom,0xffd5f6ff,0xff72c5e8,android.graphics.Shader.TileMode.CLAMP));c.drawRect(left,top,right,bottom,paint);paint.setShader(null);
     paint.setStyle(android.graphics.Paint.Style.STROKE);paint.setColor(0xff303b45);paint.setStrokeWidth(app.dp(9));c.drawRect(left,top,right,bottom,paint);
     paint.setColor(0xff9da8b0);paint.setStrokeWidth(app.dp(2));c.drawRect(left-2,top-2,right-2,bottom-2,paint);
     profileLabel(c,groups[0][lineProfiles.getOrDefault("frame",picks[0])].code,left+8,top+15);
@@ -541,7 +541,7 @@ final class TemaWorkshop {
   LinearLayout toolsRow=new LinearLayout(app);toolsRow.setOrientation(LinearLayout.HORIZONTAL);panel.addView(toolsRow);
   String[] modes={"↕ Dikey kayıt","↔ Yatay kayıt","Sol kanat","Sil","Boş kasa","Sabit cam","Sağ kanat","Profil seç","Kanat boşluğu","Net ölçü gir"};
   Button[] toolButtons=new Button[modes.length];
-  for(int i=0;i<modes.length;i++){final int m=i;Button b=new Button(app);b.setAllCaps(false);b.setText(modes[i]);b.setTextSize(12);b.setPadding(app.dp(4),app.dp(4),app.dp(4),app.dp(4));toolButtons[i]=b;b.setTextColor(Color.WHITE);b.setBackground(app.rgbPanel(i==mode[0]?0xff087e79:0xff173041,0xff245462,series.accent));if(i%3==0&&i!=0){toolsRow=new LinearLayout(app);toolsRow.setOrientation(LinearLayout.HORIZONTAL);panel.addView(toolsRow);}LinearLayout.LayoutParams toolLp=new LinearLayout.LayoutParams(0,app.dp(56),1);toolLp.setMargins(app.dp(3),app.dp(3),app.dp(3),app.dp(3));toolsRow.addView(b,toolLp);b.setOnClickListener(v->{mode[0]=m;for(int j=0;j<toolButtons.length;j++)toolButtons[j].setBackground(app.rgbPanel(j==m?0xff087e79:0xff173041,0xff245462,series.accent));drawingStatus.setText("Seçili araç: "+modes[m]+" · çizime dokunun.");});}
+  for(int i=0;i<modes.length;i++){final int m=i;Button b=new Button(app);b.setAllCaps(false);b.setText(modes[i]);b.setTextSize(12);b.setPadding(app.dp(4),app.dp(4),app.dp(4),app.dp(4));toolButtons[i]=b;b.setTextColor(Color.WHITE);b.setBackground(app.rgbPanel(i==mode[0]?0xff086bc1:0xff102b48,0xff12385d,0xff32caff));if(i%3==0&&i!=0){toolsRow=new LinearLayout(app);toolsRow.setOrientation(LinearLayout.HORIZONTAL);panel.addView(toolsRow);}LinearLayout.LayoutParams toolLp=new LinearLayout.LayoutParams(0,app.dp(56),1);toolLp.setMargins(app.dp(3),app.dp(3),app.dp(3),app.dp(3));toolsRow.addView(b,toolLp);b.setOnClickListener(v->{mode[0]=m;for(int j=0;j<toolButtons.length;j++)toolButtons[j].setBackground(app.rgbPanel(j==m?0xff087e79:0xff173041,0xff245462,series.accent));drawingStatus.setText("Seçili araç: "+modes[m]+" · çizime dokunun.");});}
 
   for(int axisIndex=0;axisIndex<2;axisIndex++){
    final int axis=axisIndex;
@@ -600,35 +600,25 @@ final class TemaWorkshop {
    }catch(IllegalArgumentException ex){toast(ex.getMessage());}}).show();
   });
   Button clear=new Button(app);clear.setText("Çizimi temizle");panel.addView(clear);clear.setOnClickListener(v->{checkpoint.run();frameAdded[0]=false;localLines.clear();lineProfiles.clear();xs.clear();ys.clear();openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();});
-  // Full-screen CAD workspace: scrollable compact tools on the left, fixed canvas on the right.
+  // Dark CAD workspace with a horizontal tool ribbon and scrollable settings.
   panel.removeView(board);
-  for(Button b:toolButtons){((android.view.ViewGroup)b.getParent()).removeView(b);}
-  for(int i=panel.getChildCount()-1;i>=0;i--){android.view.View child=panel.getChildAt(i);if(child instanceof LinearLayout&&((LinearLayout)child).getChildCount()==0)panel.removeViewAt(i);}
-  for(int i=toolButtons.length-1;i>=0;i--)panel.addView(toolButtons[i],0,new LinearLayout.LayoutParams(-1,app.dp(38)));
-  LinearLayout parts=new LinearLayout(app);parts.setOrientation(LinearLayout.VERTICAL);
-   LinearLayout edits=new LinearLayout(app);edits.setOrientation(LinearLayout.VERTICAL);
-   java.util.ArrayList<Button> partList=new java.util.ArrayList<>(),editList=new java.util.ArrayList<>();
-   for(int i=0;i<panel.getChildCount();i++){android.view.View child=panel.getChildAt(i);if(child instanceof Button){Button b=(Button)child;String label=b.getText().toString();if(label.startsWith("+")||label.contains("kanat")&& !label.contains("hariç")&&!label.contains("boşluğu"))partList.add(b);else if(label.contains("kayıt")||label.contains("eşitle")||label.contains("Net ölçü"))editList.add(b);}}
-   for(Button b:partList){panel.removeView(b);parts.addView(b,new LinearLayout.LayoutParams(-1,-2));}
-   for(Button b:editList){panel.removeView(b);edits.addView(b,new LinearLayout.LayoutParams(-1,-2));}
-   Button partMenu=new Button(app);partMenu.setText("+ Parça ekle");Button editMenu=new Button(app);editMenu.setText("+ Orta kayıt düzenle");
-   panel.addView(partMenu,0);panel.addView(parts,1);panel.addView(editMenu,2);panel.addView(edits,3);
-   parts.setVisibility(View.GONE);edits.setVisibility(View.GONE);
-   partMenu.setOnClickListener(v->parts.setVisibility(parts.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));
-   editMenu.setOnClickListener(v->edits.setVisibility(edits.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));
-   for(Button b:partList){b.setSingleLine(false);b.setMaxLines(5);b.setTextSize(12);b.setMinHeight(app.dp(48));}
-   for(Button b:editList){b.setSingleLine(false);b.setMaxLines(5);b.setTextSize(12);b.setMinHeight(app.dp(48));}
-   panel.setPadding(app.dp(3),app.dp(3),app.dp(3),app.dp(3));
-  for(int i=0;i<panel.getChildCount();i++){
-   android.view.View child=panel.getChildAt(i);
-   if(child instanceof Button){Button b=(Button)child;b.setAllCaps(false);b.setTextSize(12);b.setSingleLine(false);b.setMaxLines(6);b.setMinHeight(app.dp(40));b.setMinimumHeight(app.dp(40));b.setPadding(app.dp(3),app.dp(5),app.dp(3),app.dp(5));b.setGravity(android.view.Gravity.CENTER);b.setTextColor(Color.WHITE);boolean tool=false;for(Button tb:toolButtons)if(tb==b)tool=true;if(!tool)b.setBackground(app.rgbPanel(0xff173041,0xff245462,series.accent));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(app.dp(3),app.dp(3),app.dp(3),app.dp(3));b.setLayoutParams(lp);}
-   else if(child instanceof EditText){((EditText)child).setTextSize(12);}
-   else if(child instanceof android.widget.TextView){((android.widget.TextView)child).setTextSize(11);}
-  }
-  LinearLayout workspace=new LinearLayout(app);workspace.setOrientation(LinearLayout.HORIZONTAL);
-  scroll.setFillViewport(true);panel.setBackgroundColor(0xffe1eaf0);int screen=app.getResources().getDisplayMetrics().widthPixels;int sidebar=Math.min(app.dp(140),Math.max(app.dp(100),screen/4));workspace.addView(scroll,new LinearLayout.LayoutParams(sidebar,-1));
-  LinearLayout canvasPane=new LinearLayout(app);canvasPane.setOrientation(LinearLayout.VERTICAL);workspace.addView(canvasPane,new LinearLayout.LayoutParams(0,-1,1));
-  canvasPane.addView(board,new LinearLayout.LayoutParams(-1,0,1));
+  for(Button b:toolButtons)((android.view.ViewGroup)b.getParent()).removeView(b);
+  ((android.view.ViewGroup)historyTools.getParent()).removeView(historyTools);
+  for(int i=panel.getChildCount()-1;i>=0;i--){View child=panel.getChildAt(i);if(child instanceof LinearLayout&&((LinearLayout)child).getChildCount()==0)panel.removeViewAt(i);}
+  LinearLayout workspace=new LinearLayout(app);workspace.setOrientation(LinearLayout.VERTICAL);workspace.setBackgroundColor(0xff061426);workspace.setPadding(app.dp(5),app.dp(4),app.dp(5),app.dp(4));
+  TextView heading=new TextView(app);heading.setText("Profil Kesim Pro  |  "+series.label+"  ·  Kendin Çiz");heading.setTextColor(0xffe2f6ff);heading.setTextSize(16);heading.setPadding(app.dp(8),app.dp(4),app.dp(8),app.dp(4));workspace.addView(heading);
+  android.widget.HorizontalScrollView ribbonScroll=new android.widget.HorizontalScrollView(app);ribbonScroll.setHorizontalScrollBarEnabled(true);
+  LinearLayout ribbon=new LinearLayout(app);ribbon.setOrientation(LinearLayout.HORIZONTAL);ribbonScroll.addView(ribbon);workspace.addView(ribbonScroll,new LinearLayout.LayoutParams(-1,app.dp(54)));
+  java.util.ArrayList<Button> ribbonButtons=new java.util.ArrayList<>();
+  for(Button b:toolButtons)ribbonButtons.add(b);
+  for(Button b:new Button[]{frameButton,sashButton,addV,addH,undoButton,redoButton,clear}){((android.view.ViewGroup)b.getParent()).removeView(b);ribbonButtons.add(b);}
+  for(Button b:ribbonButtons){b.setAllCaps(false);b.setTextSize(11);b.setTextColor(Color.WHITE);b.setMaxLines(2);b.setPadding(app.dp(8),app.dp(2),app.dp(8),app.dp(2));b.setBackground(app.rgbPanel(0xff12385d,0xff081a32, b==clear?0xffff5267:b==undoButton?0xff45f59a:0xff32caff));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(app.dp(108),app.dp(46));lp.setMargins(app.dp(3),app.dp(3),app.dp(3),app.dp(3));ribbon.addView(b,lp);}
+  LinearLayout body=new LinearLayout(app);body.setOrientation(LinearLayout.HORIZONTAL);workspace.addView(body,new LinearLayout.LayoutParams(-1,0,1));
+  panel.setPadding(app.dp(5),app.dp(5),app.dp(5),app.dp(5));panel.setBackgroundColor(0xff0b2037);
+  for(int i=0;i<panel.getChildCount();i++){View child=panel.getChildAt(i);if(child instanceof Button){Button b=(Button)child;b.setAllCaps(false);b.setTextSize(12);b.setTextColor(Color.WHITE);b.setSingleLine(false);b.setBackground(app.rgbPanel(0xff153858,0xff091c32,0xff35bfff));}else if(child instanceof TextView){((TextView)child).setTextColor(0xffe2f6ff);((TextView)child).setTextSize(12);if(child instanceof EditText)((EditText)child).setHintTextColor(0xff9cc7e5);}}
+  scroll.setFillViewport(true);int screen=app.getResources().getDisplayMetrics().widthPixels;int sidebar=Math.min(app.dp(200),Math.max(app.dp(108),screen/4));body.addView(scroll,new LinearLayout.LayoutParams(sidebar,-1));
+  LinearLayout canvasPane=new LinearLayout(app);canvasPane.setOrientation(LinearLayout.VERTICAL);body.addView(canvasPane,new LinearLayout.LayoutParams(0,-1,1));canvasPane.addView(board,new LinearLayout.LayoutParams(-1,0,1));
+  panel.removeView(drawingStatus);drawingStatus.setTextColor(0xff70f5be);drawingStatus.setPadding(app.dp(8),app.dp(4),app.dp(8),app.dp(4));workspace.addView(drawingStatus,new LinearLayout.LayoutParams(-1,-2));
   AlertDialog dialog=new AlertDialog.Builder(app).setTitle("Kendin çiz · "+series.label).setView(workspace).setNegativeButton("Kaydet ve çık",null).setPositiveButton("Kesim hesapla",null).create();
   dialog.setOnDismissListener(v->{persistDrawing.run();Bundle history=new Bundle();saveState(history);history.putBoolean("temaEditing",true);app.saveHistory(series.label,history);});
   dialog.setOnShowListener(v->dialog.getButton(-1).setOnClickListener(w->{
