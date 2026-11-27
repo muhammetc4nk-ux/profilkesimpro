@@ -16,6 +16,8 @@ final class TemaDiagramView extends View {
  private final int accent;
  private final Typeface typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL);
  private Shader metal, fixedGlass, openingGlass;
+ private String regional="", leftCells="";
+ TemaDiagramView(Context context,TemaJoinery.Order order,TemaJoinery.Plan plan,int accent,String regional,String leftCells){this(context,order,plan,accent);this.regional=regional;this.leftCells=leftCells;}
 
  TemaDiagramView(Context context, TemaJoinery.Order order, TemaJoinery.Plan plan, int accent) {
   super(context);
@@ -48,6 +50,10 @@ final class TemaDiagramView extends View {
   paint.setShader(metal);
   canvas.drawRect(left, top, left + width, top + height, paint);
   paint.setShader(null);
+  if(!regional.isEmpty()){
+   float ix=left+order.frameFace*scale,iy=top+order.frameFace*scale,iw=width-2*order.frameFace*scale,ih=height-2*order.frameFace*scale;
+   int n=0;for(String cell:regional.split(";")){String[] p=cell.split(",");n++;float l=ix+iw*Integer.parseInt(p[0])/1000f,t=iy+ih*Integer.parseInt(p[1])/1000f,r=ix+iw*Integer.parseInt(p[2])/1000f,b=iy+ih*Integer.parseInt(p[3])/1000f;float f=order.mullionFace*scale/2; if(!p[0].equals("0"))l+=f;if(!p[1].equals("0"))t+=f;if(!p[2].equals("1000"))r-=f;if(!p[3].equals("1000"))b-=f;drawBay(canvas,n,l,t,r,b);}
+  }else{
   float y = top + order.frameFace * scale;
   for (int row = 0; row < plan.rows.size(); row++) {
    float x = left + order.frameFace * scale;
@@ -55,7 +61,7 @@ final class TemaDiagramView extends View {
    for (int col = 0; col < plan.columns.size(); col++) {
     float paneWidth = plan.columns.get(col) * scale;
     int index = row * plan.columns.size() + col;
-    boolean sash = plan.panes.get(index).sash;
+    boolean sash = order.openingSashes.contains(index+1);
     paint.setColor(0xffffffff);
     paint.setShader(sash ? openingGlass : fixedGlass);
     canvas.drawRect(x, y, x + paneWidth, y + paneHeight, paint);
@@ -74,6 +80,7 @@ final class TemaDiagramView extends View {
    }
    y += paneHeight + order.mullionFace * scale;
   }
+  }
   paint.setColor(0xffecc78f);
   paint.setStrokeWidth(density);
   float dimensionY = top - 6f * density;
@@ -86,6 +93,12 @@ final class TemaDiagramView extends View {
    top + height + 16f * density, 11f * density);
  }
 
+ private void drawBay(Canvas canvas,int n,float l,float t,float r,float b){
+  boolean sash=order.openingSashes.contains(n);
+  paint.setColor(0xffffffff);paint.setShader(order.emptyCells.contains(n)?null:sash?openingGlass:fixedGlass);canvas.drawRect(l,t,r,b,paint);paint.setShader(null);
+  if(sash){float gap=order.sashGaps.getOrDefault(n,order.sashGap)*Math.min((getWidth()-44*density)/order.width,(getHeight()-44*density)/order.height);l+=gap;t+=gap;r-=gap;b-=gap;paint.setColor(0xffc2a7ff);paint.setStrokeWidth(2*density);paint.setStyle(Paint.Style.STROKE);canvas.drawRect(l,t,r,b,paint);paint.setStyle(Paint.Style.FILL);boolean isLeft=java.util.Arrays.asList(leftCells.split(";")).contains(String.valueOf(n));float hinge=isLeft?l:r,handle=isLeft?r:l;canvas.drawLine(hinge,t,handle,(t+b)/2,paint);canvas.drawLine(handle,(t+b)/2,hinge,b,paint);}
+  drawLabel(canvas,String.valueOf(n),(l+r)/2,(t+b)/2,11*density);
+ }
  private void drawLabel(Canvas canvas, String value, float x, float y, float size) {
   paint.setColor(0xffe8f8f8);
   paint.setTextAlign(Paint.Align.CENTER);
