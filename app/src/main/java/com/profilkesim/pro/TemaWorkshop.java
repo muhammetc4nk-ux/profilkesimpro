@@ -460,7 +460,7 @@ final class TemaWorkshop {
   dialog.setOnShowListener(v->dialog.getButton(-1).setOnClickListener(w->{
    try{
     if(!frameAdded[0])throw new IllegalArgumentException("Önce kasa ekleyin.");
-    if(!localLines.isEmpty())throw new IllegalArgumentException("Bölgesel kayıt kesim hesabı henüz desteklenmiyor.");
+
     int width=ShopDimensions.tenths(sizes[0].getText().toString(),"Dış en"),height=ShopDimensions.tenths(sizes[1].getText().toString(),"Dış yükseklik");
     int frame=workingFace(groups[0][picks[0]]),record=workingFace(groups[1][picks[1]]);
     String cols=drawSpans(xs,width-2*frame-xs.size()*record),rows=drawSpans(ys,height-2*frame-ys.size()*record);
@@ -469,6 +469,14 @@ final class TemaWorkshop {
     fields.get("vertical").setText(String.valueOf(xs.size()));fields.get("horizontal").setText(String.valueOf(ys.size()));
     fields.get("columns").setText(cols);fields.get("rows").setText(rows);fields.get("joint").setText(jointEdit.getText());fields.get("sashGap").setText(sashGapEdit.getText());fields.get("mullionJoint").setText(recordJoint.getText());fields.get("leftCells").setText(cellList(leftCells));fields.get("emptyCells").setText(cellList(emptyCells));
     StringBuilder gapData=new StringBuilder();for(int cell:openings)if(gaps.containsKey(cell))gapData.append(cell).append(':').append(gaps.get(cell)).append(';');draft.put("individualSashGaps",gapData.toString());
+    StringBuilder bayData=new StringBuilder(),recordData=new StringBuilder();
+    if(!localLines.isEmpty()){
+     for(int[] z:bays.get())bayData.append(z[0]).append(',').append(z[1]).append(',').append(z[2]).append(',').append(z[3]).append(';');
+     for(int x:xs)recordData.append(x).append(",0,").append(x).append(",1000,").append(lineProfiles.getOrDefault("v"+x,picks[1])).append(';');
+     for(int y:ys)recordData.append("0,").append(y).append(",1000,").append(y).append(',').append(lineProfiles.getOrDefault("h"+y,picks[1])).append(';');
+     for(int[] q:localLines)recordData.append(q[0]).append(',').append(q[1]).append(',').append(q[2]).append(',').append(q[3]).append(',').append(q[4]).append(';');
+    }
+    draft.put("regionalBays",bayData.toString());draft.put("regionalRecords",recordData.toString());
     chosenSashes.clear();chosenSashes.addAll(openings);expectedFixed=-1;updateLayout();invalidate();Bundle history=new Bundle();saveState(history);history.putBoolean("temaEditing",true);app.saveHistory(series.label,history);dialog.dismiss();
     toast("Çizim aktarıldı. Montaj ve fiş paylarını kontrol edip hesaplayın.");
    }catch(IllegalArgumentException ex){toast(ex.getMessage());}
@@ -790,7 +798,8 @@ final class TemaWorkshop {
    order.horizontal = recordCount("horizontal");
    if (order.vertical < 0 || order.horizontal < 0) throw new IllegalArgumentException("Kayıt adetlerini 0–12 arasında girin.");
    order.continuous = TemaJoinery.Continuous.values()[continuous];
-   boolean hasRecords = order.vertical + order.horizontal > 0;
+   boolean regional = !value("regionalBays").isEmpty();
+   boolean hasRecords = order.vertical + order.horizontal > 0 || regional;
    if (hasRecords) {
     order.mullionCode = profileCode(1);
     order.mullionFace = mm("face1", "Orta kayıt yüz ölçüsü");
@@ -801,7 +810,7 @@ final class TemaWorkshop {
    order.columnOpenings = openings("columns");
    order.rowOpenings = openings("rows");
    order.openingSashes = new LinkedHashSet<>(chosenSashes);
-   int cellCount = (order.vertical + 1) * (order.horizontal + 1);
+   int cellCount = regional ? value("regionalBays").split(";").length : (order.vertical + 1) * (order.horizontal + 1);
    if (expectedFixed >= 0 && cellCount - chosenSashes.size() != expectedFixed) {
     bayButton.requestFocus();
     throw new IllegalArgumentException("Fotoğrafta " + expectedFixed + " sabit bölme var. Bölmeleri seçerek yerleşimi doğrulayın.");
@@ -835,6 +844,26 @@ final class TemaWorkshop {
     if (hasFixed) order.frameGlass = mm("frameGlass", "Sabit cam kasa payı");
     if (hasFixed && hasRecords) order.mullionGlass = mm("mullionGlass", "Sabit cam kayıt payı");
     if (hasSashes) order.sashGlass = mm("sashGlass", "Kanat camı payı");
+   }
+   if(regional){
+    int iw=order.width-2*order.frameFace,ih=order.height-2*order.frameFace;
+    java.util.ArrayList<int[]> lines=new java.util.ArrayList<>();
+    for(String entry:value("regionalRecords").split(";")){String[] p=entry.split(",");int[] q=new int[5];for(int i=0;i<5;i++)q[i]=Integer.parseInt(p[i]);lines.add(q);}
+    order.localRecords=new ArrayList<>();order.localBays=new ArrayList<>();
+    for(int[] q:lines){
+     boolean v=q[0]==q[2];int start=v?q[1]:q[0],end=v?q[3]:q[2],axis=v?ih:iw;
+     int len=Math.round(axis*end/1000f)-Math.round(axis*start/1000f);
+     len+=start==0?order.frameJoint:order.mullionJoint-order.mullionFace/2;
+     len+=end==1000?order.frameJoint:order.mullionJoint-order.mullionFace/2;
+     order.localRecords.add(new TemaJoinery.LocalRecord(v,len,series.mullions[q[4]].code));
+    }
+    int n=0;
+    for(String entry:value("regionalBays").split(";")){
+     String[] p=entry.split(",");int l=Integer.parseInt(p[0]),t=Integer.parseInt(p[1]),r=Integer.parseInt(p[2]),b=Integer.parseInt(p[3]);n++;
+     int w=Math.round(iw*r/1000f)-Math.round(iw*l/1000f)-(l==0?0:order.mullionFace/2)-(r==1000?0:order.mullionFace-order.mullionFace/2);
+     int h=Math.round(ih*b/1000f)-Math.round(ih*t/1000f)-(t==0?0:order.mullionFace/2)-(b==1000?0:order.mullionFace-order.mullionFace/2);
+     order.localBays.add(new TemaJoinery.LocalBay(w,h,chosenSashes.contains(n),order.emptyCells.contains(n),l==0?order.frameGlass:order.mullionGlass,r==1000?order.frameGlass:order.mullionGlass,t==0?order.frameGlass:order.mullionGlass,b==1000?order.frameGlass:order.mullionGlass));
+    }
    }
    TemaJoinery.Plan plan = TemaJoinery.calculate(order);
    TemaJoinery.addManualCuts(plan, value("extraCuts"));
