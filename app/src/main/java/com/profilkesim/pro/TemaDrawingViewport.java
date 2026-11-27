@@ -35,6 +35,7 @@ abstract class TemaDrawingViewport extends View {
   setContentDescription("Doğrama çizimi. İki parmakla yakınlaştırın. Seçili aracı uygulamak için dokunun.");
  }
 
+ float drawingPixels(float screenPixels) { return screenPixels / zoom; }
  void fit() {
   zoom = 1;
   panX = panY = 0;

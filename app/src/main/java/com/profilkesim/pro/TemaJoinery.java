@@ -83,12 +83,13 @@ final class TemaJoinery {
 
  static final class ProfileMark {
   final String code;
-  final int length, axis, start, end;
+  final int face, length, axis, start, end;
   final boolean vertical;
   final ProfileRole role;
 
-  ProfileMark(String code, int length, int axis, int start, int end, boolean vertical, ProfileRole role) {
-   this.code = code;
+  ProfileMark(TemaLayout.Section section, int length, int axis, int start, int end, boolean vertical, ProfileRole role) {
+   this.code = section.code;
+   this.face = section.face;
    this.length = length;
    this.axis = axis;
    this.start = start;
@@ -177,7 +178,7 @@ final class TemaJoinery {
    int length = member.cutLength(frameJoint, mullionJoint);
    plan.addCut(member.section.code, member.vertical ? "Dikey orta kayıt" : "Yatay orta kayıt",
     length, 90, o.quantity);
-   plan.profileMarks.add(new ProfileMark(member.section.code, length, member.axis, member.start,
+   plan.profileMarks.add(new ProfileMark(member.section, length, member.axis, member.start,
     member.end, member.vertical, ProfileRole.MULLION));
    plan.mullionEnds += (member.floorEnd ? 1 : 2) * o.quantity;
   }
@@ -282,7 +283,7 @@ final class TemaJoinery {
   boolean verticalFull = o.corner == Corner.VERTICAL_FULL, horizontalFull = o.corner == Corner.HORIZONTAL_FULL;
   int width = o.width - (verticalFull ? f.left.face + f.right.face : 0);
   plan.addCut(f.top.code, "Kasa yatay", width, angle, o.quantity);
-  plan.profileMarks.add(new ProfileMark(f.top.code, width, f.top.face / 2, 0, o.width, false, ProfileRole.FRAME));
+  plan.profileMarks.add(new ProfileMark(f.top, width, f.top.face / 2, 0, o.width, false, ProfileRole.FRAME));
   boolean leftSill = false, rightSill = false;
   for (TemaLayout.Span span : plan.layout.rails) {
    boolean left = span.start == 0, right = span.end == o.width;
@@ -292,7 +293,7 @@ final class TemaJoinery {
     - (verticalFull && right ? f.right.face : 0);
    plan.addCut(f.bottom.code, left && right ? "Kasa yatay" : "Kasa alt yatay", length,
     left ? angle : 90, right ? angle : 90, o.quantity);
-   plan.profileMarks.add(new ProfileMark(f.bottom.code, length, o.height - f.bottom.face / 2,
+   plan.profileMarks.add(new ProfileMark(f.bottom, length, o.height - f.bottom.face / 2,
     span.start, span.end, false, ProfileRole.FRAME));
   }
   int jamb = o.height - (horizontalFull ? f.top.face : 0);
@@ -301,8 +302,8 @@ final class TemaJoinery {
   int rightLength = jamb - (horizontalFull && rightSill ? f.bottom.face : 0);
   plan.addCut(f.left.code, "Kasa dikey", leftLength, angle, leftSill ? angle : 90, o.quantity);
   plan.addCut(f.right.code, "Kasa dikey", rightLength, angle, rightSill ? angle : 90, o.quantity);
-  plan.profileMarks.add(new ProfileMark(f.left.code, leftLength, f.left.face / 2, 0, o.height, true, ProfileRole.FRAME));
-  plan.profileMarks.add(new ProfileMark(f.right.code, rightLength, o.width - f.right.face / 2, 0, o.height,
+  plan.profileMarks.add(new ProfileMark(f.left, leftLength, f.left.face / 2, 0, o.height, true, ProfileRole.FRAME));
+  plan.profileMarks.add(new ProfileMark(f.right, rightLength, o.width - f.right.face / 2, 0, o.height,
    true, ProfileRole.FRAME));
  }
 
@@ -330,13 +331,13 @@ final class TemaJoinery {
    int halfFace = sash.face / 2;
    int horizontal = horizontalLength(width, sash.face, o.sashCorner);
    int vertical = verticalLength(height, sash.face, o.sashCorner);
-   plan.profileMarks.add(new ProfileMark(sash.code, horizontal, top + halfFace, left, left + width,
+   plan.profileMarks.add(new ProfileMark(sash, horizontal, top + halfFace, left, left + width,
     false, ProfileRole.SASH));
-   plan.profileMarks.add(new ProfileMark(sash.code, horizontal, top + height - halfFace, left, left + width,
+   plan.profileMarks.add(new ProfileMark(sash, horizontal, top + height - halfFace, left, left + width,
     false, ProfileRole.SASH));
-   plan.profileMarks.add(new ProfileMark(sash.code, vertical, left + halfFace, top, top + height,
+   plan.profileMarks.add(new ProfileMark(sash, vertical, left + halfFace, top, top + height,
     true, ProfileRole.SASH));
-   plan.profileMarks.add(new ProfileMark(sash.code, vertical, left + width - halfFace, top, top + height,
+   plan.profileMarks.add(new ProfileMark(sash, vertical, left + width - halfFace, top, top + height,
     true, ProfileRole.SASH));
    width -= 2 * sash.face;
    height -= 2 * sash.face;

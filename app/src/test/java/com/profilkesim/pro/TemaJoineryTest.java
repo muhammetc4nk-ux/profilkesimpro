@@ -165,6 +165,8 @@ public final class TemaJoineryTest {
   assertEquals(10915,plan.panes.get(2).height);
   TemaJoinery.ProfileMark sill = plan.profileMarks.get(1);
   assertEquals("T.3001", sill.code);
+  assertEquals(402, sill.face);
+  assertEquals(585, plan.profileMarks.get(0).face);
   assertEquals(14366, sill.length);
   assertEquals(0, sill.start);
   assertEquals(14366, sill.end);
@@ -174,6 +176,7 @@ public final class TemaJoineryTest {
    .filter(mark -> mark.role == TemaJoinery.ProfileRole.SASH && mark.vertical).findFirst().get();
   TemaLayout.Opening door = plan.layout.bays.get(2);
   assertEquals("T.3008", sash.code);
+  assertEquals(1100, sash.face);
   assertEquals(13215, sash.length);
   assertEquals(50, sash.start - door.top);
   assertEquals(50, door.bottom - sash.end);
