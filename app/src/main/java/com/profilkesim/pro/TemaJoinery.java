@@ -33,6 +33,7 @@ final class TemaJoinery {
   Integer frameJoint, mullionJoint;
   Set<Integer> emptyCells = Collections.emptySet();
   int frameGlass, mullionGlass, sashGlass, sashGap;
+  java.util.Map<Integer,Integer> sashGaps=new java.util.HashMap<>();
   boolean glassSizesVerified;
   Bead fixedBead, sashBead;
   String adapterCode;
@@ -235,8 +236,9 @@ final class TemaJoinery {
    if (o.adapterCode != null) {
     addRectangle(plan, o.adapterCode, "Kanat adaptörü", width, height, 0, Corner.MITER, o.quantity);
    }
-   width -= 2 * o.sashGap;
-   height -= 2 * o.sashGap;
+   int gap=o.sashGaps.getOrDefault(number,o.sashGap);
+   width -= 2 * gap;
+   height -= 2 * gap;
    if (width <= 2 * o.sashFace || height <= 2 * o.sashFace) {
     throw new IllegalArgumentException(number + ". hücrede kanat profili cam açıklığına sığmıyor.");
    }
