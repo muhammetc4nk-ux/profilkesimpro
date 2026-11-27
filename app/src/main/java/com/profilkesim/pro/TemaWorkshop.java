@@ -333,7 +333,8 @@ final class TemaWorkshop {
   java.util.TreeSet<Integer> xs=new java.util.TreeSet<>(), ys=new java.util.TreeSet<>();
   java.util.Set<Integer> openings=new java.util.HashSet<>();
   java.util.Set<Integer> leftCells=new java.util.HashSet<>(), emptyCells=new java.util.HashSet<>();
-  int[] mode={0};
+  java.util.Map<String,Integer> lineProfiles=new java.util.HashMap<>();
+  int[] mode={7};
   boolean[] frameAdded={false};
   TextView drawingStatus=new TextView(app);drawingStatus.setText("Önce kasa ekleyin.");panel.addView(drawingStatus);
   EditText jointEdit=new EditText(app); jointEdit.setInputType(SIGNED); jointEdit.setText(fields.get("joint").getText());
@@ -349,16 +350,16 @@ final class TemaWorkshop {
     c.drawColor(0xffe8f1f5); paint.setColor(0xffcbd9e1);paint.setStrokeWidth(1);for(int i=0;i<20;i++){float px=left+(right-left)*i/20f,py=top+(bottom-top)*i/20f;c.drawLine(px,top,px,bottom,paint);c.drawLine(left,py,right,py,paint);} paint.setColor(0xff34495e); paint.setStrokeWidth(7);paint.setStyle(android.graphics.Paint.Style.STROKE);
     if(!frameAdded[0])return;
     c.drawRect(left,top,right,bottom,paint);
-    profileLabel(c,groups[0][picks[0]].code,left+8,top+15);
+    profileLabel(c,groups[0][lineProfiles.getOrDefault("frame",picks[0])].code,left+8,top+15);
     paint.setStyle(android.graphics.Paint.Style.FILL);paint.setTextSize(14);c.drawText(sizes[0].getText()+" mm",left+10,18,paint);c.drawText(sizes[1].getText()+" mm",left+10,bottom+18,paint);paint.setStyle(android.graphics.Paint.Style.STROKE);
     paint.setColor(0xff1565c0);paint.setStrokeWidth(9);
-    for(int x:xs){float px=left+(right-left)*x/1000f;c.drawLine(px,top,px,bottom,paint);profileLabel(c,groups[1][picks[1]].code,px+4,top+30);}
-    for(int y:ys){float py=top+(bottom-top)*y/1000f;c.drawLine(left,py,right,py,paint);profileLabel(c,groups[1][picks[1]].code,left+8,py-5);}
+    for(int x:xs){float px=left+(right-left)*x/1000f;c.drawLine(px,top,px,bottom,paint);profileLabel(c,groups[1][lineProfiles.getOrDefault("v"+x,picks[1])].code,px+4,top+30);}
+    for(int y:ys){float py=top+(bottom-top)*y/1000f;c.drawLine(left,py,right,py,paint);profileLabel(c,groups[1][lineProfiles.getOrDefault("h"+y,picks[1])].code,left+8,py-5);}
     java.util.ArrayList<Integer> a=new java.util.ArrayList<>(xs),b=new java.util.ArrayList<>(ys);a.add(0,0);a.add(1000);b.add(0,0);b.add(1000);
     paint.setColor(0xff008577);paint.setStrokeWidth(3);
     for(int y=0;y<b.size()-1;y++)for(int x=0;x<a.size()-1;x++)if(openings.contains(y*(a.size()-1)+x+1)){
      float l=left+(right-left)*a.get(x)/1000f+7,r=left+(right-left)*a.get(x+1)/1000f-7,t=top+(bottom-top)*b.get(y)/1000f+7,d=top+(bottom-top)*b.get(y+1)/1000f-7;
-     c.drawRect(l,t,r,d,paint);profileLabel(c,groups[2][picks[2]].code,l+3,t+14);boolean isLeft=leftCells.contains(y*(a.size()-1)+x+1);float hinge=isLeft?l:r,handle=isLeft?r:l;c.drawLine(hinge,t,handle,(t+d)/2,paint);c.drawLine(handle,(t+d)/2,hinge,d,paint);
+     c.drawRect(l,t,r,d,paint);profileLabel(c,groups[2][lineProfiles.getOrDefault("s"+(y*(a.size()-1)+x+1),picks[2])].code,l+3,t+14);boolean isLeft=leftCells.contains(y*(a.size()-1)+x+1);float hinge=isLeft?l:r,handle=isLeft?r:l;c.drawLine(hinge,t,handle,(t+d)/2,paint);c.drawLine(handle,(t+d)/2,hinge,d,paint);
     }
    }
    private void profileLabel(android.graphics.Canvas c,String code,float x,float y){
@@ -371,6 +372,17 @@ final class TemaWorkshop {
     getParent().requestDisallowInterceptTouchEvent(false);
     int x=Math.round(1000*(e.getX()-left)/(right-left)),y=Math.round(1000*(e.getY()-top)/(bottom-top));
     if(!frameAdded[0]){toast("Önce kasa ekleyin.");return true;}
+    if(mode[0]==7){
+     String key=null;int role=1;int best=65;
+     for(int q:xs)if(Math.abs(q-x)<best){best=Math.abs(q-x);key="v"+q;}
+     for(int q:ys)if(Math.abs(q-y)<best){best=Math.abs(q-y);key="h"+q;}
+     int edge=Math.min(Math.min(Math.abs(x),Math.abs(1000-x)),Math.min(Math.abs(y),Math.abs(1000-y)));
+     if(edge<best){role=0;key="frame";}
+     if(key==null){int cell=ys.headSet(y).size()*(xs.size()+1)+xs.headSet(x).size()+1;if(openings.contains(cell)){role=2;key="s"+cell;}}
+     if(key==null){toast("Bir profil çizgisine dokunun.");return true;}
+     final String selectedKey=key;final int selectedRole=role;
+     chooseProfile("Profil değiştir",groups[role],lineProfiles.getOrDefault(key,picks[role]),index->{lineProfiles.put(selectedKey,index);invalidate();});return true;
+    }
     if(x<=0||x>=1000||y<=0||y>=1000)return true;
     if(mode[0]==0){if(xs.size()<12)xs.add(x);openings.clear();leftCells.clear();emptyCells.clear();}
     else if(mode[0]==1){if(ys.size()<12)ys.add(y);openings.clear();leftCells.clear();emptyCells.clear();}
@@ -382,7 +394,7 @@ final class TemaWorkshop {
   refreshDrawing[0]=board::invalidate;
   Button frameButton=new Button(app);frameButton.setText("+ Kasa ekle");panel.addView(frameButton);frameButton.setOnClickListener(v->{frameAdded[0]=true;drawingStatus.setText("Kasa eklendi: "+groups[0][picks[0]].label());board.invalidate();});
   Button sashButton=new Button(app);sashButton.setText("+ Kanat ekle (ilk boş bölme)");panel.addView(sashButton);sashButton.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}int count=(xs.size()+1)*(ys.size()+1);for(int i=1;i<=count;i++)if(openings.add(i)){drawingStatus.setText("Kanat: "+openings.size()+" / "+count);board.invalidate();return;}toast("Tüm bölmelerde kanat var.");});
-  String[] modes={"Dikey kayıt ekle","Yatay kayıt ekle","Sol menteşeli kanat","Profil sil","Boş kasa","Sabit cam","Sağ menteşeli kanat"};
+  String[] modes={"Dikey kayıt ekle","Yatay kayıt ekle","Sol menteşeli kanat","Profil sil","Boş kasa","Sabit cam","Sağ menteşeli kanat","Çizgiye dokun · profil değiştir"};
   for(int i=0;i<modes.length;i++){final int m=i;Button b=new Button(app);b.setText(modes[i]);panel.addView(b);b.setOnClickListener(v->{mode[0]=m;toast(modes[m]);});}
   panel.addView(board,new LinearLayout.LayoutParams(-1,app.dp(320)));
   Button addV=new Button(app);addV.setText("+ Dikey kayıt (eşit böl)");panel.addView(addV);addV.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}if(xs.size()>=12)return;int n=xs.size()+2;xs.clear();for(int i=1;i<n;i++)xs.add(Math.round(1000f*i/n));openings.clear();leftCells.clear();emptyCells.clear();drawingStatus.setText("Dikey: "+xs.size()+" | Yatay: "+ys.size());board.invalidate();});
@@ -400,7 +412,7 @@ final class TemaWorkshop {
     int face=workingFace(groups[0][picks[0]]);sizes[0].setText(mm(w+2*face));sizes[1].setText(mm(h+2*face));frameAdded[0]=true;board.invalidate();
    }catch(IllegalArgumentException ex){toast(ex.getMessage());}}).show();
   });
-  Button clear=new Button(app);clear.setText("Çizimi temizle");panel.addView(clear);clear.setOnClickListener(v->{frameAdded[0]=false;xs.clear();ys.clear();openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();});
+  Button clear=new Button(app);clear.setText("Çizimi temizle");panel.addView(clear);clear.setOnClickListener(v->{frameAdded[0]=false;lineProfiles.clear();xs.clear();ys.clear();openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();});
   AlertDialog dialog=new AlertDialog.Builder(app).setTitle("Kendin çiz · "+series.label).setView(scroll).setNegativeButton("Vazgeç",null).setPositiveButton("Kesim hesapla",null).create();
   dialog.setOnShowListener(v->dialog.getButton(-1).setOnClickListener(w->{
    try{
