@@ -310,6 +310,9 @@ final class TemaWorkshop {
 
  private void drawEditor() { drawEditor(null); }
  private void drawEditor(DrawingDimensions imported) {
+  try { openDrawEditor(imported); } catch (RuntimeException ex) { android.util.Log.e("TemaWorkshop", "Drawing editor initialization", ex); toast("Çizim açılamadı: "+ex.getClass().getSimpleName()); }
+ }
+ private void openDrawEditor(DrawingDimensions imported) {
   ScrollView scroll = new ScrollView(app);
   LinearLayout panel = new LinearLayout(app);
   panel.setOrientation(LinearLayout.VERTICAL);
@@ -372,6 +375,9 @@ final class TemaWorkshop {
    for(int i=0;i<2;i++)sizes[i].setText(saved.getString(sizeKeys[i]));
   }catch(org.json.JSONException | RuntimeException ignored){}
 
+  for(int i=0;i<3;i++){ if(picks[i]<0||picks[i]>=groups[i].length)picks[i]=0; profileButtons[i].setText(names[i]+" · "+groups[i][picks[i]].label()); }
+  lineProfiles.entrySet().removeIf(e->{int role=e.getKey().equals("frame")?0:e.getKey().startsWith("s")?2:1;return e.getValue()<0||e.getValue()>=groups[role].length;});
+  localLines.removeIf(q->q[4]<0||q[4]>=groups[1].length);
   if(imported!=null){
    frameAdded[0]=true;xs.clear();ys.clear();localLines.clear();openings.clear();leftCells.clear();emptyCells.clear();lineProfiles.clear();gaps.clear();
    if(imported.width>0)sizes[0].setText(mm(imported.width));
@@ -439,7 +445,7 @@ final class TemaWorkshop {
     c.save();c.translate((x+X)/2,(y+Y)/2);if(Math.abs(dy)>Math.abs(dx))c.rotate(-90);dim.setStyle(android.graphics.Paint.Style.FILL);dim.setTextSize(app.dp(10));dim.setTextAlign(android.graphics.Paint.Align.CENTER);float w=dim.measureText(label)/2+app.dp(3);dim.setColor(0xfff8fafc);c.drawRoundRect(-w,-app.dp(8),w,app.dp(8),4,4,dim);dim.setColor(0xff075985);c.drawText(label,0,app.dp(3),dim);c.restore();
    }
    @Override protected void onDraw(android.graphics.Canvas c){
-    super.onDraw(c); left=app.dp(30);top=app.dp(42);right=getWidth()-app.dp(24);bottom=getHeight()-app.dp(28);try{float ratio=Float.parseFloat(sizes[0].getText().toString().replace(',','.'))/Float.parseFloat(sizes[1].getText().toString().replace(',','.'));if(ratio>0&&Float.isFinite(ratio)){float w=right-left,h=bottom-top;if(w/h>ratio){float d=(w-h*ratio)/2;left+=d;right-=d;}else{float d=(h-w/ratio)/2;top+=d;bottom-=d;}}}catch(RuntimeException ignored){} paint.setStyle(android.graphics.Paint.Style.FILL);
+    super.onDraw(c); if(getWidth()<=app.dp(54)||getHeight()<=app.dp(70))return; left=app.dp(30);top=app.dp(42);right=getWidth()-app.dp(24);bottom=getHeight()-app.dp(28);try{float ratio=Float.parseFloat(sizes[0].getText().toString().replace(',','.'))/Float.parseFloat(sizes[1].getText().toString().replace(',','.'));if(ratio>0&&Float.isFinite(ratio)){float w=right-left,h=bottom-top;if(w/h>ratio){float d=(w-h*ratio)/2;left+=d;right-=d;}else{float d=(h-w/ratio)/2;top+=d;bottom-=d;}}}catch(RuntimeException ignored){} paint.setStyle(android.graphics.Paint.Style.FILL);
     c.drawColor(0xff061426);paint.setShader(new android.graphics.LinearGradient(0,0,getWidth(),getHeight(),0xff07192e,0xff020b18,android.graphics.Shader.TileMode.CLAMP));c.drawRect(0,0,getWidth(),getHeight(),paint);paint.setShader(null); paint.setColor(0xff18334d);paint.setStrokeWidth(1);for(int x=0;x<getWidth();x+=app.dp(20))c.drawLine(x,0,x,getHeight(),paint);for(int y=0;y<getHeight();y+=app.dp(20))c.drawLine(0,y,getWidth(),y,paint); paint.setColor(0xff34495e); paint.setStrokeWidth(7);paint.setStyle(android.graphics.Paint.Style.STROKE);
     if(!frameAdded[0])return;
     paint.setStyle(android.graphics.Paint.Style.FILL);
@@ -611,8 +617,8 @@ final class TemaWorkshop {
   Button clear=new Button(app);clear.setText("Çizimi temizle");panel.addView(clear);clear.setOnClickListener(v->{checkpoint.run();frameAdded[0]=false;localLines.clear();lineProfiles.clear();xs.clear();ys.clear();openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();});
   // Dark CAD workspace with a horizontal tool ribbon and scrollable settings.
   panel.removeView(board);
-  for(Button b:toolButtons)((android.view.ViewGroup)b.getParent()).removeView(b);
-  ((android.view.ViewGroup)historyTools.getParent()).removeView(historyTools);
+  for(Button b:toolButtons)if(b.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)b.getParent()).removeView(b);
+  if(historyTools.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)historyTools.getParent()).removeView(historyTools);
   for(int i=panel.getChildCount()-1;i>=0;i--){View child=panel.getChildAt(i);if(child instanceof LinearLayout&&((LinearLayout)child).getChildCount()==0)panel.removeViewAt(i);}
   LinearLayout workspace=new LinearLayout(app);workspace.setOrientation(LinearLayout.VERTICAL);workspace.setBackgroundColor(0xff061426);workspace.setPadding(app.dp(5),app.dp(4),app.dp(5),app.dp(4));
   TextView heading=new TextView(app);heading.setText("Profil Kesim Pro  |  "+series.label+"  ·  Kendin Çiz");heading.setTextColor(0xffe2f6ff);heading.setTextSize(16);heading.setPadding(app.dp(8),app.dp(4),app.dp(8),app.dp(4));workspace.addView(heading);
