@@ -9,15 +9,13 @@ import java.util.List;
 import org.junit.Test;
 
 public final class TemaJoineryTest {
- @Test public void c60FrameAndContinuousRecordsProduceVerifiedGlassSizes() {
+ @Test public void c60FrameAndContinuousRecordsProduceGlassCutSizes() {
   TemaJoinery.Order order = order(20000, 15000, 490);
   order.quantity = 2;
   order.vertical = 1;
   order.horizontal = 1;
   order.mullionFace = 490;
   order.joint = 10;
-  order.frameGlass = 10;
-  order.mullionGlass = 20;
   TemaJoinery.Plan plan = TemaJoinery.calculate(order);
 
   assertEquals(Arrays.asList(9265, 9265), plan.columns);
@@ -29,9 +27,9 @@ public final class TemaJoineryTest {
   assertEquals(90, plan.cuts.get(2).angle);
   assertEquals(12, plan.mullionEnds);
   assertEquals(4, plan.panes.size());
-  assertEquals(9295, plan.panes.get(0).width);
-  assertEquals(6795, plan.panes.get(0).height);
-  assertEquals(0, plan.glassArea.compareTo(ShopDimensions.area(9295, 6795, 8)));
+  assertEquals(9265, plan.panes.get(0).width);
+  assertEquals(6565, plan.panes.get(0).height);
+  assertEquals(0, plan.glassArea.compareTo(ShopDimensions.area(9265, 6565, 8)));
  }
 
  @Test public void aldoksStraightFrameAndSashUseDifferentCutReferences() {
@@ -39,16 +37,14 @@ public final class TemaJoineryTest {
   order.corner = TemaJoinery.Corner.HORIZONTAL_FULL;
   order.openingSashes = Collections.singleton(1);
   order.sashFace = 590;
-  order.sashGap = 30;
-  order.sashGlass = 80;
   TemaJoinery.Plan plan = TemaJoinery.calculate(order);
   assertEquals(12000, plan.cuts.get(0).length);
   assertEquals(9196, plan.cuts.get(1).length);
   assertEquals(90, plan.cuts.get(1).angle);
-  assertEquals(11136, plan.cuts.get(2).length);
+  assertEquals(11096, plan.cuts.get(2).length);
   assertEquals(45, plan.cuts.get(2).angle);
-  assertEquals(10116, plan.panes.get(0).width);
-  assertEquals(8116, plan.panes.get(0).height);
+  assertEquals(9916, plan.panes.get(0).width);
+  assertEquals(7716, plan.panes.get(0).height);
  }
 
  @Test public void customOpeningsAndHorizontalPriorityUseCorrectSpans() {
@@ -117,7 +113,6 @@ public final class TemaJoineryTest {
   order.vertical = 1;
   order.mullionFace = 490;
   order.sashFace = 660;
-  order.sashGap = 50;
   order.openingSashes = Collections.singleton(2);
   order.adapterCode = "T.3107";
   order.fixedBead = new TemaJoinery.Bead("T.3112", 220, 0, TemaJoinery.Corner.MITER);
@@ -129,6 +124,10 @@ public final class TemaJoineryTest {
   assertCut(plan, "T.3111", "Kanat cam çıtası yatay", 7855, 90, 4);
   assertCut(plan, "T.3111", "Kanat cam çıtası dikey", 12270, 90, 4);
   assertEquals(4, plan.mullionEnds);
+  assertEquals(9265, plan.panes.get(0).width);
+  assertEquals(13820, plan.panes.get(0).height);
+  assertEquals(7845, plan.panes.get(1).width);
+  assertEquals(12400, plan.panes.get(1).height);
  }
 
  @Test public void readsLabelledDrawingPairsAndRecordCountsWithoutInferringLayout() {
@@ -155,7 +154,6 @@ public final class TemaJoineryTest {
   order.layout = new TemaLayout(order.width,order.height,frame,1000,bays,records,Collections.singleton(3));
   order.openingSashes = Collections.singleton(3);
   order.sashFace = 590;
-  order.sashGap = 30;
   order.sashProfiles = Collections.singletonMap(3,new TemaLayout.Section("T.3008",1100));
   order.frameJoint = 10;
   order.mullionJoint = 20;
@@ -163,13 +161,30 @@ public final class TemaJoineryTest {
   assertEquals(13964,plan.layout.bays.get(0).width());
   assertEquals(13962,plan.layout.bays.get(2).width());
   assertEquals(13315,plan.layout.bays.get(2).height());
-  assertEquals(11702,plan.panes.get(2).width);
+  assertEquals(11662,plan.panes.get(2).width);
+  assertEquals(10815,plan.panes.get(2).height);
+  TemaJoinery.ProfileMark sill = plan.profileMarks.get(1);
+  assertEquals("T.3001", sill.code);
+  assertEquals(14366, sill.length);
+  assertEquals(0, sill.start);
+  assertEquals(14366, sill.end);
+  assertFalse(sill.vertical);
+  assertEquals(4, plan.profileMarks.stream().filter(mark -> mark.role == TemaJoinery.ProfileRole.SASH).count());
+  TemaJoinery.ProfileMark sash = plan.profileMarks.stream()
+   .filter(mark -> mark.role == TemaJoinery.ProfileRole.SASH && mark.vertical).findFirst().get();
+  TemaLayout.Opening door = plan.layout.bays.get(2);
+  assertEquals("T.3008", sash.code);
+  assertEquals(13215, sash.length);
+  assertEquals(50, sash.start - door.top);
+  assertEquals(50, door.bottom - sash.end);
+  assertEquals(50, sash.axis - 550 - door.left);
+  assertEquals(550, plan.panes.get(2).sash.face / 2);
   assertEquals(1,plan.layout.rails.size());
   assertCut(plan,"T.3001","Kasa alt yatay",14366,45,90,1);
   assertCut(plan,"T.3007","Kasa dikey",23000,45,90,1);
   assertCut(plan,"T.3006","Dikey orta kayıt",22425,90,1);
   assertCut(plan,"T.3003","Yatay orta kayıt",13992,90,1);
-  assertCut(plan,"T.3008","Kanat dikey",13255,45,2);
+  assertCut(plan,"T.3008","Kanat dikey",13215,45,2);
   records.set(0,new TemaLayout.Record(500,0,500,1000,new TemaLayout.Section("T.3003",590)));
   order.layout = new TemaLayout(order.width,order.height,frame,1000,bays,records,Collections.singleton(3));
   TemaJoinery.Plan narrowerRecord = TemaJoinery.calculate(order);
@@ -213,6 +228,15 @@ public final class TemaJoineryTest {
   assertCut(plan,"KASA","Kasa dikey",22000,45,90,2);
   assertCut(plan,"T.3107","Kanat adaptörü yatay",9020,45,1);
   assertCut(plan,"T.3107","Kanat adaptörü dikey",21510,45,90,2);
+ }
+
+ @Test public void glassNeedsPositiveHeightAfterBothTenMillimeterClearances() {
+  TemaJoinery.Order order = order(6000, 1200, 500);
+  assertThrows(IllegalArgumentException.class, () -> TemaJoinery.calculate(order));
+  order.height = 1201;
+  TemaJoinery.Plan plan = TemaJoinery.calculate(order);
+  assertEquals(5000, plan.panes.get(0).width);
+  assertEquals(1, plan.panes.get(0).height);
  }
 
  private static void assertCut(TemaJoinery.Plan plan, String code, String role, int length, int angle, int count) {

@@ -10,8 +10,12 @@ import java.util.Set;
 
 /** Rectangular joinery geometry. Dimensions are integer tenths of a millimetre. */
 final class TemaJoinery {
+ static final int SASH_GAP = 5 * ShopDimensions.PER_MM;
+ static final int GLASS_VERTICAL_GAP = 10 * ShopDimensions.PER_MM;
+
  enum Corner { MITER, VERTICAL_FULL, HORIZONTAL_FULL }
  enum Continuous { VERTICAL, HORIZONTAL }
+ enum ProfileRole { FRAME, MULLION, SASH }
 
  static final class Order {
   TemaLayout layout;
@@ -23,9 +27,6 @@ final class TemaJoinery {
   int vertical, horizontal, joint;
   Integer frameJoint, mullionJoint;
   Set<Integer> emptyCells = Collections.emptySet();
-  int frameGlass, mullionGlass, sashGlass, sashGap;
-  java.util.Map<Integer,Integer> sashGaps=new java.util.HashMap<>();
-  boolean glassSizesVerified;
   Bead fixedBead, sashBead;
   String adapterCode;
   Corner corner = Corner.MITER;
@@ -65,19 +66,40 @@ final class TemaJoinery {
 
  static final class Pane {
   final int number, width, height;
-  final boolean sash;
+  final TemaLayout.Section sash;
+  final String beadCode, adapterCode;
 
-  Pane(int number, int width, int height, boolean sash) {
+  Pane(int number, int width, int height, TemaLayout.Section sash, Bead bead, String adapterCode) {
    this.number = number;
    this.width = width;
    this.height = height;
    this.sash = sash;
+   this.beadCode = bead == null ? null : bead.code;
+   this.adapterCode = adapterCode;
+  }
+ }
+
+ static final class ProfileMark {
+  final String code;
+  final int length, axis, start, end;
+  final boolean vertical;
+  final ProfileRole role;
+
+  ProfileMark(String code, int length, int axis, int start, int end, boolean vertical, ProfileRole role) {
+   this.code = code;
+   this.length = length;
+   this.axis = axis;
+   this.start = start;
+   this.end = end;
+   this.vertical = vertical;
+   this.role = role;
   }
  }
 
  static final class Plan {
   final List<Cut> cuts = new ArrayList<>();
   final List<Pane> panes = new ArrayList<>();
+  final List<ProfileMark> profileMarks = new ArrayList<>();
   final List<Integer> columns, rows;
   final TemaLayout layout;
   BigDecimal glassArea = BigDecimal.ZERO;
@@ -150,20 +172,18 @@ final class TemaJoinery {
   int frameJoint = o.frameJoint == null ? o.joint : o.frameJoint;
   int mullionJoint = o.mullionJoint == null ? o.joint : o.mullionJoint;
   for (TemaLayout.Member member : plan.layout.members(o.continuous)) {
+   int length = member.cutLength(frameJoint, mullionJoint);
    plan.addCut(member.section.code, member.vertical ? "Dikey orta kayıt" : "Yatay orta kayıt",
-    member.cutLength(frameJoint, mullionJoint), 90, o.quantity);
+    length, 90, o.quantity);
+   plan.profileMarks.add(new ProfileMark(member.section.code, length, member.axis, member.start,
+    member.end, member.vertical, ProfileRole.MULLION));
    plan.mullionEnds += (member.floorEnd ? 1 : 2) * o.quantity;
   }
   for (int index = 0; index < plan.layout.bays.size(); index++) {
    int number = index + 1;
    if (o.emptyCells.contains(number)) continue;
    TemaLayout.Opening bay = plan.layout.bays.get(index);
-   TemaLayout.Frame frame = plan.layout.frame;
-   int glassX = (bay.left == frame.left.face ? o.frameGlass : o.mullionGlass)
-    + (bay.right == o.width - frame.right.face ? o.frameGlass : o.mullionGlass);
-   int glassY = (bay.top == frame.top.face ? o.frameGlass : o.mullionGlass)
-    + (bay.bottom == o.height - plan.layout.bottomFace ? o.frameGlass : o.mullionGlass);
-   addPaneDimensions(o, plan, number, bay, o.openingSashes.contains(number), glassX, glassY);
+   addPaneDimensions(o, plan, number, bay, o.openingSashes.contains(number));
   }
   return plan;
  }
@@ -242,10 +262,16 @@ final class TemaJoinery {
  private static void addRectangle(Plan plan, String code, String role, int width, int height,
                                   int face, Corner corner, int quantity) {
   int angle = corner == Corner.MITER ? 45 : 90;
-  int horizontal = corner == Corner.VERTICAL_FULL ? width - 2 * face : width;
-  int vertical = corner == Corner.HORIZONTAL_FULL ? height - 2 * face : height;
-  plan.addCut(code, role + " yatay", horizontal, angle, 2 * quantity);
-  plan.addCut(code, role + " dikey", vertical, angle, 2 * quantity);
+  plan.addCut(code, role + " yatay", horizontalLength(width, face, corner), angle, 2 * quantity);
+  plan.addCut(code, role + " dikey", verticalLength(height, face, corner), angle, 2 * quantity);
+ }
+
+ private static int horizontalLength(int width, int face, Corner corner) {
+  return corner == Corner.VERTICAL_FULL ? width - 2 * face : width;
+ }
+
+ private static int verticalLength(int height, int face, Corner corner) {
+  return corner == Corner.HORIZONTAL_FULL ? height - 2 * face : height;
  }
 
  private static void addFrame(Order o, Plan plan) {
@@ -254,6 +280,7 @@ final class TemaJoinery {
   boolean verticalFull = o.corner == Corner.VERTICAL_FULL, horizontalFull = o.corner == Corner.HORIZONTAL_FULL;
   int width = o.width - (verticalFull ? f.left.face + f.right.face : 0);
   plan.addCut(f.top.code, "Kasa yatay", width, angle, o.quantity);
+  plan.profileMarks.add(new ProfileMark(f.top.code, width, f.top.face / 2, 0, o.width, false, ProfileRole.FRAME));
   boolean leftSill = false, rightSill = false;
   for (TemaLayout.Span span : plan.layout.rails) {
    boolean left = span.start == 0, right = span.end == o.width;
@@ -263,51 +290,67 @@ final class TemaJoinery {
     - (verticalFull && right ? f.right.face : 0);
    plan.addCut(f.bottom.code, left && right ? "Kasa yatay" : "Kasa alt yatay", length,
     left ? angle : 90, right ? angle : 90, o.quantity);
+   plan.profileMarks.add(new ProfileMark(f.bottom.code, length, o.height - f.bottom.face / 2,
+    span.start, span.end, false, ProfileRole.FRAME));
   }
   int jamb = o.height - (horizontalFull ? f.top.face : 0);
   plan.frameCorners = (2 + (leftSill ? 1 : 0) + (rightSill ? 1 : 0)) * o.quantity;
-  plan.addCut(f.left.code, "Kasa dikey", jamb - (horizontalFull && leftSill ? f.bottom.face : 0),
-   angle, leftSill ? angle : 90, o.quantity);
-  plan.addCut(f.right.code, "Kasa dikey", jamb - (horizontalFull && rightSill ? f.bottom.face : 0),
-   angle, rightSill ? angle : 90, o.quantity);
+  int leftLength = jamb - (horizontalFull && leftSill ? f.bottom.face : 0);
+  int rightLength = jamb - (horizontalFull && rightSill ? f.bottom.face : 0);
+  plan.addCut(f.left.code, "Kasa dikey", leftLength, angle, leftSill ? angle : 90, o.quantity);
+  plan.addCut(f.right.code, "Kasa dikey", rightLength, angle, rightSill ? angle : 90, o.quantity);
+  plan.profileMarks.add(new ProfileMark(f.left.code, leftLength, f.left.face / 2, 0, o.height, true, ProfileRole.FRAME));
+  plan.profileMarks.add(new ProfileMark(f.right.code, rightLength, o.width - f.right.face / 2, 0, o.height,
+   true, ProfileRole.FRAME));
  }
 
  private static void addPaneDimensions(Order o, Plan plan, int number, TemaLayout.Opening bay,
-                                        boolean sash, int glassX, int glassY) {
+                                        boolean opening) {
   int width = bay.width(), height = bay.height();
-  if (sash) {
+  TemaLayout.Section sash = null;
+  Bead bead = opening ? o.sashBead : o.fixedBead;
+  if (opening) {
    if (o.adapterCode != null) {
     if (bay.door) {
      plan.addCut(o.adapterCode, "Kanat adaptörü yatay", width, 45, o.quantity);
      plan.addCut(o.adapterCode, "Kanat adaptörü dikey", height, 45, 90, 2 * o.quantity);
     } else addRectangle(plan, o.adapterCode, "Kanat adaptörü", width, height, 0, Corner.MITER, o.quantity);
    }
-   TemaLayout.Section profile = o.sashProfiles.get(number);
-   int face = profile == null ? o.sashFace : profile.face;
-   String code = profile == null ? o.sashCode : profile.code;
-   int gap=o.sashGaps.getOrDefault(number,o.sashGap);
-   width -= 2 * gap;
-   height -= 2 * gap;
-   if (width <= 2 * face || height <= 2 * face) {
+   sash = o.sashProfiles.get(number);
+   if (sash == null) sash = new TemaLayout.Section(o.sashCode, o.sashFace);
+   width -= 2 * SASH_GAP;
+   height -= 2 * SASH_GAP;
+   if (width <= 2 * sash.face || height <= 2 * sash.face) {
     throw new IllegalArgumentException(number + ". hücrede kanat profili cam açıklığına sığmıyor.");
    }
-   addRectangle(plan, code, "Kanat", width, height, face, o.sashCorner, o.quantity);
-   addBead(plan, o.sashBead, "Kanat cam çıtası", width - 2 * face, height - 2 * face, o.quantity);
-   width += 2 * (o.sashGlass - face);
-   height += 2 * (o.sashGlass - face);
-  } else {
-   addBead(plan, o.fixedBead, "Sabit cam çıtası", width, height, o.quantity);
-   width += glassX;
-   height += glassY;
+   addRectangle(plan, sash.code, "Kanat", width, height, sash.face, o.sashCorner, o.quantity);
+   int left = bay.left + SASH_GAP, top = bay.top + SASH_GAP;
+   int halfFace = sash.face / 2;
+   int horizontal = horizontalLength(width, sash.face, o.sashCorner);
+   int vertical = verticalLength(height, sash.face, o.sashCorner);
+   plan.profileMarks.add(new ProfileMark(sash.code, horizontal, top + halfFace, left, left + width,
+    false, ProfileRole.SASH));
+   plan.profileMarks.add(new ProfileMark(sash.code, horizontal, top + height - halfFace, left, left + width,
+    false, ProfileRole.SASH));
+   plan.profileMarks.add(new ProfileMark(sash.code, vertical, left + halfFace, top, top + height,
+    true, ProfileRole.SASH));
+   plan.profileMarks.add(new ProfileMark(sash.code, vertical, left + width - halfFace, top, top + height,
+    true, ProfileRole.SASH));
+   width -= 2 * sash.face;
+   height -= 2 * sash.face;
   }
-  if (width <= 0 || height <= 0) throw new IllegalArgumentException(number + ". hücrenin net cam ölçüsünü kontrol edin.");
-  plan.panes.add(new Pane(number, width, height, sash));
-  plan.glassArea = plan.glassArea.add(ShopDimensions.area(width, height, o.quantity));
+  int glassHeight = height - 2 * GLASS_VERTICAL_GAP;
+  if (width <= 0 || glassHeight <= 0) {
+   throw new IllegalArgumentException(number + ". bölmede cam için üstte ve altta 10 mm paya yer kalmıyor.");
+  }
+  addBead(plan, bead, opening ? "Kanat cam çıtası" : "Sabit cam çıtası", width, height, o.quantity);
+  plan.panes.add(new Pane(number, width, glassHeight, sash, bead, opening ? o.adapterCode : null));
+  plan.glassArea = plan.glassArea.add(ShopDimensions.area(width, glassHeight, o.quantity));
  }
 
  private static void addBead(Plan plan, Bead bead, String role, int width, int height, int quantity) {
   if (bead == null) return;
-  // Long points are measured on the seating line, independently of glass overlap.
+  // Long points are measured on the bead seating line.
   width += 2 * bead.edgeAdjustment;
   height += 2 * bead.edgeAdjustment;
   if (width <= 2 * bead.face || height <= 2 * bead.face) {

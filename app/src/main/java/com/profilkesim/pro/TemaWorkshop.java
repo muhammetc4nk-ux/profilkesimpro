@@ -17,6 +17,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -212,12 +213,7 @@ final class TemaWorkshop {
    adapter.setOnCheckedChangeListener((box, checked) -> invalidate());
    advancedPanel.addView(adapter);
   }
-  String sashHint = series == TemaCatalog.Series.C60 ? "Kanat boşluğu (mm/kenar; T.3107 detayında 5)" : "Kanat boşluğu (mm/kenar)";
-  field(advancedPanel, "sashGap", sashHint, "", SIGNED);
-  app.planLabel(advancedPanel, "Cam siparişi için kullanılan tarafların net cam paylarını girin. Boş bırakılan payda föy cam açıklığını gösterir.", 13, 0xffc9dbe3);
-  field(advancedPanel, "frameGlass", "Sabit cam kasa payı (mm/kenar)", "", SIGNED);
-  field(advancedPanel, "mullionGlass", "Sabit cam kayıt payı (mm/kenar)", "", SIGNED);
-  field(advancedPanel, "sashGlass", "Kanat camı payı (mm/kenar)", "", SIGNED);
+  app.planLabel(advancedPanel, "Kanat boşluğu her kenarda 5 mm. Cam boyunda üstten ve alttan 10’ar mm düşülür.", 13, 0xffc9dbe3);
   EditText extra = field(advancedPanel, "extraCuts", "Ek katalog kesimleri · kod;ölçü;adet;açı", "", InputType.TYPE_CLASS_TEXT);
   extra.setSingleLine(false);
   extra.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
@@ -380,8 +376,6 @@ final class TemaWorkshop {
   java.util.Set<Integer> openings=new java.util.HashSet<>();
   java.util.Set<Integer> leftCells=new java.util.HashSet<>(), emptyCells=new java.util.HashSet<>();
   java.util.ArrayDeque<Runnable> undo=new java.util.ArrayDeque<>();
-  java.util.Map<Integer,Integer> gaps=new java.util.HashMap<>();
-  for(String entry:value("individualSashGaps").split(";")){try{String[] pair=entry.split(":");gaps.put(Integer.parseInt(pair[0]),Integer.parseInt(pair[1]));}catch(RuntimeException ignored){}}
   java.util.ArrayList<int[]> localLines=new java.util.ArrayList<>();
   java.util.function.Supplier<java.util.ArrayList<int[]>> bays=()->{
    java.util.ArrayList<int[]> cells=new java.util.ArrayList<>();
@@ -395,7 +389,7 @@ final class TemaWorkshop {
    return cells;
   };
   java.util.function.BiFunction<Integer,Integer,Integer> hit=(x,y)->{java.util.ArrayList<int[]> cells=bays.get();for(int i=0;i<cells.size();i++){int[] z=cells.get(i);if(x>=z[0]&&x<=z[2]&&y>=z[1]&&y<=z[3])return i+1;}return 0;};
-  int[] mode={9};
+  int[] mode={8};
   boolean[] frameAdded={false};
   try {
    org.json.JSONObject saved=new org.json.JSONObject(value("editorDrawing"));
@@ -409,7 +403,6 @@ final class TemaWorkshop {
    org.json.JSONArray lines=saved.getJSONArray("lines");
    for(int i=0;i<lines.length();i++){org.json.JSONArray a=lines.getJSONArray(i);int[] q=new int[5];for(int j=0;j<5;j++)q[j]=a.getInt(j)*(j<4?scale:1);localLines.add(q);}
    org.json.JSONObject p=saved.getJSONObject("profiles");java.util.Iterator<String> keys=p.keys();while(keys.hasNext()){String k=keys.next();lineProfiles.put(scale!=1&&(k.startsWith("v")||k.startsWith("h"))?k.substring(0,1)+(Integer.parseInt(k.substring(1))*scale):k,p.getInt(k));}
-   org.json.JSONObject g=saved.getJSONObject("gaps");keys=g.keys();while(keys.hasNext()){String k=keys.next();gaps.put(Integer.parseInt(k),g.getInt(k));}
    org.json.JSONArray a=saved.getJSONArray("picks");for(int i=0;i<3;i++)picks[i]=a.getInt(i);
    for(int i=0;i<2;i++)sizes[i].setText(saved.getString(sizeKeys[i]));
   }catch(org.json.JSONException | RuntimeException ignored){}
@@ -418,7 +411,7 @@ final class TemaWorkshop {
   lineProfiles.entrySet().removeIf(e->{int role=e.getKey().startsWith("frame")?0:e.getKey().startsWith("s")?2:1;return e.getValue()<0||e.getValue()>=groups[role].length;});
   localLines.removeIf(q->q[4]<0||q[4]>=groups[1].length);
   if(imported!=null){
-   frameAdded[0]=true;xs.clear();ys.clear();localLines.clear();openings.clear();leftCells.clear();emptyCells.clear();lineProfiles.clear();gaps.clear();
+   frameAdded[0]=true;xs.clear();ys.clear();localLines.clear();openings.clear();leftCells.clear();emptyCells.clear();lineProfiles.clear();
    if(imported.width>0)sizes[0].setText(mm(imported.width));
    if(imported.height>0)sizes[1].setText(mm(imported.height));
    int nx=Math.max(0,Math.min(12,imported.vertical)),ny=Math.max(0,Math.min(12,imported.horizontal));
@@ -430,11 +423,10 @@ final class TemaWorkshop {
    java.util.TreeSet<Integer> oldX=new java.util.TreeSet<>(xs),oldY=new java.util.TreeSet<>(ys);
    java.util.Set<Integer> oldO=new java.util.HashSet<>(openings),oldL=new java.util.HashSet<>(leftCells),oldE=new java.util.HashSet<>(emptyCells);
    java.util.Map<String,Integer> oldP=new java.util.HashMap<>(lineProfiles);
-   java.util.Map<Integer,Integer> oldGaps=new java.util.HashMap<>(gaps);
    java.util.ArrayList<int[]> oldLines=new java.util.ArrayList<>();for(int[] q:localLines)oldLines.add(q.clone());
    boolean oldFrame=frameAdded[0];int[] oldPicks=picks.clone();
    String[] oldSizes={sizes[0].getText().toString(),sizes[1].getText().toString()};
-   return ()->{xs.clear();xs.addAll(oldX);ys.clear();ys.addAll(oldY);openings.clear();openings.addAll(oldO);leftCells.clear();leftCells.addAll(oldL);emptyCells.clear();emptyCells.addAll(oldE);lineProfiles.clear();lineProfiles.putAll(oldP);gaps.clear();gaps.putAll(oldGaps);localLines.clear();localLines.addAll(oldLines);frameAdded[0]=oldFrame;System.arraycopy(oldPicks,0,picks,0,picks.length);for(int i=0;i<3;i++)profileButtons[i].setText(names[i]+" · "+groups[i][picks[i]].label());for(int i=0;i<2;i++)sizes[i].setText(oldSizes[i]);};
+   return ()->{xs.clear();xs.addAll(oldX);ys.clear();ys.addAll(oldY);openings.clear();openings.addAll(oldO);leftCells.clear();leftCells.addAll(oldL);emptyCells.clear();emptyCells.addAll(oldE);lineProfiles.clear();lineProfiles.putAll(oldP);localLines.clear();localLines.addAll(oldLines);frameAdded[0]=oldFrame;System.arraycopy(oldPicks,0,picks,0,picks.length);for(int i=0;i<3;i++)profileButtons[i].setText(names[i]+" · "+groups[i][picks[i]].label());for(int i=0;i<2;i++)sizes[i].setText(oldSizes[i]);};
   };
   Runnable checkpoint=()->{undo.push(snapshot.get());redo.clear();};
   beforeProfileChange[0]=checkpoint;
@@ -442,21 +434,19 @@ final class TemaWorkshop {
   EditText jointEdit=new EditText(app); jointEdit.setInputType(SIGNED); jointEdit.setText(fields.get("joint").getText());
   app.planLabel(panel,"Kasa bağlantı payı (mm/uç)",14,Color.DKGRAY);panel.addView(jointEdit);
   EditText recordJoint=new EditText(app);recordJoint.setInputType(SIGNED);recordJoint.setText(fields.get("mullionJoint").getText());panel.addView(recordJoint);recordJoint.setHint("Orta kayda bağlantı payı (mm/uç)");
-  EditText sashGapEdit=new EditText(app);sashGapEdit.setInputType(SIGNED);sashGapEdit.setText(fields.get("sashGap").getText());
-  app.planLabel(panel,"Kanat kasa boşluğu (mm/kenar)",14,Color.DKGRAY);panel.addView(sashGapEdit);
   Runnable persistDrawing=()->{
    try{
     org.json.JSONObject o=new org.json.JSONObject();
     o.put("coordinateScale",1000000);o.put("frame",frameAdded[0]);o.put("xs",new org.json.JSONArray(xs));o.put("ys",new org.json.JSONArray(ys));o.put("openings",new org.json.JSONArray(openings));o.put("left",new org.json.JSONArray(leftCells));o.put("empty",new org.json.JSONArray(emptyCells));
     org.json.JSONArray lines=new org.json.JSONArray();for(int[] q:localLines){org.json.JSONArray a=new org.json.JSONArray();for(int n:q)a.put(n);lines.put(a);}o.put("lines",lines);
-    o.put("profiles",new org.json.JSONObject(lineProfiles));org.json.JSONObject g=new org.json.JSONObject();for(int k:gaps.keySet())g.put(String.valueOf(k),gaps.get(k));o.put("gaps",g);
+    o.put("profiles",new org.json.JSONObject(lineProfiles));
     org.json.JSONArray p=new org.json.JSONArray();for(int n:picks)p.put(n);o.put("picks",p);
     for(int i=0;i<2;i++)o.put(sizeKeys[i],sizes[i].getText().toString());
-    o.put("joint",jointEdit.getText().toString());o.put("recordJoint",recordJoint.getText().toString());o.put("sashGap",sashGapEdit.getText().toString());
+    o.put("joint",jointEdit.getText().toString());o.put("recordJoint",recordJoint.getText().toString());
     draft.put("editorDrawing",o.toString());
    }catch(org.json.JSONException ex){toast("Çizim kaydedilemedi.");}
   };
-  try{org.json.JSONObject o=new org.json.JSONObject(value("editorDrawing"));jointEdit.setText(o.optString("joint",jointEdit.getText().toString()));recordJoint.setText(o.optString("recordJoint",recordJoint.getText().toString()));sashGapEdit.setText(o.optString("sashGap",sashGapEdit.getText().toString()));}catch(org.json.JSONException ignored){}
+  try{org.json.JSONObject o=new org.json.JSONObject(value("editorDrawing"));jointEdit.setText(o.optString("joint",jointEdit.getText().toString()));recordJoint.setText(o.optString("recordJoint",recordJoint.getText().toString()));}catch(org.json.JSONException ignored){}
   java.util.function.Supplier<java.util.ArrayList<int[]>> records=()->{
    java.util.ArrayList<int[]> all=new java.util.ArrayList<>(localLines);
    for(int x:xs)all.add(new int[]{x,0,x,1000000,lineProfiles.getOrDefault("v"+x,picks[1])});
@@ -517,9 +507,6 @@ final class TemaWorkshop {
      measure(c,left,top-off,right,top-off,sizes[0].getText()+" mm");
      measure(c,left-off,top,left-off,bottom,sizes[1].getText()+" mm");
     }
-    int defaultGap = 0;
-    try { defaultGap = ShopDimensions.tenths(sashGapEdit.getText().toString(),"Kanat boşluğu"); }
-    catch (IllegalArgumentException ignored) { }
     for(int i=0;i<layout.bays.size();i++){
      TemaLayout.Opening bay=layout.bays.get(i);
      float l=left+bay.left*sx,r=left+bay.right*sx,t=top+bay.top*sy,bm=top+bay.bottom*sy;
@@ -528,7 +515,7 @@ final class TemaWorkshop {
      c.drawRect(l,t,r,bm,paint);
      if(openings.contains(i+1)){
       TemaCatalog.Profile sash=groups[2][lineProfiles.getOrDefault("s"+(i+1),picks[2])];
-      float gap=gaps.getOrDefault(i+1,defaultGap);
+      float gap = TemaJoinery.SASH_GAP;
       float band=Math.min(sash.face*Math.min(sx,sy),Math.min(r-l,bm-t)/3f);
       float sl=l+gap*sx+band/2,sr=r-gap*sx-band/2,st=t+gap*sy+band/2,sb=bm-gap*sy-band/2;
       if(sr>sl && sb>st){
@@ -570,7 +557,7 @@ final class TemaWorkshop {
     int x=Math.round(DRAWING_SCALE*(e.getX()-innerLeft)/(innerRight-innerLeft));
     int y=Math.round(DRAWING_SCALE*(e.getY()-innerTop)/(innerBottom-innerTop));
     if(y>DRAWING_SCALE && e.getY()<=bottom && mode[0]!=7)y=DRAWING_SCALE-1;
-    if(mode[0]==9){
+    if(mode[0]==8){
      int cell=hit.apply(x,y);if(cell==0)return true;int[] z=bays.get().get(cell-1);
      try{int[] n=net.apply(z);LinearLayout p=new LinearLayout(app);p.setOrientation(LinearLayout.VERTICAL);
       EditText en=new EditText(app),boy=new EditText(app);en.setInputType(DECIMAL);boy.setInputType(DECIMAL);en.setHint("Net en (mm)");boy.setHint("Net boy (mm)");en.setText(mm(n[0]));boy.setText(mm(n[1]));p.addView(en);p.addView(boy);
@@ -596,12 +583,6 @@ final class TemaWorkshop {
        }catch(RuntimeException ex){restore.run();invalidate();toast(ex.getMessage());}
       }).show();
      }catch(RuntimeException ex){toast(ex.getMessage());}return true;
-    }
-    if(mode[0]==8){
-     int cell=hit.apply(x,y);
-     if(!openings.contains(cell)){toast("Önce bir kanat ekleyin.");return true;}
-     EditText gap=new EditText(app);gap.setInputType(DECIMAL);gap.setText(gaps.containsKey(cell)?mm(gaps.get(cell)):sashGapEdit.getText().toString());
-     new AlertDialog.Builder(app).setTitle(cell+". kanat kasa boşluğu (mm/kenar)").setView(gap).setNegativeButton("Vazgeç",null).setPositiveButton("Uygula",(d,k)->{try{int n=ShopDimensions.tenths(gap.getText().toString(),"Kanat kasa boşluğu");if(n<0)throw new IllegalArgumentException("Boşluk negatif olamaz.");checkpoint.run();gaps.put(cell,n);invalidate();}catch(IllegalArgumentException ex){toast(ex.getMessage());}}).show();return true;
     }
     if(mode[0]==7){
      String key=null;int role=1;int best=65000;
@@ -632,7 +613,7 @@ final class TemaWorkshop {
     checkpoint.run();
     if(mode[0]==0||mode[0]==1){
      if((mode[0]==0&&xs.contains(x))||(mode[0]==1&&ys.contains(y))){undo.pop();return true;}
-     openings.clear();leftCells.clear();emptyCells.clear();gaps.clear();
+     openings.clear();leftCells.clear();emptyCells.clear();
      int l=xs.floor(x)==null?0:xs.floor(x),r=xs.ceiling(x)==null?1000000:xs.ceiling(x);
      int u=ys.floor(y)==null?0:ys.floor(y),d=ys.ceiling(y)==null?1000000:ys.ceiling(y);
      for(int[] q:localLines){if(q[0]==q[2]&&y>=q[1]&&y<=q[3]){if(q[0]<x)l=Math.max(l,q[0]);if(q[0]>x)r=Math.min(r,q[0]);}if(q[1]==q[3]&&x>=q[0]&&x<=q[2]){if(q[1]<y)u=Math.max(u,q[1]);if(q[1]>y)d=Math.min(d,q[1]);}}
@@ -654,7 +635,7 @@ final class TemaWorkshop {
   Button sashButton=new Button(app);sashButton.setText("+ Kanat ekle (ilk boş bölme)");panel.addView(sashButton);sashButton.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}int count=bays.get().size();for(int i=1;i<=count;i++)if(!openings.contains(i)){checkpoint.run();openings.add(i);drawingStatus.setText("Kanat: "+openings.size()+" / "+count);board.invalidate();return;}toast("Tüm bölmelerde kanat var.");});
   panel.addView(board,new LinearLayout.LayoutParams(-1,app.dp(560)));
   LinearLayout toolsRow=new LinearLayout(app);toolsRow.setOrientation(LinearLayout.HORIZONTAL);panel.addView(toolsRow);
-  String[] modes={"↕ Dikey kayıt","↔ Yatay kayıt","Sol kanat","Sil","Boş kasa","Sabit cam","Sağ kanat","Profil seç","Kanat boşluğu","Net ölçü gir"};
+  String[] modes={"↕ Dikey kayıt","↔ Yatay kayıt","Sol kanat","Sil","Boş kasa","Sabit cam","Sağ kanat","Profil seç","Net ölçü gir"};
   Button[] toolButtons=new Button[modes.length];
   for(int i=0;i<modes.length;i++){final int m=i;Button b=new Button(app);b.setAllCaps(false);b.setText(modes[i]);b.setTextSize(12);b.setPadding(app.dp(4),app.dp(4),app.dp(4),app.dp(4));toolButtons[i]=b;b.setTextColor(Color.WHITE);b.setBackground(app.rgbPanel(i==mode[0]?0xff086bc1:0xff102b48,0xff12385d,0xff32caff));if(i%3==0&&i!=0){toolsRow=new LinearLayout(app);toolsRow.setOrientation(LinearLayout.HORIZONTAL);panel.addView(toolsRow);}LinearLayout.LayoutParams toolLp=new LinearLayout.LayoutParams(0,app.dp(56),1);toolLp.setMargins(app.dp(3),app.dp(3),app.dp(3),app.dp(3));toolsRow.addView(b,toolLp);b.setOnClickListener(v->{mode[0]=m;for(int j=0;j<toolButtons.length;j++)toolButtons[j].setBackground(app.rgbPanel(j==m?0xff087e79:0xff173041,0xff245462,series.accent));drawingStatus.setText("Seçili araç: "+modes[m]+" · çizime dokunun.");});}
 
@@ -702,7 +683,6 @@ final class TemaWorkshop {
   Button addV=new Button(app);addV.setText("+ Dikey kayıt (eşit böl)");panel.addView(addV);addV.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}if(xs.size()>=12)return;checkpoint.run();int n=xs.size()+2;xs.clear();for(int i=1;i<n;i++)xs.add(Math.round(1000000f*i/n));openings.clear();leftCells.clear();emptyCells.clear();drawingStatus.setText("Dikey: "+xs.size()+" | Yatay: "+ys.size());board.invalidate();});
   Button addH=new Button(app);addH.setText("+ Yatay kayıt (eşit böl)");panel.addView(addH);addH.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}if(ys.size()>=12)return;checkpoint.run();int n=ys.size()+2;ys.clear();for(int i=1;i<n;i++)ys.add(Math.round(1000000f*i/n));openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();});
   for(EditText size:sizes)size.addTextChangedListener(watcher(board::invalidate));
-  sashGapEdit.addTextChangedListener(watcher(board::invalidate));
   Button exact=new Button(app);exact.setText("Kayıt konumunu mm olarak gir");panel.addView(exact);exact.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}EditText pos=new EditText(app);pos.setInputType(DECIMAL);new AlertDialog.Builder(app).setTitle("Kasa içi net konum (mm)").setView(pos).setNegativeButton("Vazgeç",null).setPositiveButton("Ekle",(d,k)->{try{boolean vertical=mode[0]!=1;TemaLayout layout=geometry.get();int total=vertical?layout.innerWidth:layout.innerHeight;int point=Math.round(1000000f*ShopDimensions.tenths(pos.getText().toString(),"Konum")/total);java.util.TreeSet<Integer> target=vertical?xs:ys;if(point<=0||point>=1000000||target.size()>=12)throw new IllegalArgumentException("Konum kasa içinde olmalı.");checkpoint.run();target.add(point);openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();}catch(IllegalArgumentException ex){toast(ex.getMessage());}}).show();});
   Button netSizes=new Button(app);netSizes.setText("Kasa içi net en ve boy gir");panel.addView(netSizes);
   netSizes.setOnClickListener(v->{
@@ -748,8 +728,7 @@ final class TemaWorkshop {
     for(int i=0;i<2;i++)fields.get(sizeKeys[i]).setText(sizes[i].getText());
     for(int i=0;i<3;i++){profileIndices[i]=picks[i];fields.get("code"+i).setText(groups[i][picks[i]].code);fields.get("face"+i).setText(mm(groups[i][picks[i]].face));}
     fields.get("vertical").setText(String.valueOf(xs.size()));fields.get("horizontal").setText(String.valueOf(ys.size()));
-    fields.get("columns").setText("");fields.get("rows").setText("");fields.get("joint").setText(jointEdit.getText());fields.get("sashGap").setText(sashGapEdit.getText());fields.get("mullionJoint").setText(recordJoint.getText());fields.get("leftCells").setText(cellList(leftCells));fields.get("emptyCells").setText(cellList(emptyCells));
-    StringBuilder gapData=new StringBuilder();for(int cell:openings)if(gaps.containsKey(cell))gapData.append(cell).append(':').append(gaps.get(cell)).append(';');draft.put("individualSashGaps",gapData.toString());
+    fields.get("columns").setText("");fields.get("rows").setText("");fields.get("joint").setText(jointEdit.getText());fields.get("mullionJoint").setText(recordJoint.getText());fields.get("leftCells").setText(cellList(leftCells));fields.get("emptyCells").setText(cellList(emptyCells));
     StringBuilder bayData=new StringBuilder(),recordData=new StringBuilder();
     {
      for(int[] z:bays.get())bayData.append(z[0]).append(',').append(z[1]).append(',').append(z[2]).append(',').append(z[3]).append(';');
@@ -774,8 +753,8 @@ final class TemaWorkshop {
   panel.setOrientation(LinearLayout.VERTICAL);
   panel.setPadding(app.dp(16), app.dp(8), app.dp(16), app.dp(8));
   scroll.addView(panel);
-  String[] keys = {"width","height","face0","face1","face2","columns","rows","joint","sashGap","beadEdge"};
-  String[] labels = {"Dış en (mm)","Dış yükseklik (mm)","Kasa düşüm yüzü (mm)","Kayıt yüzü (mm)","Kanat yüzü (mm)","Net yatay açıklıklar (; ile ayır)","Net dikey açıklıklar (; ile ayır)","Fiş / kayıt bağlantı farkı (mm/uç, eksi düşer)","Kanat boşluğu (mm/kenar)","Çıta oturma farkı (mm/kenar)"};
+  String[] keys = {"width","height","face0","face1","face2","columns","rows","joint","beadEdge"};
+  String[] labels = {"Dış en (mm)","Dış yükseklik (mm)","Kasa düşüm yüzü (mm)","Kayıt yüzü (mm)","Kanat yüzü (mm)","Net yatay açıklıklar (; ile ayır)","Net dikey açıklıklar (; ile ayır)","Fiş / kayıt bağlantı farkı (mm/uç, eksi düşer)","Çıta oturma farkı (mm/kenar)"};
   EditText[] edits = new EditText[keys.length];
   for (int i = 0; i < keys.length; i++) {
    TextView label = new TextView(app);
@@ -1027,6 +1006,9 @@ final class TemaWorkshop {
   if (in == null) return false;
   Bundle state = in.getBundle("temaDraft");
   if (state != null) for (String key : state.keySet()) draft.put(key, state.getString(key));
+  for (String removed : new String[]{"sashGap", "individualSashGaps", "frameGlass", "mullionGlass", "sashGlass"}) {
+   draft.remove(removed);
+  }
   int[] selection = in.getIntArray("temaSelection");
   if (selection != null && selection.length >= 7 && series.ordinal() == selection[0]) {
    corner = selection[1];
@@ -1124,23 +1106,8 @@ final class TemaWorkshop {
     order.sashCorner = TemaJoinery.Corner.values()[sashCorner];
     order.sashCode = profileCode(2);
     order.sashFace = mm("face2", "Kanat yüz ölçüsü");
-    boolean catalogConnection = catalogSash(order, hasRecords);
-    if (catalogConnection) order.adapterCode = TemaCatalog.C60_ADAPTER.code;
-    if (!catalogConnection && value("sashGap").isEmpty() && value("individualSashGaps").isEmpty()) {
-     advancedPanel.setVisibility(View.VISIBLE);
-     fields.get("sashGap").requestFocus();
-     throw new IllegalArgumentException("Bu kanat birleşiminde ölçülen kenar boşluğunu girin.");
-    }
-    order.sashGap = optionalMm("sashGap", "Kanat boşluğu", 50);
-    for(String entry:value("individualSashGaps").split(";")){try{String[] pair=entry.split(":");order.sashGaps.put(Integer.parseInt(pair[0]),Integer.parseInt(pair[1]));}catch(RuntimeException ignored){}}
+    if (catalogSash(order, hasRecords)) order.adapterCode = TemaCatalog.C60_ADAPTER.code;
     order.sashBead = bead(4, beadEdge);
-   }
-   order.glassSizesVerified = (!hasFixed || (!value("frameGlass").isEmpty() && (!hasRecords || !value("mullionGlass").isEmpty())))
-    && (!hasSashes || !value("sashGlass").isEmpty());
-   if (order.glassSizesVerified) {
-    if (hasFixed) order.frameGlass = mm("frameGlass", "Sabit cam kasa payı");
-    if (hasFixed && hasRecords) order.mullionGlass = mm("mullionGlass", "Sabit cam kayıt payı");
-    if (hasSashes) order.sashGlass = mm("sashGlass", "Kanat camı payı");
    }
    TemaJoinery.Plan plan = TemaJoinery.calculate(order);
    TemaJoinery.addManualCuts(plan, value("extraCuts"));
@@ -1220,7 +1187,23 @@ final class TemaWorkshop {
   app.page("Tema " + series.label + " · imalat föyü");
   LinearLayout drawingCard = section("Doğrama görünüşü");
   app.lightPanel(drawingCard);
-  drawingCard.addView(new TemaDiagramView(app, order, plan, series.accent, value("leftCells")), new LinearLayout.LayoutParams(-1, app.dp(242)));
+  Set<Integer> leftHinges = new LinkedHashSet<>();
+  String[] leftCells = value("leftCells").split(";");
+  for (TemaJoinery.Pane pane : plan.panes) {
+   for (String cell : leftCells) {
+    if (cell.trim().equals(String.valueOf(pane.number))) leftHinges.add(pane.number);
+   }
+  }
+  drawingCard.addView(new TemaDiagramView(app, order, plan, series.accent, leftHinges),
+   new LinearLayout.LayoutParams(-1, app.dp(344)));
+  app.planLabel(drawingCard, "Çizimdeki profil boyları ve cam ölçüleri mm cinsindedir.", 13, 0xffc9dbe3);
+  Button expand = new Button(app);
+  expand.setText("Çizimi büyüt");
+  expand.setAllCaps(false);
+  expand.setTextColor(Color.WHITE);
+  expand.setBackground(app.rgbPanel(0xff173041, 0xff245462, series.accent));
+  drawingCard.addView(expand, new LinearLayout.LayoutParams(-1, app.dp(48)));
+  expand.setOnClickListener(view -> showDetailedDrawing(order, plan, leftHinges));
   app.planLabel(drawingCard, mm(order.width) + " × " + mm(order.height) + " mm  ·  " + order.quantity + " doğrama", 15, 0xffecf5f7);
   int open = order.openingSashes.size();
   app.planLabel(drawingCard, (plan.panes.size() - open) + " sabit  ·  " + open + " açılır  ·  "
@@ -1231,10 +1214,10 @@ final class TemaWorkshop {
    + plan.mullionEnds + " · Kanat köşesi " + open * order.quantity * 4, 14, 0xffa7e9e3);
   LinearLayout beads = section("Cam çıtası kesimleri");
   showCuts(beads, plan, true);
-  LinearLayout panes = section(order.glassSizesVerified ? "Net cam ölçüleri" : "Cam açıklıkları");
-  if (!order.glassSizesVerified) app.planLabel(panes, "Net cam boyu için Montaj ve stok ayarlarına cam paylarını girin.", 13, 0xffffce83);
+  LinearLayout panes = section("Cam kesim ölçüleri");
+  app.planLabel(panes, "Cam eni net iç en. Cam boyu için net iç boydan üstte ve altta 10’ar mm düşüldü.", 13, 0xffc9dbe3);
   for (TemaJoinery.Pane pane : plan.panes) {
-   app.planLabel(panes, "Bölme " + pane.number + (pane.sash ? " · Kanat" : " · Sabit") + "  ·  "
+   app.planLabel(panes, "Bölme " + pane.number + (pane.sash != null ? " · Kanat" : " · Sabit") + "  ·  "
     + mm(pane.width) + " × " + mm(pane.height) + " mm  ·  " + order.quantity + " adet", 15, Color.WHITE);
   }
   app.planLabel(panes, "Toplam " + ShopDimensions.squareMeters(plan.glassArea)
@@ -1242,6 +1225,21 @@ final class TemaWorkshop {
   app.button("Profilleri stoklara yerleştir", () -> optimize(order, plan));
   app.button("Ölçüleri düzenle", this::open);
   app.button("Ana menü", app::home);
+ }
+
+ private void showDetailedDrawing(TemaJoinery.Order order, TemaJoinery.Plan plan, Set<Integer> leftHinges) {
+  TemaDiagramView diagram = new TemaDiagramView(app, order, plan, series.accent, leftHinges);
+  diagram.setBackgroundColor(0xff101a29);
+  float scale = Math.min(2800f / Math.max(order.width, order.height),
+   Math.max(720f / Math.min(order.width, order.height), 1600f / Math.max(order.width, order.height)));
+  int width = app.dp(Math.max(320, Math.round(order.width * scale) + 78));
+  int height = app.dp(Math.max(320, Math.round(order.height * scale) + 78));
+  HorizontalScrollView horizontal = new HorizontalScrollView(app);
+  horizontal.addView(diagram, new HorizontalScrollView.LayoutParams(width, height));
+  ScrollView vertical = new ScrollView(app);
+  vertical.addView(horizontal, new ScrollView.LayoutParams(-1, -2));
+  new AlertDialog.Builder(app).setTitle("İmalat çizimi · mm").setView(vertical)
+   .setPositiveButton("Kapat", null).show();
  }
 
  private void showCuts(LinearLayout parent, TemaJoinery.Plan plan, boolean beads) {

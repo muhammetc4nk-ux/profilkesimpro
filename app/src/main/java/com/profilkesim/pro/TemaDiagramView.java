@@ -4,9 +4,11 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
+import android.graphics.Rect;
 import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.view.View;
+import java.util.Set;
 
 final class TemaDiagramView extends View {
  private final TemaJoinery.Order order;
@@ -16,16 +18,19 @@ final class TemaDiagramView extends View {
  private final int accent;
  private final Typeface typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL);
  private Shader metal, fixedGlass, openingGlass;
- private final String leftCells;
+ private final Set<Integer> leftCells;
+ private final TemaJoinery.Pane[] panes;
 
- TemaDiagramView(Context context, TemaJoinery.Order order, TemaJoinery.Plan plan, int accent, String leftCells) {
+ TemaDiagramView(Context context, TemaJoinery.Order order, TemaJoinery.Plan plan, int accent, Set<Integer> leftCells) {
   super(context);
   this.order = order;
   this.plan = plan;
   this.accent = accent;
   this.leftCells = leftCells;
   density = getResources().getDisplayMetrics().density;
-  setContentDescription("Numaralı doğrama şeması, " + plan.layout.bays.size() + " bölme");
+  panes = new TemaJoinery.Pane[plan.layout.bays.size()];
+  for (TemaJoinery.Pane pane : plan.panes) panes[pane.number - 1] = pane;
+  setContentDescription("Profil kodları, kesim boyları ve cam ölçüleriyle doğrama çizimi, " + panes.length + " bölme");
  }
 
  @Override protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
@@ -36,34 +41,50 @@ final class TemaDiagramView extends View {
  }
 
  @Override protected void onDraw(Canvas canvas) {
-  float margin = 22f * density;
+  float margin = 39f * density;
   if (getWidth() <= 2 * margin || getHeight() <= 2 * margin) return;
   float scale = Math.min((getWidth() - 2 * margin) / order.width, (getHeight() - 2 * margin) / order.height);
   float width = order.width * scale, height = order.height * scale;
   float left = (getWidth() - width) / 2f, top = (getHeight() - height) / 2f;
   paint.setColor(0x1238cfe0);
   paint.setStrokeWidth(density / 2f);
-  for (float x = margin; x < getWidth() - margin; x += 18f * density) canvas.drawLine(x, margin, x, getHeight() - margin, paint);
-  for (float y = margin; y < getHeight() - margin; y += 18f * density) canvas.drawLine(margin, y, getWidth() - margin, y, paint);
+  Rect visible = canvas.getClipBounds();
+  float gridStep = 18 * density;
+  for (float x = margin + Math.max(0, (int)((visible.left - margin) / gridStep)) * gridStep;
+       x < Math.min(visible.right, getWidth() - margin); x += gridStep) {
+   canvas.drawLine(x, margin, x, getHeight() - margin, paint);
+  }
+  for (float y = margin + Math.max(0, (int)((visible.top - margin) / gridStep)) * gridStep;
+       y < Math.min(visible.bottom, getHeight() - margin); y += gridStep) {
+   canvas.drawLine(margin, y, getWidth() - margin, y, paint);
+  }
   paint.setColor(0xffffffff);
   paint.setShader(metal);
   drawStructure(canvas, paint, plan.layout, order.continuous, left, top, scale, scale);
   paint.setShader(null);
-  for (int i = 0; i < plan.layout.bays.size(); i++) {
-   TemaLayout.Opening bay = plan.layout.bays.get(i);
-   drawBay(canvas, i + 1, left + bay.left * scale, top + bay.top * scale,
-    left + bay.right * scale, top + bay.bottom * scale, scale);
+  for (int i = 0; i < panes.length; i++) {
+   drawBay(canvas, i + 1, plan.layout.bays.get(i), panes[i], left, top, scale);
   }
+  for (TemaJoinery.ProfileMark mark : plan.profileMarks) drawProfileMark(canvas, mark, left, top, scale);
   paint.setColor(0xffecc78f);
   paint.setStrokeWidth(density);
-  float dimensionY = top - 6f * density;
+  float dimensionY = top - 19f * density;
   canvas.drawLine(left, dimensionY, left + width, dimensionY, paint);
   canvas.drawLine(left, dimensionY - 2f * density, left, dimensionY + 2f * density, paint);
   canvas.drawLine(left + width, dimensionY - 2f * density, left + width, dimensionY + 2f * density, paint);
-  drawLabel(canvas, ShopDimensions.mm(order.width) + " mm", getWidth() / 2f,
+  drawLabel(canvas, "Dış en " + ShopDimensions.mm(order.width) + " mm", getWidth() / 2f,
    dimensionY - 3f * density, 11f * density);
-  drawLabel(canvas, "Yükseklik " + ShopDimensions.mm(order.height) + " mm", getWidth() / 2f,
-   top + height + 16f * density, 11f * density);
+  paint.setColor(0xffecc78f);
+  float dimensionX = left + width + 19 * density;
+  canvas.drawLine(dimensionX, top, dimensionX, top + height, paint);
+  canvas.drawLine(dimensionX - 2 * density, top, dimensionX + 2 * density, top, paint);
+  canvas.drawLine(dimensionX - 2 * density, top + height, dimensionX + 2 * density, top + height, paint);
+  float middle = top + height / 2;
+  canvas.save();
+  canvas.rotate(90, dimensionX, middle);
+  drawLabel(canvas, "Dış boy " + ShopDimensions.mm(order.height) + " mm", dimensionX,
+   middle - 3 * density, 11f * density);
+  canvas.restore();
  }
 
  static void drawStructure(Canvas canvas, Paint paint, TemaLayout layout, TemaJoinery.Continuous continuous,
@@ -83,32 +104,112 @@ final class TemaDiagramView extends View {
   }
  }
 
- private void drawBay(Canvas canvas, int number, float left, float top, float right, float bottom, float scale) {
-  if (order.emptyCells.contains(number)) return;
-  boolean sash = order.openingSashes.contains(number);
-  paint.setColor(0xffffffff);
-  paint.setShader(sash ? openingGlass : fixedGlass);
+ private void drawBay(Canvas canvas, int number, TemaLayout.Opening bay, TemaJoinery.Pane pane,
+                      float x, float y, float scale) {
+  float left = x + bay.left * scale, right = x + bay.right * scale;
+  float top = y + bay.top * scale, bottom = y + bay.bottom * scale;
+  if (canvas.quickReject(left, top, right, bottom, Canvas.EdgeType.AA)) return;
+  if (pane == null) {
+   drawChip(canvas, number + " · Boş kasa", (left + right) / 2, (top + bottom) / 2,
+    right - left - 4 * density, 0xff24424f, 11);
+   return;
+  }
+  boolean sash = pane.sash != null;
+  paint.setColor(0xff101a29);
   canvas.drawRect(left, top, right, bottom, paint);
-  paint.setShader(null);
   if (sash) {
-   float gap = order.sashGaps.getOrDefault(number, order.sashGap) * scale;
+   float gap = TemaJoinery.SASH_GAP * scale, face = pane.sash.face * scale;
    left += gap;
    top += gap;
    right -= gap;
    bottom -= gap;
-   paint.setColor(0xffc2a7ff);
-   paint.setStrokeWidth(2 * density);
-   paint.setStyle(Paint.Style.STROKE);
+   paint.setColor(0xff826cca);
    canvas.drawRect(left, top, right, bottom, paint);
-   paint.setStyle(Paint.Style.FILL);
-   boolean isLeft = java.util.Arrays.asList(leftCells.split(";")).contains(String.valueOf(number));
+   left += face;
+   top += face;
+   right -= face;
+   bottom -= face;
+  }
+  paint.setColor(0xff101a29);
+  canvas.drawRect(left, top, right, bottom, paint);
+  float glassGap = TemaJoinery.GLASS_VERTICAL_GAP * scale;
+  paint.setColor(0xffffffff);
+  paint.setShader(sash ? openingGlass : fixedGlass);
+  canvas.drawRect(left, top + glassGap, right, bottom - glassGap, paint);
+  paint.setShader(null);
+  if (sash) {
+   paint.setColor(0xffb8a3e7);
+   paint.setStrokeWidth(density);
+   boolean isLeft = leftCells.contains(number);
    float hinge = isLeft ? left : right, handle = isLeft ? right : left;
    canvas.drawLine(hinge, top, handle, (top + bottom) / 2, paint);
    canvas.drawLine(handle, (top + bottom) / 2, hinge, bottom, paint);
   }
-  if (right - left >= 16 * density && bottom - top >= 14 * density) {
-   drawLabel(canvas, String.valueOf(number), (left + right) / 2, (top + bottom) / 2, 11 * density);
+  float center = (left + right) / 2, middle = (top + bottom) / 2;
+  float width = right - left - 4 * density;
+  float rows = (bottom - top) / (16 * density);
+  int color = 0xff1d3448;
+  String title = "Bölme " + number + " · " + (bay.door ? "Kapı" : sash ? "Kanat" : "Sabit");
+  String glass = "Cam " + size(pane.width, pane.height);
+  if (rows < 2) {
+   if (rows >= 0.8f) drawChip(canvas, number + " · " + glass, center, middle, width, color, 11);
+   return;
   }
+  drawChip(canvas, title, center, middle - 8 * density, width, color, 11);
+  drawChip(canvas, glass, center, middle + 8 * density, width, color, 11);
+  if (rows >= 4) {
+   String inside = "İç " + size(pane.width, pane.height + 2 * TemaJoinery.GLASS_VERTICAL_GAP);
+   drawChip(canvas, inside, center, middle - 24 * density, width, color, 10);
+   if (pane.beadCode != null) drawChip(canvas, "Çıta " + pane.beadCode, center, middle + 24 * density, width, color, 10);
+  }
+  if (rows >= 6 && pane.adapterCode != null) {
+   drawChip(canvas, "Adaptör " + pane.adapterCode, center, middle + 40 * density, width, color, 10);
+  }
+ }
+
+ private static String size(int width, int height) {
+  return ShopDimensions.mm(width) + " × " + ShopDimensions.mm(height) + " mm";
+ }
+
+ private void drawProfileMark(Canvas canvas, TemaJoinery.ProfileMark mark, float left, float top, float scale) {
+  float x = left + (mark.vertical ? mark.axis : (mark.start + mark.end) / 2f) * scale;
+  float y = top + (mark.vertical ? (mark.start + mark.end) / 2f : mark.axis) * scale;
+  int color;
+  switch (mark.role) {
+   case FRAME:
+    color = 0xff284756;
+    if (mark.vertical) x = mark.axis < order.width / 2 ? left - 9 * density : left + order.width * scale + 9 * density;
+    else y = mark.axis < order.height / 2 ? top - 8 * density : top + order.height * scale + 8 * density;
+    break;
+   case SASH: color = 0xff49376f; break;
+   default: color = 0xff184f55;
+  }
+  canvas.save();
+  if (mark.vertical) canvas.rotate(-90, x, y);
+  drawChip(canvas, mark.code + " · " + ShopDimensions.mm(mark.length), x, y,
+   (mark.end - mark.start) * scale - 4 * density, color, 10);
+  canvas.restore();
+ }
+
+ private void drawChip(Canvas canvas, String value, float x, float y, float maxWidth, int background, float sp) {
+  float pad = 3 * density;
+  if (maxWidth <= 2 * pad) return;
+  paint.setTypeface(typeface);
+  paint.setTextSize(sp * density);
+  float textWidth = paint.measureText(value);
+  if (textWidth + 2 * pad > maxWidth) {
+   float fitted = sp * density * (maxWidth - 2 * pad) / textWidth;
+   if (fitted < 8 * density) return;
+   paint.setTextSize(fitted);
+   textWidth = paint.measureText(value);
+  }
+  float halfWidth = textWidth / 2 + pad;
+  float halfHeight = (paint.descent() - paint.ascent()) / 2 + density;
+  float baseline = y - (paint.ascent() + paint.descent()) / 2;
+  paint.setColor(background);
+  canvas.drawRoundRect(x - halfWidth, y - halfHeight, x + halfWidth, y + halfHeight,
+   3 * density, 3 * density, paint);
+  drawLabel(canvas, value, x, baseline, paint.getTextSize());
  }
  private void drawLabel(Canvas canvas, String value, float x, float y, float size) {
   paint.setColor(0xffe8f8f8);
