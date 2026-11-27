@@ -36,6 +36,8 @@ import java.util.TreeMap;
 
 final class TemaWorkshop {
  private static final int DRAWING_FILE = 46, DRAWING_CAMERA = 47;
+ private static final int DRAWING_SCALE = 1_000_000;
+ private static final String[] FRAME_EDGES = {"frameLeft", "frameTop", "frameRight", "frameBottom"};
  private static final int DECIMAL = InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL;
  private static final int SIGNED = DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED;
  private final MainActivity app;
@@ -68,17 +70,47 @@ final class TemaWorkshop {
   }
  }
 
- private int workingFace(TemaCatalog.Profile profile) {
-  if (series == TemaCatalog.Series.ALDOKS) {
-   if ("T.3004".equals(profile.code)) return 420;
-   if ("T.3002".equals(profile.code)) return 600;
+ private static TemaLayout.Section section(TemaCatalog.Profile profile) {
+  return new TemaLayout.Section(profile.code, profile.face);
+ }
+
+ private TemaLayout.Frame frame(TemaLayout.Section fallback, Map<String,Integer> selections) {
+  TemaLayout.Section[] sides = new TemaLayout.Section[4];
+  for (int i = 0; i < sides.length; i++) {
+   Integer index = selections.get(FRAME_EDGES[i]);
+   if (index == null) index = selections.get("frame");
+   sides[i] = index == null ? fallback : section(series.frames[index]);
   }
-  return profile.face;
+  return new TemaLayout.Frame(sides[0], sides[1], sides[2], sides[3]);
+ }
+
+ private List<TemaLayout.Record> layoutRecords(List<int[]> lines) {
+  return layoutRecords(lines, null);
+ }
+
+ private List<TemaLayout.Record> layoutRecords(List<int[]> lines, TemaLayout.Section defaultProfile) {
+  List<TemaLayout.Record> records = new ArrayList<>();
+  for (int[] line : lines) {
+   TemaLayout.Section profile = line[4] == -1 ? defaultProfile
+    : line[4] >= 0 && line[4] < series.mullions.length ? section(series.mullions[line[4]]) : null;
+   if (profile == null) throw new IllegalArgumentException("Kayıt profilini yeniden seçin.");
+   records.add(new TemaLayout.Record(line[0], line[1], line[2], line[3], profile));
+  }
+  return records;
+ }
+
+ private void migrateCatalogueFaces() {
+  if (series == TemaCatalog.Series.ALDOKS && !draft.containsKey("catalogueFaces")) {
+   if ("T.3004".equals(value("code0")) && "42".equals(value("face0"))) draft.put("face0", "58,5");
+   if ("T.3002".equals(value("code2")) && "60".equals(value("face2"))) draft.put("face2", "59");
+   draft.put("catalogueFaces", "1");
+  }
  }
 
  private String preference(int role) { return "tema.profile." + series.name() + "." + role; }
 
  void open() {
+  migrateCatalogueFaces();
   app.page("Tema " + series.label + " · İmalat hesabı");
   form = app.body;
   fields.clear();
@@ -102,6 +134,9 @@ final class TemaWorkshop {
   photoBayCount = app.planLabel(divisions, "", 13, 0xffffce83);
   for (EditText input : new EditText[]{vertical, horizontal}) input.addTextChangedListener(watcher(() -> {
    chosenSashes.clear();
+   draft.remove("regionalBays");
+   draft.remove("regionalRecords");
+   draft.remove("regionalProfiles");
    expectedFixed = -1;
    updateLayout();
   }));
@@ -153,7 +188,7 @@ final class TemaWorkshop {
   for (int i = 0; i < groups.length; i++) {
    TemaCatalog.Profile selected = groups[i][profileIndices[i]];
    field(profileOverrides, "code" + i, roleNames[i] + " profil kodu", selected.code, InputType.TYPE_CLASS_TEXT);
-   field(profileOverrides, "face" + i, roleNames[i] + " oturma yüzü (mm)", mm(workingFace(selected)), DECIMAL);
+   field(profileOverrides, "face" + i, roleNames[i] + " profil genişliği (mm)", mm(selected.face), DECIMAL);
   }
   String[] corners = {"45° gönye · uzun uç", "90° düz · dikeyler tam boy", "90° düz · yataylar tam boy"};
   choiceControl(advancedPanel, "Kasa köşesi", corners, corner, i -> corner = i);
@@ -259,7 +294,7 @@ final class TemaWorkshop {
  private void updateLayout() {
   if (bayButton == null || fixedBeadProfile == null) return;
   int columns = recordCount("vertical") + 1, rows = recordCount("horizontal") + 1;
-  int cells = columns * rows;
+  int cells = value("regionalBays").isEmpty() ? columns * rows : value("regionalBays").split(";").length;
   int open = chosenSashes.size();
   fixedCountButton.setText(cells == 0 ? "Sabit adedi" : (cells - open) + " sabit · " + open + " açılır");
   fixedCountButton.setContentDescription("Sabit adedini değiştir · " + fixedCountButton.getText());
@@ -274,6 +309,10 @@ final class TemaWorkshop {
  }
 
  private void chooseFixedCount() {
+  if (!value("regionalBays").isEmpty()) {
+   drawEditor();
+   return;
+  }
   int total = (recordCount("vertical") + 1) * (recordCount("horizontal") + 1);
   if (total <= 0) return;
   LinearLayout content = new LinearLayout(app);
@@ -326,6 +365,7 @@ final class TemaWorkshop {
    sizes[i].setText(fields.get(sizeKeys[i]).getText()); panel.addView(sizes[i]);
   }
   TemaCatalog.Profile[][] groups = {series.frames,series.mullions,series.sashes};
+  Map<String,Integer> lineProfiles = new LinkedHashMap<>();
   int[] picks = profileIndices.clone();
   Runnable[] refreshDrawing={()->{}};
   Runnable[] beforeProfileChange={()->{}};
@@ -334,12 +374,11 @@ final class TemaWorkshop {
   for(int i=0;i<3;i++){
    final int role=i;
    Button b=new Button(app); b.setAllCaps(false); b.setText(names[i]+" · "+groups[i][picks[i]].label()); panel.addView(b);profileButtons[i]=b;
-   b.setOnClickListener(v->chooseProfile(names[role],groups[role],picks[role],index->{beforeProfileChange[0].run();picks[role]=index;b.setText(names[role]+" · "+groups[role][index].label());refreshDrawing[0].run();}));
+   b.setOnClickListener(v->chooseProfile(names[role],groups[role],picks[role],index->{beforeProfileChange[0].run();picks[role]=index;if(role==0)lineProfiles.remove("frame");b.setText(names[role]+" · "+groups[role][index].label());refreshDrawing[0].run();}));
   }
   java.util.TreeSet<Integer> xs=new java.util.TreeSet<>(), ys=new java.util.TreeSet<>();
   java.util.Set<Integer> openings=new java.util.HashSet<>();
   java.util.Set<Integer> leftCells=new java.util.HashSet<>(), emptyCells=new java.util.HashSet<>();
-  java.util.Map<String,Integer> lineProfiles=new java.util.HashMap<>();
   java.util.ArrayDeque<Runnable> undo=new java.util.ArrayDeque<>();
   java.util.Map<Integer,Integer> gaps=new java.util.HashMap<>();
   for(String entry:value("individualSashGaps").split(";")){try{String[] pair=entry.split(":");gaps.put(Integer.parseInt(pair[0]),Integer.parseInt(pair[1]));}catch(RuntimeException ignored){}}
@@ -376,7 +415,7 @@ final class TemaWorkshop {
   }catch(org.json.JSONException | RuntimeException ignored){}
 
   for(int i=0;i<3;i++){ if(picks[i]<0||picks[i]>=groups[i].length)picks[i]=0; profileButtons[i].setText(names[i]+" · "+groups[i][picks[i]].label()); }
-  lineProfiles.entrySet().removeIf(e->{int role=e.getKey().equals("frame")?0:e.getKey().startsWith("s")?2:1;return e.getValue()<0||e.getValue()>=groups[role].length;});
+  lineProfiles.entrySet().removeIf(e->{int role=e.getKey().startsWith("frame")?0:e.getKey().startsWith("s")?2:1;return e.getValue()<0||e.getValue()>=groups[role].length;});
   localLines.removeIf(q->q[4]<0||q[4]>=groups[1].length);
   if(imported!=null){
    frameAdded[0]=true;xs.clear();ys.clear();localLines.clear();openings.clear();leftCells.clear();emptyCells.clear();lineProfiles.clear();gaps.clear();
@@ -424,19 +463,23 @@ final class TemaWorkshop {
    for(int y:ys)all.add(new int[]{0,y,1000000,y,lineProfiles.getOrDefault("h"+y,picks[1])});
    return all;
   };
-  java.util.function.Function<int[],int[]> net=z->{
-   int f=workingFace(groups[0][picks[0]]);
-   int iw=ShopDimensions.tenths(sizes[0].getText().toString(),"En")-2*f,ih=ShopDimensions.tenths(sizes[1].getText().toString(),"Boy")-2*f;
-   int lf=0,rf=0,tf=0,bf=0;
-   for(int[] q:records.get()){int face=workingFace(groups[1][q[4]]);
-    if(q[0]==q[2]&&q[1]<=z[1]&&q[3]>=z[3]){if(q[0]==z[0])lf=Math.max(lf,face);if(q[0]==z[2])rf=Math.max(rf,face);}
-    if(q[1]==q[3]&&q[0]<=z[0]&&q[2]>=z[2]){if(q[1]==z[1])tf=Math.max(tf,face);if(q[1]==z[3])bf=Math.max(bf,face);}
+  java.util.function.Supplier<TemaLayout.Frame> editorFrame = () -> frame(section(groups[0][picks[0]]), lineProfiles);
+  java.util.function.Supplier<TemaLayout> geometry = () -> new TemaLayout(
+   ShopDimensions.tenths(sizes[0].getText().toString(),"En"), ShopDimensions.tenths(sizes[1].getText().toString(),"Boy"),
+   editorFrame.get(), DRAWING_SCALE, bays.get(), layoutRecords(records.get()), openings);
+  java.util.function.Function<int[],int[]> net = cell -> {
+   TemaLayout layout = geometry.get();
+   List<int[]> coordinates = bays.get();
+   for (int i = 0; i < coordinates.size(); i++) {
+    if (!java.util.Arrays.equals(cell, coordinates.get(i))) continue;
+    TemaLayout.Opening opening = layout.bays.get(i);
+    return new int[]{opening.width(), opening.height(), layout.innerWidth, layout.innerHeight};
    }
-   return new int[]{(int)Math.round((double)iw*z[2]/1000000.0)-(int)Math.round((double)iw*z[0]/1000000.0)-(lf-lf/2)-rf/2,(int)Math.round((double)ih*z[3]/1000000.0)-(int)Math.round((double)ih*z[1]/1000000.0)-(tf-tf/2)-bf/2,iw,ih};
+   throw new IllegalArgumentException("Bölme sınırı bulunamadı.");
   };
   android.view.View board=new android.view.View(app){
    android.graphics.Paint paint=new android.graphics.Paint(3);
-   float left=24,top=24,right,bottom;
+   float left=24,top=24,right,bottom, innerLeft,innerRight,innerTop,innerBottom;
    final android.graphics.Paint dim=new android.graphics.Paint(3);
    private void measure(android.graphics.Canvas c,float x,float y,float X,float Y,String label){
     dim.setColor(0xffc5eaff);dim.setStrokeWidth(app.dp(1));dim.setStyle(android.graphics.Paint.Style.STROKE);c.drawLine(x,y,X,Y,dim);
@@ -448,31 +491,71 @@ final class TemaWorkshop {
     super.onDraw(c); if(getWidth()<=app.dp(54)||getHeight()<=app.dp(70))return; left=app.dp(30);top=app.dp(42);right=getWidth()-app.dp(24);bottom=getHeight()-app.dp(28);try{float ratio=Float.parseFloat(sizes[0].getText().toString().replace(',','.'))/Float.parseFloat(sizes[1].getText().toString().replace(',','.'));if(ratio>0&&Float.isFinite(ratio)){float w=right-left,h=bottom-top;if(w/h>ratio){float d=(w-h*ratio)/2;left+=d;right-=d;}else{float d=(h-w/ratio)/2;top+=d;bottom-=d;}}}catch(RuntimeException ignored){} paint.setStyle(android.graphics.Paint.Style.FILL);
     c.drawColor(0xff061426);paint.setShader(new android.graphics.LinearGradient(0,0,getWidth(),getHeight(),0xff07192e,0xff020b18,android.graphics.Shader.TileMode.CLAMP));c.drawRect(0,0,getWidth(),getHeight(),paint);paint.setShader(null); paint.setColor(0xff18334d);paint.setStrokeWidth(1);for(int x=0;x<getWidth();x+=app.dp(20))c.drawLine(x,0,x,getHeight(),paint);for(int y=0;y<getHeight();y+=app.dp(20))c.drawLine(0,y,getWidth(),y,paint); paint.setColor(0xff34495e); paint.setStrokeWidth(7);paint.setStyle(android.graphics.Paint.Style.STROKE);
     if(!frameAdded[0])return;
-    paint.setStyle(android.graphics.Paint.Style.FILL);
-    for(int depth=app.dp(12);depth>0;depth--){paint.setColor(0xff64748b);c.drawRect(left+depth,top+depth,right+depth,bottom+depth,paint);}
-    paint.setShader(new android.graphics.LinearGradient(left,top,right,bottom,0xffd5f6ff,0xff72c5e8,android.graphics.Shader.TileMode.CLAMP));c.drawRect(left,top,right,bottom,paint);paint.setShader(null);
-    paint.setStyle(android.graphics.Paint.Style.STROKE);paint.setColor(0xff303b45);paint.setStrokeWidth(app.dp(9));c.drawRect(left,top,right,bottom,paint);
-    paint.setColor(0xff9da8b0);paint.setStrokeWidth(app.dp(2));c.drawRect(left-2,top-2,right-2,bottom-2,paint);
-    profileLabel(c,groups[0][lineProfiles.getOrDefault("frame",picks[0])].code,left+8,top+15);
-    dim.setColor(0xff64748b);dim.setStrokeWidth(1);float off=app.dp(22);c.drawLine(left,top,left,top-off,dim);c.drawLine(right,top,right,top-off,dim);c.drawLine(left,top,left-off,top,dim);c.drawLine(left,bottom,left-off,bottom,dim);measure(c,left,top-off,right,top-off,sizes[0].getText()+" mm");measure(c,left-off,top,left-off,bottom,sizes[1].getText()+" mm");paint.setStyle(android.graphics.Paint.Style.STROKE);
-    paint.setColor(0xff46535e);paint.setStrokeWidth(app.dp(8));
-    for(int x:xs){float px=left+(right-left)*x/1000000f;c.drawLine(px,top,px,bottom,paint);profileLabel(c,groups[1][lineProfiles.getOrDefault("v"+x,picks[1])].code,px+4,top+30);}
-    for(int y:ys){float py=top+(bottom-top)*y/1000000f;c.drawLine(left,py,right,py,paint);profileLabel(c,groups[1][lineProfiles.getOrDefault("h"+y,picks[1])].code,left+8,py-5);}
-    for(int[] q:localLines){float x1=left+(right-left)*q[0]/1000000f,y1=top+(bottom-top)*q[1]/1000000f,x2=left+(right-left)*q[2]/1000000f,y2=top+(bottom-top)*q[3]/1000000f;c.drawLine(x1,y1,x2,y2,paint);profileLabel(c,groups[1][q[4]].code,x1+4,y1+15);}
-    java.util.ArrayList<Integer> a=new java.util.ArrayList<>(xs),b=new java.util.ArrayList<>(ys);a.add(0,0);a.add(1000000);b.add(0,0);b.add(1000000);
-    paint.setColor(0xff008577);paint.setStrokeWidth(3);
-    java.util.ArrayList<int[]> cells=bays.get();
-    for(int i=0;i<cells.size();i++)if(openings.contains(i+1)){
-     int[] z=cells.get(i);
-     float l=left+(right-left)*z[0]/1000000f+7,r=left+(right-left)*z[2]/1000000f-7,t=top+(bottom-top)*z[1]/1000000f+7,d=top+(bottom-top)*z[3]/1000000f-7;
-     if(r<=l||d<=t)continue; c.save();c.clipRect(l,t,r,d);paint.setStyle(android.graphics.Paint.Style.STROKE);paint.setColor(0xff087e79);paint.setStrokeWidth(app.dp(3));c.drawRect(l,t,r,d,paint);profileLabel(c,groups[2][lineProfiles.getOrDefault("s"+(i+1),picks[2])].code,l+3,t+14);boolean isLeft=leftCells.contains(i+1);float hinge=isLeft?l:r,handle=isLeft?r:l;c.drawLine(hinge,t,handle,(t+d)/2,paint);c.drawLine(handle,(t+d)/2,hinge,d,paint);c.restore();
+    TemaLayout layout;
+    boolean measured = true;
+    try {
+     layout = geometry.get();
+    } catch (IllegalArgumentException error) {
+     measured = false;
+     if (sizes[0].length() > 0 && sizes[1].length() > 0) return;
+     try { layout = new TemaLayout(20000, 20000, editorFrame.get(), DRAWING_SCALE, bays.get(), layoutRecords(records.get()), openings); }
+     catch (IllegalArgumentException ignored) { return; }
     }
+    float sx = (right-left)/layout.width, sy = (bottom-top)/layout.height;
+    innerLeft = left + layout.frame.left.face * sx;
+    innerTop = top + layout.frame.top.face * sy;
+    innerRight = right - layout.frame.right.face * sx;
+    innerBottom = bottom - layout.bottomFace * sy;
     paint.setStyle(android.graphics.Paint.Style.FILL);
-    for(int[] z:cells){try{int[] n=net.apply(z);float cx=left+(right-left)*(z[0]+z[2])/2000000f,cy=top+(bottom-top)*(z[1]+z[3])/2000000f;
-     float l=left+(right-left)*z[0]/1000000f,r=left+(right-left)*z[2]/1000000f,t=top+(bottom-top)*z[1]/1000000f,bm=top+(bottom-top)*z[3]/1000000f;if(r-l>app.dp(65)&&bm-t>app.dp(65)){measure(c,l,t+(bm-t)*0.25f,r,t+(bm-t)*0.25f,"Net "+mm(n[0]));measure(c,l+(r-l)*0.22f,t,l+(r-l)*0.22f,bm,"Net "+mm(n[1]));}
-     String label=mm(n[0])+" × "+mm(n[1]);paint.setTextSize(app.dp(12));float available=r-l-app.dp(12);if(available<app.dp(25)||bm-t<app.dp(28))continue;paint.setTextSize(Math.min(app.dp(12),app.dp(12)*available/Math.max(1,paint.measureText(label))));float w=paint.measureText(label)/2+app.dp(4);
-     paint.setColor(0xfff8fafc);c.drawRoundRect(cx-w,cy-app.dp(12),cx+w,cy+app.dp(12),5,5,paint);paint.setColor(0xff173041);c.drawText(label,cx-w+app.dp(5),cy+app.dp(4),paint);
-    }catch(RuntimeException ignored){}}
+    paint.setShader(new android.graphics.LinearGradient(left,top,right,bottom,0xffa7b8c6,0xff546675,android.graphics.Shader.TileMode.CLAMP));
+    TemaJoinery.Continuous priority = TemaJoinery.Continuous.values()[continuous];
+    TemaDiagramView.drawStructure(c, paint, layout, priority, left, top, sx, sy);
+    paint.setShader(null);
+    profileLabel(c, layout.frame.top.code, left+8, top+15);
+    if (measured) {
+     float off = app.dp(22);
+     measure(c,left,top-off,right,top-off,sizes[0].getText()+" mm");
+     measure(c,left-off,top,left-off,bottom,sizes[1].getText()+" mm");
+    }
+    int defaultGap = 0;
+    try { defaultGap = ShopDimensions.tenths(sashGapEdit.getText().toString(),"Kanat boşluğu"); }
+    catch (IllegalArgumentException ignored) { }
+    for(int i=0;i<layout.bays.size();i++){
+     TemaLayout.Opening bay=layout.bays.get(i);
+     float l=left+bay.left*sx,r=left+bay.right*sx,t=top+bay.top*sy,bm=top+bay.bottom*sy;
+     if(emptyCells.contains(i+1))continue;
+     paint.setColor(0xffaee4ef);
+     c.drawRect(l,t,r,bm,paint);
+     if(openings.contains(i+1)){
+      TemaCatalog.Profile sash=groups[2][lineProfiles.getOrDefault("s"+(i+1),picks[2])];
+      float gap=gaps.getOrDefault(i+1,defaultGap);
+      float band=Math.min(sash.face*Math.min(sx,sy),Math.min(r-l,bm-t)/3f);
+      float sl=l+gap*sx+band/2,sr=r-gap*sx-band/2,st=t+gap*sy+band/2,sb=bm-gap*sy-band/2;
+      if(sr>sl && sb>st){
+       paint.setStyle(android.graphics.Paint.Style.STROKE);paint.setColor(0xff087e79);paint.setStrokeWidth(band);
+       c.drawRect(sl,st,sr,sb,paint);paint.setStrokeWidth(app.dp(1));
+       float hinge=leftCells.contains(i+1)?sl:sr,handle=hinge==sl?sr:sl;
+       c.drawLine(hinge,st,handle,(st+sb)/2,paint);c.drawLine(handle,(st+sb)/2,hinge,sb,paint);
+       paint.setStyle(android.graphics.Paint.Style.FILL);
+       profileLabel(c,sash.code,l+3,t+14);
+      }
+     }
+     if(!measured || r-l<app.dp(38) || bm-t<app.dp(28))continue;
+     if (r-l>app.dp(65) && bm-t>app.dp(65)) {
+      float midY=t+(bm-t)*.25f, midX=l+(r-l)*.22f;
+      measure(c,l,midY,r,midY,"Net "+mm(bay.width()));
+      measure(c,midX,t,midX,bm,"Net "+mm(bay.height()));
+     }
+     String label=mm(bay.width())+" × "+mm(bay.height());
+     paint.setColor(0xff173041);paint.setTextSize(app.dp(12));paint.setTextAlign(android.graphics.Paint.Align.CENTER);
+     c.drawText(label,(l+r)/2,(t+bm)/2,paint);
+     paint.setTextAlign(android.graphics.Paint.Align.LEFT);
+    }
+    for (TemaLayout.Member member : layout.members(priority)) {
+     float px=left+(member.vertical?member.axis:member.start)*sx;
+     float py=top+(member.vertical?member.start:member.axis)*sy;
+     profileLabel(c,member.section.code,px+4,py+13);
+    }
    }
    private void profileLabel(android.graphics.Canvas c,String code,float x,float y){
     android.graphics.Paint label=new android.graphics.Paint(3);label.setColor(0xff172b3c);label.setTextSize(app.dp(10));label.setStyle(android.graphics.Paint.Style.FILL);c.drawText(code,x,y,label);
@@ -482,8 +565,11 @@ final class TemaWorkshop {
     if(e.getActionMasked()==android.view.MotionEvent.ACTION_CANCEL){getParent().requestDisallowInterceptTouchEvent(false);return true;}
     if(e.getActionMasked()!=android.view.MotionEvent.ACTION_UP)return true;
     getParent().requestDisallowInterceptTouchEvent(false);
-    int x=Math.round(1000000f*(e.getX()-left)/(right-left)),y=Math.round(1000000f*(e.getY()-top)/(bottom-top));
     if(!frameAdded[0]){toast("Önce kasa ekleyin.");return true;}
+    if(innerRight<=innerLeft || innerBottom<=innerTop)return true;
+    int x=Math.round(DRAWING_SCALE*(e.getX()-innerLeft)/(innerRight-innerLeft));
+    int y=Math.round(DRAWING_SCALE*(e.getY()-innerTop)/(innerBottom-innerTop));
+    if(y>DRAWING_SCALE && e.getY()<=bottom && mode[0]!=7)y=DRAWING_SCALE-1;
     if(mode[0]==9){
      int cell=hit.apply(x,y);if(cell==0)return true;int[] z=bays.get().get(cell-1);
      try{int[] n=net.apply(z);LinearLayout p=new LinearLayout(app);p.setOrientation(LinearLayout.VERTICAL);
@@ -521,12 +607,26 @@ final class TemaWorkshop {
      String key=null;int role=1;int best=65000;
      for(int q:xs)if(Math.abs(q-x)<best){best=Math.abs(q-x);key="v"+q;}
      for(int q:ys)if(Math.abs(q-y)<best){best=Math.abs(q-y);key="h"+q;}
-     int edge=Math.min(Math.min(Math.abs(x),Math.abs(1000000-x)),Math.min(Math.abs(y),Math.abs(1000000-y)));
-     if(edge<best){role=0;key="frame";}
+     int[] edges={Math.abs(x),Math.abs(y),Math.abs(DRAWING_SCALE-x),Math.abs(DRAWING_SCALE-y)};
+     for(int side=0;side<edges.length;side++)if(edges[side]<best){best=edges[side];role=0;key=FRAME_EDGES[side];}
+     int[] local=null;
+     for(int[] q:localLines){
+      boolean vertical=q[0]==q[2];
+      int pos=vertical?y:x, at=vertical?x:y, axis=vertical?q[0]:q[1];
+      if(pos>=q[vertical?1:0] && pos<=q[vertical?3:2] && Math.abs(at-axis)<best){
+       best=Math.abs(at-axis);local=q;role=1;key=null;
+      }
+     }
+     if(local!=null){
+      int[] line=local;
+      chooseProfile("Kayıt profili",groups[1],line[4],index->{checkpoint.run();line[4]=index;persistDrawing.run();invalidate();});
+      return true;
+     }
      if(key==null){int cell=hit.apply(x,y);if(openings.contains(cell)){role=2;key="s"+cell;}}
      if(key==null){toast("Bir profil çizgisine dokunun.");return true;}
      final String selectedKey=key;final int selectedRole=role;
-     chooseProfile("Profil değiştir",groups[role],lineProfiles.getOrDefault(key,picks[role]),index->{checkpoint.run();lineProfiles.put(selectedKey,index);invalidate();});return true;
+     int initial=lineProfiles.getOrDefault(key,role==0?lineProfiles.getOrDefault("frame",picks[0]):picks[role]);
+     chooseProfile("Profil değiştir",groups[selectedRole],initial,index->{checkpoint.run();lineProfiles.put(selectedKey,index);persistDrawing.run();invalidate();});return true;
     }
     if(x<=0||x>=1000000||y<=0||y>=1000000)return true;
     checkpoint.run();
@@ -574,7 +674,7 @@ final class TemaWorkshop {
      int total=net.apply(cells.get(0))[axis+2];if(total<=0)throw new IllegalArgumentException("Kasa ölçüsünü kontrol edin.");
      String prefix=axis==0?"v":"h";
      java.util.HashMap<Integer,Integer> faces=new java.util.HashMap<>();
-     for(int p:pts)faces.put(p,p==0||p==1000000?0:workingFace(groups[1][lineProfiles.getOrDefault(prefix+p,picks[1])]));
+     for(int p:pts)faces.put(p,p==0||p==1000000?0:groups[1][lineProfiles.getOrDefault(prefix+p,picks[1])].face);
      java.util.HashMap<Integer,Integer> moves=new java.util.HashMap<>();
      int start=0;
      for(int end:fixed){if(end==0)continue;
@@ -602,16 +702,20 @@ final class TemaWorkshop {
   Button addV=new Button(app);addV.setText("+ Dikey kayıt (eşit böl)");panel.addView(addV);addV.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}if(xs.size()>=12)return;checkpoint.run();int n=xs.size()+2;xs.clear();for(int i=1;i<n;i++)xs.add(Math.round(1000000f*i/n));openings.clear();leftCells.clear();emptyCells.clear();drawingStatus.setText("Dikey: "+xs.size()+" | Yatay: "+ys.size());board.invalidate();});
   Button addH=new Button(app);addH.setText("+ Yatay kayıt (eşit böl)");panel.addView(addH);addH.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}if(ys.size()>=12)return;checkpoint.run();int n=ys.size()+2;ys.clear();for(int i=1;i<n;i++)ys.add(Math.round(1000000f*i/n));openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();});
   for(EditText size:sizes)size.addTextChangedListener(watcher(board::invalidate));
-  Button exact=new Button(app);exact.setText("Kayıt konumunu mm olarak gir");panel.addView(exact);exact.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}EditText pos=new EditText(app);pos.setInputType(DECIMAL);new AlertDialog.Builder(app).setTitle("Kasa içi net konum (mm)").setView(pos).setNegativeButton("Vazgeç",null).setPositiveButton("Ekle",(d,k)->{try{boolean vertical=mode[0]!=1;int total=ShopDimensions.tenths(sizes[vertical?0:1].getText().toString(),"Dış ölçü")-2*workingFace(groups[0][picks[0]]);int point=Math.round(1000000f*ShopDimensions.tenths(pos.getText().toString(),"Konum")/total);java.util.TreeSet<Integer> target=vertical?xs:ys;if(point<=0||point>=1000000||target.size()>=12)throw new IllegalArgumentException("Konum kasa içinde olmalı.");checkpoint.run();target.add(point);openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();}catch(IllegalArgumentException ex){toast(ex.getMessage());}}).show();});
+  sashGapEdit.addTextChangedListener(watcher(board::invalidate));
+  Button exact=new Button(app);exact.setText("Kayıt konumunu mm olarak gir");panel.addView(exact);exact.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}EditText pos=new EditText(app);pos.setInputType(DECIMAL);new AlertDialog.Builder(app).setTitle("Kasa içi net konum (mm)").setView(pos).setNegativeButton("Vazgeç",null).setPositiveButton("Ekle",(d,k)->{try{boolean vertical=mode[0]!=1;TemaLayout layout=geometry.get();int total=vertical?layout.innerWidth:layout.innerHeight;int point=Math.round(1000000f*ShopDimensions.tenths(pos.getText().toString(),"Konum")/total);java.util.TreeSet<Integer> target=vertical?xs:ys;if(point<=0||point>=1000000||target.size()>=12)throw new IllegalArgumentException("Konum kasa içinde olmalı.");checkpoint.run();target.add(point);openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();}catch(IllegalArgumentException ex){toast(ex.getMessage());}}).show();});
   Button netSizes=new Button(app);netSizes.setText("Kasa içi net en ve boy gir");panel.addView(netSizes);
   netSizes.setOnClickListener(v->{
    LinearLayout p=new LinearLayout(app);p.setOrientation(LinearLayout.VERTICAL);
    EditText nw=new EditText(app),nh=new EditText(app);nw.setInputType(DECIMAL);nh.setInputType(DECIMAL);nw.setHint("Net en (mm)");nh.setHint("Net boy (mm)");p.addView(nw);p.addView(nh);
    new AlertDialog.Builder(app).setTitle("Kasa içi net açıklık").setView(p).setNegativeButton("Vazgeç",null).setPositiveButton("Uygula",(d,k)->{try{
-    if(!xs.isEmpty()||!ys.isEmpty())throw new IllegalArgumentException("Bölmeli kasada dış ölçüleri kullanın.");
+    if(!xs.isEmpty()||!ys.isEmpty()||!localLines.isEmpty())throw new IllegalArgumentException("Bölmeli kasada dış ölçüleri kullanın.");
     int w=ShopDimensions.tenths(nw.getText().toString(),"Net en"),h=ShopDimensions.tenths(nh.getText().toString(),"Net boy");
     if(w<=0||h<=0)throw new IllegalArgumentException("Net ölçüler pozitif olmalı.");
-    checkpoint.run();int face=workingFace(groups[0][picks[0]]);sizes[0].setText(mm(w+2*face));sizes[1].setText(mm(h+2*face));frameAdded[0]=true;board.invalidate();
+    checkpoint.run();TemaLayout.Frame selected=editorFrame.get();
+    sizes[0].setText(mm(w+selected.left.face+selected.right.face));
+    sizes[1].setText(mm(h+selected.top.face+(openings.contains(1)?0:selected.bottom.face)));
+    frameAdded[0]=true;board.invalidate();
    }catch(IllegalArgumentException ex){toast(ex.getMessage());}}).show();
   });
   Button clear=new Button(app);clear.setText("Çizimi temizle");panel.addView(clear);clear.setOnClickListener(v->{checkpoint.run();frameAdded[0]=false;localLines.clear();lineProfiles.clear();xs.clear();ys.clear();openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();});
@@ -640,22 +744,21 @@ final class TemaWorkshop {
    try{
     if(!frameAdded[0])throw new IllegalArgumentException("Önce kasa ekleyin.");
 
-    int width=ShopDimensions.tenths(sizes[0].getText().toString(),"Dış en"),height=ShopDimensions.tenths(sizes[1].getText().toString(),"Dış yükseklik");
-    int frame=workingFace(groups[0][picks[0]]),record=workingFace(groups[1][picks[1]]);
-    String cols=drawSpans(xs,width-2*frame-xs.size()*record),rows=drawSpans(ys,height-2*frame-ys.size()*record);
+    geometry.get();
     for(int i=0;i<2;i++)fields.get(sizeKeys[i]).setText(sizes[i].getText());
-    for(int i=0;i<3;i++){profileIndices[i]=picks[i];fields.get("code"+i).setText(groups[i][picks[i]].code);fields.get("face"+i).setText(mm(workingFace(groups[i][picks[i]])));}
+    for(int i=0;i<3;i++){profileIndices[i]=picks[i];fields.get("code"+i).setText(groups[i][picks[i]].code);fields.get("face"+i).setText(mm(groups[i][picks[i]].face));}
     fields.get("vertical").setText(String.valueOf(xs.size()));fields.get("horizontal").setText(String.valueOf(ys.size()));
-    fields.get("columns").setText(cols);fields.get("rows").setText(rows);fields.get("joint").setText(jointEdit.getText());fields.get("sashGap").setText(sashGapEdit.getText());fields.get("mullionJoint").setText(recordJoint.getText());fields.get("leftCells").setText(cellList(leftCells));fields.get("emptyCells").setText(cellList(emptyCells));
+    fields.get("columns").setText("");fields.get("rows").setText("");fields.get("joint").setText(jointEdit.getText());fields.get("sashGap").setText(sashGapEdit.getText());fields.get("mullionJoint").setText(recordJoint.getText());fields.get("leftCells").setText(cellList(leftCells));fields.get("emptyCells").setText(cellList(emptyCells));
     StringBuilder gapData=new StringBuilder();for(int cell:openings)if(gaps.containsKey(cell))gapData.append(cell).append(':').append(gaps.get(cell)).append(';');draft.put("individualSashGaps",gapData.toString());
     StringBuilder bayData=new StringBuilder(),recordData=new StringBuilder();
     {
      for(int[] z:bays.get())bayData.append(z[0]).append(',').append(z[1]).append(',').append(z[2]).append(',').append(z[3]).append(';');
-     for(int x:xs)recordData.append(x).append(",0,").append(x).append(",1000000,").append(lineProfiles.getOrDefault("v"+x,picks[1])).append(';');
-     for(int y:ys)recordData.append("0,").append(y).append(",1000000,").append(y).append(',').append(lineProfiles.getOrDefault("h"+y,picks[1])).append(';');
+     for(int x:xs)recordData.append(x).append(",0,").append(x).append(",1000000,").append(lineProfiles.getOrDefault("v"+x,-1)).append(';');
+     for(int y:ys)recordData.append("0,").append(y).append(",1000000,").append(y).append(',').append(lineProfiles.getOrDefault("h"+y,-1)).append(';');
      for(int[] q:localLines)recordData.append(q[0]).append(',').append(q[1]).append(',').append(q[2]).append(',').append(q[3]).append(',').append(q[4]).append(';');
     }
     draft.put("regionalScale","1000000");draft.put("regionalBays",bayData.toString());draft.put("regionalRecords",recordData.toString());
+    draft.put("regionalProfiles",new org.json.JSONObject(lineProfiles).toString());
     chosenSashes.clear();chosenSashes.addAll(openings);expectedFixed=-1;updateLayout();invalidate();dialog.dismiss();
     toast("Çizim aktarıldı. Montaj ve fiş paylarını kontrol edip hesaplayın.");
    }catch(IllegalArgumentException ex){toast(ex.getMessage());}
@@ -664,14 +767,6 @@ final class TemaWorkshop {
  }
 
  private String cellList(java.util.Set<Integer> cells){StringBuilder b=new StringBuilder();for(int n:cells){if(b.length()>0)b.append(";");b.append(n);}return b.toString();}
-
- private String drawSpans(java.util.TreeSet<Integer> points,int total){
-  if(total<=0)throw new IllegalArgumentException("Profil payları dış ölçüyü aşıyor.");
-  StringBuilder result=new StringBuilder();int previous=0;
-  java.util.ArrayList<Integer> ends=new java.util.ArrayList<>(points);ends.add(1000000);
-  for(int end:ends){int next=(int)Math.round((double)total*end/1000000.0);if(next<=previous)throw new IllegalArgumentException("Bölme çok dar.");if(result.length()>0)result.append(";");result.append(mm(next-previous));previous=next;}
-  return result.toString();
- }
 
  private void dimensionDialog() {
   ScrollView scroll = new ScrollView(app);
@@ -701,6 +796,10 @@ final class TemaWorkshop {
  }
 
  private void chooseBays() {
+  if (!value("regionalBays").isEmpty()) {
+   drawEditor();
+   return;
+  }
   int columns = recordCount("vertical") + 1, rows = recordCount("horizontal") + 1;
   Set<Integer> selected = new LinkedHashSet<>(chosenSashes);
   ScrollView scroll = new ScrollView(app);
@@ -805,12 +904,28 @@ final class TemaWorkshop {
    app.getPreferences(Activity.MODE_PRIVATE).edit().putString(preference(role), item.code).apply();
    if (role < 3) {
     fields.get("code" + role).setText(item.code);
-    fields.get("face" + role).setText(mm(workingFace(item)));
+    fields.get("face" + role).setText(mm(item.face));
+    updateDrawingProfile(role, index);
    }
    refresh.run();
    invalidate();
   }));
   return box;
+ }
+
+ private void updateDrawingProfile(int role, int index) {
+  try {
+   org.json.JSONObject drawing = new org.json.JSONObject(value("editorDrawing"));
+   drawing.getJSONArray("picks").put(role, index);
+   org.json.JSONObject profiles = drawing.optJSONObject("profiles");
+   if (role == 0 && profiles != null) profiles.remove("frame");
+   draft.put("editorDrawing", drawing.toString());
+   if (role == 0 && !value("regionalProfiles").isEmpty()) {
+    org.json.JSONObject applied = new org.json.JSONObject(value("regionalProfiles"));
+    applied.remove("frame");
+    draft.put("regionalProfiles", applied.toString());
+   }
+  } catch (org.json.JSONException ignored) { }
  }
 
  private void chooseProfile(String label, TemaCatalog.Profile[] options, int selected, Option callback) {
@@ -974,6 +1089,7 @@ final class TemaWorkshop {
    order.frameCode = profileCode(0);
    order.frameFace = mm("face0", "Kasa yüz ölçüsü");
    order.corner = TemaJoinery.Corner.values()[corner];
+   order.removeDoorSills = true;
    order.vertical = recordCount("vertical");
    order.horizontal = recordCount("horizontal");
    if (order.vertical < 0 || order.horizontal < 0) throw new IllegalArgumentException("Kayıt adetlerini 0–12 arasında girin.");
@@ -990,7 +1106,8 @@ final class TemaWorkshop {
    order.columnOpenings = openings("columns");
    order.rowOpenings = openings("rows");
    order.openingSashes = new LinkedHashSet<>(chosenSashes);
-   int cellCount = regional ? value("regionalBays").split(";").length : (order.vertical + 1) * (order.horizontal + 1);
+   if (regional) applyRegionalLayout(order);
+   int cellCount = regional ? order.layout.bays.size() : (order.vertical + 1) * (order.horizontal + 1);
    if (expectedFixed >= 0 && cellCount - chosenSashes.size() != expectedFixed) {
     bayButton.requestFocus();
     throw new IllegalArgumentException("Fotoğrafta " + expectedFixed + " sabit bölme var. Bölmeleri seçerek yerleşimi doğrulayın.");
@@ -1025,40 +1142,6 @@ final class TemaWorkshop {
     if (hasFixed && hasRecords) order.mullionGlass = mm("mullionGlass", "Sabit cam kayıt payı");
     if (hasSashes) order.sashGlass = mm("sashGlass", "Kanat camı payı");
    }
-   if(regional){
-    int coordinateScale="1000000".equals(value("regionalScale"))?1000000:1000;
-    int iw=order.width-2*order.frameFace,ih=order.height-2*order.frameFace;
-    java.util.ArrayList<int[]> lines=new java.util.ArrayList<>();
-    for(String entry:value("regionalRecords").split(";")){if(entry.isEmpty())continue;String[] p=entry.split(",");int[] q=new int[5];for(int i=0;i<5;i++)q[i]=Integer.parseInt(p[i]);lines.add(q);}
-    order.localRecords=new ArrayList<>();order.localBays=new ArrayList<>();
-    for(int[] q:lines){
-     boolean v=q[0]==q[2];int start=v?q[1]:q[0],end=v?q[3]:q[2],axis=v?ih:iw;
-     int len=(int)Math.round((double)axis*end/coordinateScale)-(int)Math.round((double)axis*start/coordinateScale);
-     len+=start==0?order.frameJoint:order.mullionJoint-order.mullionFace/2;
-     len+=end==coordinateScale?order.frameJoint:order.mullionJoint-order.mullionFace/2;
-     order.localRecords.add(new TemaJoinery.LocalRecord(v,len,series.mullions[q[4]].code));
-    }
-    int n=0;
-    for(String entry:value("regionalBays").split(";")){
-     String[] p=entry.split(",");int l=Integer.parseInt(p[0]),t=Integer.parseInt(p[1]),r=Integer.parseInt(p[2]),b=Integer.parseInt(p[3]);n++;
-     int lf=0,rf=0,tf=0,bf=0;
-     for(int[] q:lines){
-      int face=workingFace(series.mullions[q[4]]);
-      if(q[0]==q[2] && q[1]<=t && q[3]>=b){
-       if(q[0]==l && l!=0)lf=Math.max(lf,face);
-       if(q[0]==r && r!=coordinateScale)rf=Math.max(rf,face);
-      }
-      if(q[1]==q[3] && q[0]<=l && q[2]>=r){
-       if(q[1]==t && t!=0)tf=Math.max(tf,face);
-       if(q[1]==b && b!=coordinateScale)bf=Math.max(bf,face);
-      }
-     }
-     int w=(int)Math.round((double)iw*r/coordinateScale)-(int)Math.round((double)iw*l/coordinateScale)-(lf-lf/2)-rf/2;
-     int h=(int)Math.round((double)ih*b/coordinateScale)-(int)Math.round((double)ih*t/coordinateScale)-(tf-tf/2)-bf/2;
-     if(w<=0||h<=0)throw new IllegalArgumentException(n+". bölmenin net kasa açıklığı geçersiz.");
-     order.localBays.add(new TemaJoinery.LocalBay(w,h,chosenSashes.contains(n),order.emptyCells.contains(n),l==0?order.frameGlass:order.mullionGlass,r==coordinateScale?order.frameGlass:order.mullionGlass,t==0?order.frameGlass:order.mullionGlass,b==coordinateScale?order.frameGlass:order.mullionGlass));
-    }
-   }
    TemaJoinery.Plan plan = TemaJoinery.calculate(order);
    TemaJoinery.addManualCuts(plan, value("extraCuts"));
    Bundle history=new Bundle();saveState(history);history.putBoolean("temaEditing",true);app.saveHistory(series.label,history);
@@ -1068,15 +1151,64 @@ final class TemaWorkshop {
   }
  }
 
+ private void applyRegionalLayout(TemaJoinery.Order order) {
+  List<int[]> cells = readDrawingCoordinates(value("regionalBays"), 4);
+  List<int[]> placed = readDrawingCoordinates(value("regionalRecords"), 5);
+  TemaLayout.Section defaultRecord = placed.isEmpty() ? null : new TemaLayout.Section(order.mullionCode, order.mullionFace);
+  List<TemaLayout.Record> records = layoutRecords(placed, defaultRecord);
+  Map<String,Integer> selections = new LinkedHashMap<>();
+  try {
+   org.json.JSONObject selected = value("regionalProfiles").isEmpty()
+    ? new org.json.JSONObject(value("editorDrawing")).optJSONObject("profiles")
+    : new org.json.JSONObject(value("regionalProfiles"));
+   if (selected != null) for (java.util.Iterator<String> keys = selected.keys(); keys.hasNext();) {
+    String key = keys.next();
+    int index = selected.getInt(key);
+    if (index >= 0 && index < (key.startsWith("frame") ? series.frames.length : series.sashes.length)) selections.put(key,index);
+   }
+  } catch (org.json.JSONException ignored) {}
+  order.layout = new TemaLayout(order.width, order.height,
+   frame(new TemaLayout.Section(order.frameCode, order.frameFace), selections),
+   "1000000".equals(value("regionalScale")) ? DRAWING_SCALE : 1000, cells, records, order.openingSashes);
+  Map<Integer,TemaLayout.Section> sashes = new LinkedHashMap<>();
+  for (int bay : order.openingSashes) {
+   Integer index = selections.get("s" + bay);
+   if (index != null) sashes.put(bay, section(series.sashes[index]));
+  }
+  order.sashProfiles = sashes;
+ }
+
+ private List<int[]> readDrawingCoordinates(String drawing, int size) {
+  List<int[]> rows = new ArrayList<>();
+  for (String entry : drawing.split(";")) {
+   if (entry.isEmpty()) continue;
+   String[] coordinates = entry.split(",");
+   if (coordinates.length != size) throw new IllegalArgumentException("Çizimi açıp ölçüleri yeniden aktarın.");
+   int[] row = new int[size];
+   for (int i = 0; i < size; i++) row[i] = Integer.parseInt(coordinates[i]);
+   rows.add(row);
+  }
+  return rows;
+ }
+
  private int optionalMm(String key, String label, int fallback) {
   return value(key).isEmpty() ? fallback : mm(key, label);
  }
 
  private boolean catalogSash(TemaJoinery.Order order, boolean hasRecords) {
-  return series == TemaCatalog.Series.C60 && adapter != null && adapter.isChecked()
+  if (!(series == TemaCatalog.Series.C60 && adapter != null && adapter.isChecked()
    && "T.3101".equals(order.frameCode) && order.frameFace == 490 && order.corner == TemaJoinery.Corner.MITER
    && "T.3105".equals(order.sashCode) && order.sashFace == 660 && order.sashCorner == TemaJoinery.Corner.MITER
-   && (!hasRecords || ("T.3101".equals(order.mullionCode) && order.mullionFace == 490));
+   && (!hasRecords || ("T.3101".equals(order.mullionCode) && order.mullionFace == 490)))) return false;
+  if (order.layout == null) return true;
+  TemaLayout.Frame frame = order.layout.frame;
+  for (TemaLayout.Section side : new TemaLayout.Section[]{frame.left,frame.top,frame.right,frame.bottom}) {
+   if (!"T.3101".equals(side.code) || side.face != 490) return false;
+  }
+  for (TemaLayout.Member member : order.layout.members(order.continuous)) {
+   if (!"T.3101".equals(member.section.code) || member.section.face != 490) return false;
+  }
+  return true;
  }
 
  private TemaJoinery.Bead bead(int role, int edge) {
@@ -1088,14 +1220,14 @@ final class TemaWorkshop {
   app.page("Tema " + series.label + " · imalat föyü");
   LinearLayout drawingCard = section("Doğrama görünüşü");
   app.lightPanel(drawingCard);
-  drawingCard.addView(new TemaDiagramView(app, order, plan, series.accent, value("regionalBays"), value("leftCells")), new LinearLayout.LayoutParams(-1, app.dp(242)));
+  drawingCard.addView(new TemaDiagramView(app, order, plan, series.accent, value("leftCells")), new LinearLayout.LayoutParams(-1, app.dp(242)));
   app.planLabel(drawingCard, mm(order.width) + " × " + mm(order.height) + " mm  ·  " + order.quantity + " doğrama", 15, 0xffecf5f7);
   int open = order.openingSashes.size();
   app.planLabel(drawingCard, (plan.panes.size() - open) + " sabit  ·  " + open + " açılır  ·  "
    + order.vertical + " dikey, " + order.horizontal + " yatay kayıt", 14, 0xffa7e9e3);
   LinearLayout profiles = section("Profil ve orta kayıt kesimleri");
   showCuts(profiles, plan, false);
-  app.planLabel(profiles, "Kasa köşesi " + order.quantity * 4 + " · Kayıt bağlantı ucu "
+  app.planLabel(profiles, "Kasa köşesi " + plan.frameCorners + " · Kayıt bağlantı ucu "
    + plan.mullionEnds + " · Kanat köşesi " + open * order.quantity * 4, 14, 0xffa7e9e3);
   LinearLayout beads = section("Cam çıtası kesimleri");
   showCuts(beads, plan, true);
@@ -1130,7 +1262,8 @@ final class TemaWorkshop {
    android.graphics.Bitmap bitmap = item == null ? null : BitmapFactory.decodeResource(app.getResources(), item.image);
    app.profileHeading(card, item == null ? group.getKey() : item.label(), bitmap);
    for (TemaJoinery.Cut cut : group.getValue()) {
-    String angle = cut.angle == 45 ? "45° gönye · uzun uç" : "90° düz";
+    String angle = cut.angle == cut.endAngle ? (cut.angle == 45 ? "45° gönye · uzun uç" : "90° düz")
+     : cut.angle + "° / " + cut.endAngle + "° · uzun uç";
     app.planLabel(card, cut.role + "\n" + mm(cut.length) + " mm × " + cut.quantity + " adet  ·  " + angle, 15, Color.WHITE);
    }
    app.reveal(card, Math.min(160, index++ * 35));
@@ -1142,28 +1275,28 @@ final class TemaWorkshop {
    int kerf = mm("kerf", "Testere payı");
    List<Integer> stock = ShopDimensions.stocks(value("stock"));
    Map<String, List<Integer>> pieces = new LinkedHashMap<>();
-   Map<String, Map<Integer, ArrayDeque<Integer>>> angles = new LinkedHashMap<>();
+   Map<String, Map<Integer, ArrayDeque<String>>> angles = new LinkedHashMap<>();
    int pieceCount = 0;
    long net = 0, remaining = 0;
    for (TemaJoinery.Cut cut : plan.cuts) {
     pieceCount += cut.quantity;
     if (pieceCount > 3000) throw new IllegalArgumentException("Bir stok planına en fazla 3000 parça yerleştirilebilir.");
     List<Integer> list = pieces.get(cut.code);
-    Map<Integer, ArrayDeque<Integer>> byLength = angles.get(cut.code);
+    Map<Integer, ArrayDeque<String>> byLength = angles.get(cut.code);
     if (list == null) {
      list = new ArrayList<>();
      pieces.put(cut.code, list);
      byLength = new LinkedHashMap<>();
      angles.put(cut.code, byLength);
     }
-    ArrayDeque<Integer> ends = byLength.get(cut.length);
+    ArrayDeque<String> ends = byLength.get(cut.length);
     if (ends == null) {
      ends = new ArrayDeque<>();
      byLength.put(cut.length, ends);
     }
     for (int i = 0; i < cut.quantity; i++) {
      list.add(cut.length);
-     ends.addLast(cut.angle);
+     ends.addLast(cut.angle + "°" + (cut.endAngle == cut.angle ? "" : "/" + cut.endAngle + "°"));
     }
     net += (long) cut.length * cut.quantity;
    }
@@ -1198,7 +1331,7 @@ final class TemaWorkshop {
      StringBuilder orientations = new StringBuilder();
      for (int length : bar.pieces) {
       if (orientations.length() != 0) orientations.append("  ·  ");
-      orientations.append(mm(length)).append(" mm / ").append(angles.get(entry.getKey()).get(length).removeFirst()).append("°");
+      orientations.append(mm(length)).append(" mm / ").append(angles.get(entry.getKey()).get(length).removeFirst());
      }
      app.planLabel(group, orientations.toString(), 13, 0xffc9dbe3);
     }

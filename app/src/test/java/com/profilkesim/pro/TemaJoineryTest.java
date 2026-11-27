@@ -142,11 +142,89 @@ public final class TemaJoineryTest {
   assertEquals(-1, DrawingDimensions.read("Kanat 1200 × 900 mm\nCam eni 700 mm").width);
  }
 
+ @Test public void aldoksUsesEachBoundarySectionAndTheSelectedSashWidth() {
+  TemaLayout.Section narrow = new TemaLayout.Section("T.3001", 402);
+  TemaLayout.Frame frame = new TemaLayout.Frame(narrow, new TemaLayout.Section("T.3004", 585),
+   new TemaLayout.Section("T.3007", 907), narrow);
+  List<int[]> bays = Arrays.asList(new int[]{0,0,500,1000}, new int[]{500,0,1000,400},
+   new int[]{500,400,1000,1000});
+  List<TemaLayout.Record> records = Arrays.asList(
+   new TemaLayout.Record(500,0,500,1000,new TemaLayout.Section("T.3006",765)),
+   new TemaLayout.Record(500,400,1000,400,new TemaLayout.Section("T.3003",590)));
+  TemaJoinery.Order order = order(30000,23000,402);
+  order.layout = new TemaLayout(order.width,order.height,frame,1000,bays,records,Collections.singleton(3));
+  order.openingSashes = Collections.singleton(3);
+  order.sashFace = 590;
+  order.sashGap = 30;
+  order.sashProfiles = Collections.singletonMap(3,new TemaLayout.Section("T.3008",1100));
+  order.frameJoint = 10;
+  order.mullionJoint = 20;
+  TemaJoinery.Plan plan = TemaJoinery.calculate(order);
+  assertEquals(13964,plan.layout.bays.get(0).width());
+  assertEquals(13962,plan.layout.bays.get(2).width());
+  assertEquals(13315,plan.layout.bays.get(2).height());
+  assertEquals(11702,plan.panes.get(2).width);
+  assertEquals(1,plan.layout.rails.size());
+  assertCut(plan,"T.3001","Kasa alt yatay",14366,45,90,1);
+  assertCut(plan,"T.3007","Kasa dikey",23000,45,90,1);
+  assertCut(plan,"T.3006","Dikey orta kayıt",22425,90,1);
+  assertCut(plan,"T.3003","Yatay orta kayıt",13992,90,1);
+  assertCut(plan,"T.3008","Kanat dikey",13255,45,2);
+  records.set(0,new TemaLayout.Record(500,0,500,1000,new TemaLayout.Section("T.3003",590)));
+  order.layout = new TemaLayout(order.width,order.height,frame,1000,bays,records,Collections.singleton(3));
+  TemaJoinery.Plan narrowerRecord = TemaJoinery.calculate(order);
+  assertEquals(14050,narrowerRecord.layout.bays.get(2).width());
+  assertEquals(13315,narrowerRecord.layout.bays.get(2).height());
+  assertCut(narrowerRecord,"T.3003","Yatay orta kayıt",14080,90,1);
+ }
+
+ @Test public void c60KeepsTheSillOnlyUnderTheFixedBayAndRetainsUpperRecords() {
+  TemaJoinery.Order order = order(20000,22000,490);
+  order.frameCode = "T.3101";
+  order.mullionCode = "T.3102";
+  order.vertical = 1;
+  order.horizontal = 1;
+  order.mullionFace = 900;
+  order.sashFace = 660;
+  order.openingSashes = new java.util.HashSet<>(Arrays.asList(2,4));
+  order.removeDoorSills = true;
+  TemaJoinery.Plan plan = TemaJoinery.calculate(order);
+  assertFalse(plan.layout.bays.get(1).door);
+  assertTrue(plan.layout.bays.get(3).door);
+  assertEquals(490,plan.layout.bays.get(3).height()-plan.layout.bays.get(2).height());
+  assertEquals(1,plan.layout.rails.size());
+  assertCut(plan,"T.3101","Kasa alt yatay",9550,45,90,1);
+  assertCut(plan,"T.3102","Dikey orta kayıt",21510,90,1);
+  assertCut(plan,"T.3102","Yatay orta kayıt",9060,90,2);
+ }
+
+ @Test public void fullWidthDoorsHaveNoLowerFrameOrAdapter() {
+  TemaJoinery.Order order = order(10000,22000,490);
+  order.sashFace = 660;
+  order.sashCode = "T.3105";
+  order.adapterCode = "T.3107";
+  order.openingSashes = Collections.singleton(1);
+  order.removeDoorSills = true;
+  TemaJoinery.Plan plan = TemaJoinery.calculate(order);
+  assertEquals(21510,plan.layout.bays.get(0).height());
+  assertTrue(plan.layout.rails.isEmpty());
+  assertEquals(2,plan.frameCorners);
+  assertCut(plan,"KASA","Kasa yatay",10000,45,1);
+  assertCut(plan,"KASA","Kasa dikey",22000,45,90,2);
+  assertCut(plan,"T.3107","Kanat adaptörü yatay",9020,45,1);
+  assertCut(plan,"T.3107","Kanat adaptörü dikey",21510,45,90,2);
+ }
+
  private static void assertCut(TemaJoinery.Plan plan, String code, String role, int length, int angle, int count) {
+  assertCut(plan,code,role,length,angle,angle,count);
+ }
+
+ private static void assertCut(TemaJoinery.Plan plan, String code, String role, int length, int angle, int endAngle, int count) {
   for (TemaJoinery.Cut cut : plan.cuts) {
-   if (!cut.code.equals(code) || !cut.role.equals(role)) continue;
+   if (!cut.code.equals(code) || !cut.role.equals(role) || cut.length != length) continue;
    assertEquals(length, cut.length);
    assertEquals(angle, cut.angle);
+   assertEquals(endAngle, cut.endAngle);
    assertEquals(count, cut.quantity);
    return;
   }
