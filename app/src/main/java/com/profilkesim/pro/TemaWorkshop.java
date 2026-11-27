@@ -903,8 +903,21 @@ final class TemaWorkshop {
     int n=0;
     for(String entry:value("regionalBays").split(";")){
      String[] p=entry.split(",");int l=Integer.parseInt(p[0]),t=Integer.parseInt(p[1]),r=Integer.parseInt(p[2]),b=Integer.parseInt(p[3]);n++;
-     int w=Math.round(iw*r/1000f)-Math.round(iw*l/1000f)-(l==0?0:order.mullionFace/2)-(r==1000?0:order.mullionFace-order.mullionFace/2);
-     int h=Math.round(ih*b/1000f)-Math.round(ih*t/1000f)-(t==0?0:order.mullionFace/2)-(b==1000?0:order.mullionFace-order.mullionFace/2);
+     int lf=0,rf=0,tf=0,bf=0;
+     for(int[] q:lines){
+      int face=workingFace(series.mullions[q[4]]);
+      if(q[0]==q[2] && q[1]<=t && q[3]>=b){
+       if(q[0]==l && l!=0)lf=Math.max(lf,face);
+       if(q[0]==r && r!=1000)rf=Math.max(rf,face);
+      }
+      if(q[1]==q[3] && q[0]<=l && q[2]>=r){
+       if(q[1]==t && t!=0)tf=Math.max(tf,face);
+       if(q[1]==b && b!=1000)bf=Math.max(bf,face);
+      }
+     }
+     int w=Math.round(iw*r/1000f)-Math.round(iw*l/1000f)-(lf-lf/2)-rf/2;
+     int h=Math.round(ih*b/1000f)-Math.round(ih*t/1000f)-(tf-tf/2)-bf/2;
+     if(w<=0||h<=0)throw new IllegalArgumentException(n+". bölmenin net kasa açıklığı geçersiz.");
      order.localBays.add(new TemaJoinery.LocalBay(w,h,chosenSashes.contains(n),order.emptyCells.contains(n),l==0?order.frameGlass:order.mullionGlass,r==1000?order.frameGlass:order.mullionGlass,t==0?order.frameGlass:order.mullionGlass,b==1000?order.frameGlass:order.mullionGlass));
     }
    }
