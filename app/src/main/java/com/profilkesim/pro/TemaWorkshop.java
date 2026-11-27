@@ -162,7 +162,10 @@ final class TemaWorkshop {
   field(advancedPanel, "beadEdge", "Çıta oturma farkı (mm/kenar)", "0", SIGNED);
   String[] directions = {"Dikey kayıtlar sürekli", "Yatay kayıtlar sürekli"};
   choiceControl(advancedPanel, "Kayıt birleşimi", directions, continuous, i -> continuous = i);
-  field(advancedPanel, "joint", "Kayıt bağlantı farkı (mm/uç)", "0", SIGNED);
+  field(advancedPanel, "joint", "Kasa bağlantı farkı (mm/uç; eksi düşer)", "0", SIGNED);
+   field(advancedPanel, "mullionJoint", "Orta kayda bağlantı farkı (mm/uç; eksi düşer)", "", SIGNED);
+   field(advancedPanel, "leftCells", "Sol menteşeli kanat bölmeleri (; ile ayır)", "", InputType.TYPE_CLASS_TEXT);
+   field(advancedPanel, "emptyCells", "Boş kasa bölmeleri (; ile ayır)", "", InputType.TYPE_CLASS_TEXT);
   field(advancedPanel, "columns", "Özel net sütun enleri (mm; mm)", "", InputType.TYPE_CLASS_TEXT);
   field(advancedPanel, "rows", "Özel net sıra yükseklikleri (mm; mm)", "", InputType.TYPE_CLASS_TEXT);
   if (series == TemaCatalog.Series.C60) {
@@ -328,11 +331,13 @@ final class TemaWorkshop {
   }
   java.util.TreeSet<Integer> xs=new java.util.TreeSet<>(), ys=new java.util.TreeSet<>();
   java.util.Set<Integer> openings=new java.util.HashSet<>();
+  java.util.Set<Integer> leftCells=new java.util.HashSet<>(), emptyCells=new java.util.HashSet<>();
   int[] mode={0};
   boolean[] frameAdded={false};
   TextView drawingStatus=new TextView(app);drawingStatus.setText("Önce kasa ekleyin.");panel.addView(drawingStatus);
   EditText jointEdit=new EditText(app); jointEdit.setInputType(SIGNED); jointEdit.setText(fields.get("joint").getText());
-  app.planLabel(panel,"Fiş bağlantı payı (mm/uç)",14,Color.DKGRAY);panel.addView(jointEdit);
+  app.planLabel(panel,"Kasa bağlantı payı (mm/uç)",14,Color.DKGRAY);panel.addView(jointEdit);
+  EditText recordJoint=new EditText(app);recordJoint.setInputType(SIGNED);recordJoint.setText(fields.get("mullionJoint").getText());panel.addView(recordJoint);recordJoint.setHint("Orta kayda bağlantı payı (mm/uç)");
   android.view.View board=new android.view.View(app){
    android.graphics.Paint paint=new android.graphics.Paint(3);
    float left=24,top=24,right,bottom;
@@ -349,7 +354,7 @@ final class TemaWorkshop {
     paint.setColor(0xff008577);paint.setStrokeWidth(3);
     for(int y=0;y<b.size()-1;y++)for(int x=0;x<a.size()-1;x++)if(openings.contains(y*(a.size()-1)+x+1)){
      float l=left+(right-left)*a.get(x)/1000f+7,r=left+(right-left)*a.get(x+1)/1000f-7,t=top+(bottom-top)*b.get(y)/1000f+7,d=top+(bottom-top)*b.get(y+1)/1000f-7;
-     c.drawRect(l,t,r,d,paint);c.drawLine(l,t,r,(t+d)/2,paint);c.drawLine(r,(t+d)/2,l,d,paint);
+     c.drawRect(l,t,r,d,paint);boolean isLeft=leftCells.contains(y*(a.size()-1)+x+1);float hinge=isLeft?l:r,handle=isLeft?r:l;c.drawLine(hinge,t,handle,(t+d)/2,paint);c.drawLine(handle,(t+d)/2,hinge,d,paint);
     }
    }
    @Override public boolean onTouchEvent(android.view.MotionEvent e){
@@ -360,23 +365,23 @@ final class TemaWorkshop {
     int x=Math.round(1000*(e.getX()-left)/(right-left)),y=Math.round(1000*(e.getY()-top)/(bottom-top));
     if(!frameAdded[0]){toast("Önce kasa ekleyin.");return true;}
     if(x<=0||x>=1000||y<=0||y>=1000)return true;
-    if(mode[0]==0){if(xs.size()<12)xs.add(x);openings.clear();}
-    else if(mode[0]==1){if(ys.size()<12)ys.add(y);openings.clear();}
-    else if(mode[0]==3){Integer nearest=null;int distance=60;boolean vertical=true;for(int q:xs)if(Math.abs(q-x)<distance){nearest=q;distance=Math.abs(q-x);vertical=true;}for(int q:ys)if(Math.abs(q-y)<distance){nearest=q;distance=Math.abs(q-y);vertical=false;}if(nearest!=null){if(vertical)xs.remove(nearest);else ys.remove(nearest);openings.clear();}}
-    else {int cell=ys.headSet(y).size()*(xs.size()+1)+xs.headSet(x).size()+1;if(!openings.add(cell))openings.remove(cell);}
+    if(mode[0]==0){if(xs.size()<12)xs.add(x);openings.clear();leftCells.clear();emptyCells.clear();}
+    else if(mode[0]==1){if(ys.size()<12)ys.add(y);openings.clear();leftCells.clear();emptyCells.clear();}
+    else if(mode[0]==3){Integer nearest=null;int distance=60;boolean vertical=true;for(int q:xs)if(Math.abs(q-x)<distance){nearest=q;distance=Math.abs(q-x);vertical=true;}for(int q:ys)if(Math.abs(q-y)<distance){nearest=q;distance=Math.abs(q-y);vertical=false;}if(nearest!=null){if(vertical)xs.remove(nearest);else ys.remove(nearest);openings.clear();leftCells.clear();emptyCells.clear();}}
+    else {int cell=ys.headSet(y).size()*(xs.size()+1)+xs.headSet(x).size()+1;if(mode[0]==4){openings.remove(cell);leftCells.remove(cell);emptyCells.add(cell);}else if(mode[0]==5){openings.remove(cell);leftCells.remove(cell);emptyCells.remove(cell);}else{emptyCells.remove(cell);openings.add(cell);if(mode[0]==2)leftCells.add(cell);else leftCells.remove(cell);}}
     drawingStatus.setText("Kasa: 1 | Dikey: "+xs.size()+" | Yatay: "+ys.size()+" | Kanat: "+openings.size());invalidate();return true;
    }
   };
   Button frameButton=new Button(app);frameButton.setText("+ Kasa ekle");panel.addView(frameButton);frameButton.setOnClickListener(v->{frameAdded[0]=true;drawingStatus.setText("Kasa eklendi: "+groups[0][picks[0]].label());board.invalidate();});
   Button sashButton=new Button(app);sashButton.setText("+ Kanat ekle (ilk boş bölme)");panel.addView(sashButton);sashButton.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}int count=(xs.size()+1)*(ys.size()+1);for(int i=1;i<=count;i++)if(openings.add(i)){drawingStatus.setText("Kanat: "+openings.size()+" / "+count);board.invalidate();return;}toast("Tüm bölmelerde kanat var.");});
-  String[] modes={"Dikey kayıt ekle","Yatay kayıt ekle","Kanat ekle / kaldır","Profil sil"};
+  String[] modes={"Dikey kayıt ekle","Yatay kayıt ekle","Sol menteşeli kanat","Profil sil","Boş kasa","Sabit cam","Sağ menteşeli kanat"};
   for(int i=0;i<modes.length;i++){final int m=i;Button b=new Button(app);b.setText(modes[i]);panel.addView(b);b.setOnClickListener(v->{mode[0]=m;toast(modes[m]);});}
   panel.addView(board,new LinearLayout.LayoutParams(-1,app.dp(320)));
-  Button addV=new Button(app);addV.setText("+ Dikey kayıt (eşit böl)");panel.addView(addV);addV.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}if(xs.size()>=12)return;int n=xs.size()+2;xs.clear();for(int i=1;i<n;i++)xs.add(Math.round(1000f*i/n));openings.clear();drawingStatus.setText("Dikey: "+xs.size()+" | Yatay: "+ys.size());board.invalidate();});
-  Button addH=new Button(app);addH.setText("+ Yatay kayıt (eşit böl)");panel.addView(addH);addH.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}if(ys.size()>=12)return;int n=ys.size()+2;ys.clear();for(int i=1;i<n;i++)ys.add(Math.round(1000f*i/n));openings.clear();board.invalidate();});
+  Button addV=new Button(app);addV.setText("+ Dikey kayıt (eşit böl)");panel.addView(addV);addV.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}if(xs.size()>=12)return;int n=xs.size()+2;xs.clear();for(int i=1;i<n;i++)xs.add(Math.round(1000f*i/n));openings.clear();leftCells.clear();emptyCells.clear();drawingStatus.setText("Dikey: "+xs.size()+" | Yatay: "+ys.size());board.invalidate();});
+  Button addH=new Button(app);addH.setText("+ Yatay kayıt (eşit böl)");panel.addView(addH);addH.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}if(ys.size()>=12)return;int n=ys.size()+2;ys.clear();for(int i=1;i<n;i++)ys.add(Math.round(1000f*i/n));openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();});
   for(EditText size:sizes)size.addTextChangedListener(watcher(board::invalidate));
-  Button exact=new Button(app);exact.setText("Kayıt konumunu mm olarak gir");panel.addView(exact);exact.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}EditText pos=new EditText(app);pos.setInputType(DECIMAL);new AlertDialog.Builder(app).setTitle("Kasa içi net konum (mm)").setView(pos).setNegativeButton("Vazgeç",null).setPositiveButton("Ekle",(d,k)->{try{boolean vertical=mode[0]!=1;int total=ShopDimensions.tenths(sizes[vertical?0:1].getText().toString(),"Dış ölçü")-2*workingFace(groups[0][picks[0]]);int point=Math.round(1000f*ShopDimensions.tenths(pos.getText().toString(),"Konum")/total);java.util.TreeSet<Integer> target=vertical?xs:ys;if(point<=0||point>=1000||target.size()>=12)throw new IllegalArgumentException("Konum kasa içinde olmalı.");target.add(point);openings.clear();board.invalidate();}catch(IllegalArgumentException ex){toast(ex.getMessage());}}).show();});
-  Button clear=new Button(app);clear.setText("Çizimi temizle");panel.addView(clear);clear.setOnClickListener(v->{frameAdded[0]=false;xs.clear();ys.clear();openings.clear();board.invalidate();});
+  Button exact=new Button(app);exact.setText("Kayıt konumunu mm olarak gir");panel.addView(exact);exact.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}EditText pos=new EditText(app);pos.setInputType(DECIMAL);new AlertDialog.Builder(app).setTitle("Kasa içi net konum (mm)").setView(pos).setNegativeButton("Vazgeç",null).setPositiveButton("Ekle",(d,k)->{try{boolean vertical=mode[0]!=1;int total=ShopDimensions.tenths(sizes[vertical?0:1].getText().toString(),"Dış ölçü")-2*workingFace(groups[0][picks[0]]);int point=Math.round(1000f*ShopDimensions.tenths(pos.getText().toString(),"Konum")/total);java.util.TreeSet<Integer> target=vertical?xs:ys;if(point<=0||point>=1000||target.size()>=12)throw new IllegalArgumentException("Konum kasa içinde olmalı.");target.add(point);openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();}catch(IllegalArgumentException ex){toast(ex.getMessage());}}).show();});
+  Button clear=new Button(app);clear.setText("Çizimi temizle");panel.addView(clear);clear.setOnClickListener(v->{frameAdded[0]=false;xs.clear();ys.clear();openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();});
   AlertDialog dialog=new AlertDialog.Builder(app).setTitle("Kendin çiz · "+series.label).setView(scroll).setNegativeButton("Vazgeç",null).setPositiveButton("Kesim hesapla",null).create();
   dialog.setOnShowListener(v->dialog.getButton(-1).setOnClickListener(w->{
    try{
@@ -387,12 +392,14 @@ final class TemaWorkshop {
     for(int i=0;i<2;i++)fields.get(sizeKeys[i]).setText(sizes[i].getText());
     for(int i=0;i<3;i++){profileIndices[i]=picks[i];fields.get("code"+i).setText(groups[i][picks[i]].code);fields.get("face"+i).setText(mm(workingFace(groups[i][picks[i]])));}
     fields.get("vertical").setText(String.valueOf(xs.size()));fields.get("horizontal").setText(String.valueOf(ys.size()));
-    fields.get("columns").setText(cols);fields.get("rows").setText(rows);fields.get("joint").setText(jointEdit.getText());
+    fields.get("columns").setText(cols);fields.get("rows").setText(rows);fields.get("joint").setText(jointEdit.getText());fields.get("mullionJoint").setText(recordJoint.getText());fields.get("leftCells").setText(cellList(leftCells));fields.get("emptyCells").setText(cellList(emptyCells));
     chosenSashes.clear();chosenSashes.addAll(openings);expectedFixed=-1;updateLayout();invalidate();Bundle history=new Bundle();saveState(history);history.putBoolean("temaEditing",true);app.saveHistory(series.label,history);dialog.dismiss();
     toast("Çizim aktarıldı. Montaj ve fiş paylarını kontrol edip hesaplayın.");
    }catch(IllegalArgumentException ex){toast(ex.getMessage());}
   }));dialog.show();
  }
+
+ private String cellList(java.util.Set<Integer> cells){StringBuilder b=new StringBuilder();for(int n:cells){if(b.length()>0)b.append(";");b.append(n);}return b.toString();}
 
  private String drawSpans(java.util.TreeSet<Integer> points,int total){
   if(total<=0)throw new IllegalArgumentException("Profil payları dış ölçüyü aşıyor.");
@@ -711,7 +718,9 @@ final class TemaWorkshop {
    if (hasRecords) {
     order.mullionCode = profileCode(1);
     order.mullionFace = mm("face1", "Orta kayıt yüz ölçüsü");
-    order.joint = optionalMm("joint", "Kayıt bağlantı farkı", 0);
+    order.joint = optionalMm("joint", "Kasa bağlantı farkı", 0);
+    order.frameJoint = order.joint;
+    order.mullionJoint = optionalMm("mullionJoint", "Orta kayda bağlantı farkı", order.joint);
    }
    order.columnOpenings = openings("columns");
    order.rowOpenings = openings("rows");
@@ -722,7 +731,11 @@ final class TemaWorkshop {
     throw new IllegalArgumentException("Fotoğrafta " + expectedFixed + " sabit bölme var. Bölmeleri seçerek yerleşimi doğrulayın.");
    }
    boolean hasSashes = !chosenSashes.isEmpty();
-   boolean hasFixed = chosenSashes.size() < cellCount;
+   for(String cell : value("emptyCells").split(";")) if(!cell.trim().isEmpty()) {
+    int n=Integer.parseInt(cell.trim()); if(n<1||n>cellCount||chosenSashes.contains(n)) throw new IllegalArgumentException("Boş kasa bölmesini kontrol edin.");
+    if(order.emptyCells.isEmpty()) order.emptyCells=new LinkedHashSet<>(); order.emptyCells.add(n);
+   }
+   boolean hasFixed = chosenSashes.size()+order.emptyCells.size() < cellCount;
    int beadEdge = optionalMm("beadEdge", "Çıta oturma farkı", 0);
    if (hasFixed) order.fixedBead = bead(3, beadEdge);
    if (hasSashes) {
