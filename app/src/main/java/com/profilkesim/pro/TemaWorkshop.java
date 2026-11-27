@@ -158,7 +158,7 @@ final class TemaWorkshop {
   String[] corners = {"45° gönye · uzun uç", "90° düz · dikeyler tam boy", "90° düz · yataylar tam boy"};
   choiceControl(advancedPanel, "Kasa köşesi", corners, corner, i -> corner = i);
   choiceControl(advancedPanel, "Kanat köşesi", corners, sashCorner, i -> sashCorner = i);
-  choiceControl(advancedPanel, "Çıta köşesi", corners, beadCorner, i -> beadCorner = i);
+  app.planLabel(advancedPanel, "Cam çıtası: 90° düz kesim (dikey tam boy)", 14, Color.WHITE);
   field(advancedPanel, "beadEdge", "Çıta oturma farkı (mm/kenar)", "0", SIGNED);
   String[] directions = {"Dikey kayıtlar sürekli", "Yatay kayıtlar sürekli"};
   choiceControl(advancedPanel, "Kayıt birleşimi", directions, continuous, i -> continuous = i);
@@ -502,7 +502,7 @@ final class TemaWorkshop {
     fields.get("columns").setText(cols);fields.get("rows").setText(rows);fields.get("joint").setText(jointEdit.getText());fields.get("sashGap").setText(sashGapEdit.getText());fields.get("mullionJoint").setText(recordJoint.getText());fields.get("leftCells").setText(cellList(leftCells));fields.get("emptyCells").setText(cellList(emptyCells));
     StringBuilder gapData=new StringBuilder();for(int cell:openings)if(gaps.containsKey(cell))gapData.append(cell).append(':').append(gaps.get(cell)).append(';');draft.put("individualSashGaps",gapData.toString());
     StringBuilder bayData=new StringBuilder(),recordData=new StringBuilder();
-    if(!localLines.isEmpty()){
+    {
      for(int[] z:bays.get())bayData.append(z[0]).append(',').append(z[1]).append(',').append(z[2]).append(',').append(z[3]).append(';');
      for(int x:xs)recordData.append(x).append(",0,").append(x).append(",1000,").append(lineProfiles.getOrDefault("v"+x,picks[1])).append(';');
      for(int y:ys)recordData.append("0,").append(y).append(",1000,").append(y).append(',').append(lineProfiles.getOrDefault("h"+y,picks[1])).append(';');
@@ -831,7 +831,7 @@ final class TemaWorkshop {
    if (order.vertical < 0 || order.horizontal < 0) throw new IllegalArgumentException("Kayıt adetlerini 0–12 arasında girin.");
    order.continuous = TemaJoinery.Continuous.values()[continuous];
    boolean regional = !value("regionalBays").isEmpty();
-   boolean hasRecords = order.vertical + order.horizontal > 0 || regional;
+   boolean hasRecords = order.vertical + order.horizontal > 0 || !value("regionalRecords").isEmpty();
    if (hasRecords) {
     order.mullionCode = profileCode(1);
     order.mullionFace = mm("face1", "Orta kayıt yüz ölçüsü");
@@ -861,7 +861,7 @@ final class TemaWorkshop {
     order.sashFace = mm("face2", "Kanat yüz ölçüsü");
     boolean catalogConnection = catalogSash(order, hasRecords);
     if (catalogConnection) order.adapterCode = TemaCatalog.C60_ADAPTER.code;
-    if (!catalogConnection && value("sashGap").isEmpty()) {
+    if (!catalogConnection && value("sashGap").isEmpty() && value("individualSashGaps").isEmpty()) {
      advancedPanel.setVisibility(View.VISIBLE);
      fields.get("sashGap").requestFocus();
      throw new IllegalArgumentException("Bu kanat birleşiminde ölçülen kenar boşluğunu girin.");
@@ -880,7 +880,7 @@ final class TemaWorkshop {
    if(regional){
     int iw=order.width-2*order.frameFace,ih=order.height-2*order.frameFace;
     java.util.ArrayList<int[]> lines=new java.util.ArrayList<>();
-    for(String entry:value("regionalRecords").split(";")){String[] p=entry.split(",");int[] q=new int[5];for(int i=0;i<5;i++)q[i]=Integer.parseInt(p[i]);lines.add(q);}
+    for(String entry:value("regionalRecords").split(";")){if(entry.isEmpty())continue;String[] p=entry.split(",");int[] q=new int[5];for(int i=0;i<5;i++)q[i]=Integer.parseInt(p[i]);lines.add(q);}
     order.localRecords=new ArrayList<>();order.localBays=new ArrayList<>();
     for(int[] q:lines){
      boolean v=q[0]==q[2];int start=v?q[1]:q[0],end=v?q[3]:q[2],axis=v?ih:iw;
@@ -919,14 +919,14 @@ final class TemaWorkshop {
 
  private TemaJoinery.Bead bead(int role, int edge) {
   TemaCatalog.Profile profile = series.beads[profileIndices[role]];
-  return new TemaJoinery.Bead(profile.code, profile.face, edge, TemaJoinery.Corner.values()[beadCorner]);
+  return new TemaJoinery.Bead(profile.code, profile.face, edge, TemaJoinery.Corner.VERTICAL_FULL);
  }
 
  private void showPlan(TemaJoinery.Order order, TemaJoinery.Plan plan) {
   app.page("Tema " + series.label + " · imalat föyü");
   LinearLayout drawingCard = section("Doğrama görünüşü");
   app.lightPanel(drawingCard);
-  drawingCard.addView(new TemaDiagramView(app, order, plan, series.accent), new LinearLayout.LayoutParams(-1, app.dp(242)));
+  drawingCard.addView(new TemaDiagramView(app, order, plan, series.accent, value("regionalBays"), value("leftCells")), new LinearLayout.LayoutParams(-1, app.dp(242)));
   app.planLabel(drawingCard, mm(order.width) + " × " + mm(order.height) + " mm  ·  " + order.quantity + " doğrama", 15, 0xffecf5f7);
   int open = order.openingSashes.size();
   app.planLabel(drawingCard, (plan.panes.size() - open) + " sabit  ·  " + open + " açılır  ·  "
