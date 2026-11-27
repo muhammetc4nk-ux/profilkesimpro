@@ -19,8 +19,9 @@ final class TemaJoinery {
   }
  }
  static final class LocalRecord {
-  final boolean vertical; final int length;
-  LocalRecord(boolean vertical,int length){this.vertical=vertical;this.length=length;}
+  final boolean vertical; final int length; final String code;
+  LocalRecord(boolean vertical,int length){this(vertical,length,null);}
+  LocalRecord(boolean vertical,int length,String code){this.vertical=vertical;this.length=length;this.code=code;}
  }
  static final class Order {
   List<LocalBay> localBays=Collections.emptyList();
@@ -145,7 +146,7 @@ final class TemaJoinery {
    Plan plan=new Plan(Collections.singletonList(innerWidth),Collections.singletonList(innerHeight));
    addRectangle(plan,o.frameCode,"Kasa",o.width,o.height,o.frameFace,o.corner,o.quantity);
    for(LocalRecord record:o.localRecords){
-    plan.addCut(o.mullionCode,record.vertical?"Dikey orta kayıt":"Yatay orta kayıt",record.length,90,o.quantity);
+    plan.addCut(record.code==null?o.mullionCode:record.code,record.vertical?"Dikey orta kayıt":"Yatay orta kayıt",record.length,90,o.quantity);
     plan.mullionEnds+=2*o.quantity;
    }
    int number=0;
