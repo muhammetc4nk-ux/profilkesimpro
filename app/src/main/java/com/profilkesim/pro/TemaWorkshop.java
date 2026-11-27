@@ -308,7 +308,8 @@ final class TemaWorkshop {
   dialog.show();
  }
 
- private void drawEditor() {
+ private void drawEditor() { drawEditor(null); }
+ private void drawEditor(DrawingDimensions imported) {
   ScrollView scroll = new ScrollView(app);
   LinearLayout panel = new LinearLayout(app);
   panel.setOrientation(LinearLayout.VERTICAL);
@@ -371,6 +372,14 @@ final class TemaWorkshop {
    for(int i=0;i<2;i++)sizes[i].setText(saved.getString(sizeKeys[i]));
   }catch(org.json.JSONException | RuntimeException ignored){}
 
+  if(imported!=null){
+   frameAdded[0]=true;xs.clear();ys.clear();localLines.clear();openings.clear();leftCells.clear();emptyCells.clear();lineProfiles.clear();gaps.clear();
+   if(imported.width>0)sizes[0].setText(mm(imported.width));
+   if(imported.height>0)sizes[1].setText(mm(imported.height));
+   int nx=Math.max(0,Math.min(12,imported.vertical)),ny=Math.max(0,Math.min(12,imported.horizontal));
+   for(int i=1;i<=nx;i++)xs.add(Math.round(1000000f*i/(nx+1)));
+   for(int i=1;i<=ny;i++)ys.add(Math.round(1000000f*i/(ny+1)));
+  }
   java.util.ArrayDeque<Runnable> redo=new java.util.ArrayDeque<>();
   java.util.function.Supplier<Runnable> snapshot=()->{
    java.util.TreeSet<Integer> oldX=new java.util.TreeSet<>(xs),oldY=new java.util.TreeSet<>(ys);
@@ -384,7 +393,7 @@ final class TemaWorkshop {
   };
   Runnable checkpoint=()->{undo.push(snapshot.get());redo.clear();};
   beforeProfileChange[0]=checkpoint;
-  TextView drawingStatus=new TextView(app);drawingStatus.setText("Önce kasa ekleyin.");panel.addView(drawingStatus);
+  TextView drawingStatus=new TextView(app);drawingStatus.setText(imported!=null?"Fotoğraf taslağı: kayıt yerlerini, kanatları ve ölçüleri doğrulayın.":frameAdded[0]?"Araç seçin ve çizime dokunun.":"Önce kasa ekleyin.");panel.addView(drawingStatus);
   EditText jointEdit=new EditText(app); jointEdit.setInputType(SIGNED); jointEdit.setText(fields.get("joint").getText());
   app.planLabel(panel,"Kasa bağlantı payı (mm/uç)",14,Color.DKGRAY);panel.addView(jointEdit);
   EditText recordJoint=new EditText(app);recordJoint.setInputType(SIGNED);recordJoint.setText(fields.get("mullionJoint").getText());panel.addView(recordJoint);recordJoint.setHint("Orta kayda bağlantı payı (mm/uç)");
@@ -610,13 +619,13 @@ final class TemaWorkshop {
   android.widget.HorizontalScrollView ribbonScroll=new android.widget.HorizontalScrollView(app);ribbonScroll.setHorizontalScrollBarEnabled(true);
   LinearLayout ribbon=new LinearLayout(app);ribbon.setOrientation(LinearLayout.HORIZONTAL);ribbonScroll.addView(ribbon);workspace.addView(ribbonScroll,new LinearLayout.LayoutParams(-1,app.dp(54)));
   java.util.ArrayList<Button> ribbonButtons=new java.util.ArrayList<>();
-  for(Button b:toolButtons)ribbonButtons.add(b);
-  for(Button b:new Button[]{frameButton,sashButton,addV,addH,undoButton,redoButton,clear}){((android.view.ViewGroup)b.getParent()).removeView(b);ribbonButtons.add(b);}
+  ribbonButtons.add(undoButton);ribbonButtons.add(redoButton);for(Button b:toolButtons)ribbonButtons.add(b);
+  for(Button b:new Button[]{frameButton,sashButton,addV,addH,clear}){((android.view.ViewGroup)b.getParent()).removeView(b);ribbonButtons.add(b);}
   for(Button b:ribbonButtons){b.setAllCaps(false);b.setTextSize(11);b.setTextColor(Color.WHITE);b.setMaxLines(2);b.setPadding(app.dp(8),app.dp(2),app.dp(8),app.dp(2));b.setBackground(app.rgbPanel(0xff12385d,0xff081a32, b==clear?0xffff5267:b==undoButton?0xff45f59a:0xff32caff));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(app.dp(108),app.dp(46));lp.setMargins(app.dp(3),app.dp(3),app.dp(3),app.dp(3));ribbon.addView(b,lp);}
   LinearLayout body=new LinearLayout(app);body.setOrientation(LinearLayout.HORIZONTAL);workspace.addView(body,new LinearLayout.LayoutParams(-1,0,1));
   panel.setPadding(app.dp(5),app.dp(5),app.dp(5),app.dp(5));panel.setBackgroundColor(0xff0b2037);
   for(int i=0;i<panel.getChildCount();i++){View child=panel.getChildAt(i);if(child instanceof Button){Button b=(Button)child;b.setAllCaps(false);b.setTextSize(12);b.setTextColor(Color.WHITE);b.setSingleLine(false);b.setBackground(app.rgbPanel(0xff153858,0xff091c32,0xff35bfff));}else if(child instanceof TextView){((TextView)child).setTextColor(0xffe2f6ff);((TextView)child).setTextSize(12);if(child instanceof EditText)((EditText)child).setHintTextColor(0xff9cc7e5);}}
-  scroll.setFillViewport(true);int screen=app.getResources().getDisplayMetrics().widthPixels;int sidebar=Math.min(app.dp(200),Math.max(app.dp(108),screen/4));body.addView(scroll,new LinearLayout.LayoutParams(sidebar,-1));
+  scroll.setFillViewport(true);int screen=app.getResources().getDisplayMetrics().widthPixels;int sidebar=Math.min(app.dp(200),Math.max(app.dp(108),screen/4));body.addView(scroll,new LinearLayout.LayoutParams(sidebar,-1));scroll.setVisibility(View.GONE);Button settings=new Button(app);settings.setText("Ölçü ve profil ayarları");settings.setAllCaps(false);workspace.addView(settings,2,new LinearLayout.LayoutParams(-1,app.dp(44)));settings.setOnClickListener(v->scroll.setVisibility(scroll.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));
   LinearLayout canvasPane=new LinearLayout(app);canvasPane.setOrientation(LinearLayout.VERTICAL);body.addView(canvasPane,new LinearLayout.LayoutParams(0,-1,1));canvasPane.addView(board,new LinearLayout.LayoutParams(-1,0,1));
   panel.removeView(drawingStatus);drawingStatus.setTextColor(0xff70f5be);drawingStatus.setPadding(app.dp(8),app.dp(4),app.dp(8),app.dp(4));workspace.addView(drawingStatus,new LinearLayout.LayoutParams(-1,-2));
   AlertDialog dialog=new AlertDialog.Builder(app).setTitle("Kendin çiz · "+series.label).setView(workspace).setNegativeButton("Kaydet ve çık",null).setPositiveButton("Kesim hesapla",null).create();
@@ -1226,6 +1235,12 @@ final class TemaWorkshop {
    if (recognized.horizontal >= 0) details.add(recognized.horizontal + " yatay kayıt");
    if (recognized.fixed >= 0) details.add(recognized.fixed + " sabit");
    app.planLabel(photoCard, android.text.TextUtils.join(" · ", details), 14, series.accent);
+   chooseButton(photoCard, "Fotoğrafı çizime aktar", () -> {
+    if(recognized.width<=0||recognized.height<=0||recognized.vertical<0||recognized.horizontal<0){
+     toast("Eksik ölçü veya kayıt sayısı var; çizimde doğrulayın.");
+    }
+    new AlertDialog.Builder(app).setTitle("Fotoğraf taslağı").setMessage("Okunan kayıt sayıları eşit aralıklarla çizilir. Gerçek konumları ve kanatları kontrol edin. Mevcut çizim yerine yeni taslak açılır.").setNegativeButton("Vazgeç",null).setPositiveButton("Çizime aktar",(d,k)->drawEditor(recognized)).show();
+   });
    chooseButton(photoCard, "Okunan değerleri forma al", () -> applyDimensions(recognized));
   } else {
    app.planLabel(photoCard, "Okunabilir dış ölçü bulunamadı. Çizime en ve yüksekliği yazabilir veya referansla ölçebilirsiniz.", 13, 0xffffce83);
