@@ -68,6 +68,14 @@ final class TemaWorkshop {
   }
  }
 
+ private int workingFace(TemaCatalog.Profile profile) {
+  if (series == TemaCatalog.Series.ALDOKS) {
+   if ("T.3004".equals(profile.code)) return 420;
+   if ("T.3002".equals(profile.code)) return 600;
+  }
+  return profile.face;
+ }
+
  private String preference(int role) { return "tema.profile." + series.name() + "." + role; }
 
  void open() {
@@ -89,7 +97,7 @@ final class TemaWorkshop {
   EditText horizontal = shortField(column(counts), "horizontal", "Yatay kayıt", "0", InputType.TYPE_CLASS_NUMBER);
   LinearLayout bayControls = horizontal(divisions);
   fixedCountButton = chooseButton(column(bayControls), "Sabit adedi", this::chooseFixedCount);
-  bayButton = chooseButton(column(bayControls), "Bölme düzeni", this::chooseBays);
+  bayButton = chooseButton(column(bayControls), "Çizim / bölme düzeni", this::chooseBays);
   photoBayCount = app.planLabel(divisions, "", 13, 0xffffce83);
   for (EditText input : new EditText[]{vertical, horizontal}) input.addTextChangedListener(watcher(() -> {
    chosenSashes.clear();
@@ -143,7 +151,7 @@ final class TemaWorkshop {
   for (int i = 0; i < groups.length; i++) {
    TemaCatalog.Profile selected = groups[i][profileIndices[i]];
    field(profileOverrides, "code" + i, roleNames[i] + " profil kodu", selected.code, InputType.TYPE_CLASS_TEXT);
-   field(profileOverrides, "face" + i, roleNames[i] + " oturma yüzü (mm)", mm(selected.face), DECIMAL);
+   field(profileOverrides, "face" + i, roleNames[i] + " oturma yüzü (mm)", mm(workingFace(selected)), DECIMAL);
   }
   String[] corners = {"45° gönye · uzun uç", "90° düz · dikeyler tam boy", "90° düz · yataylar tam boy"};
   choiceControl(advancedPanel, "Kasa köşesi", corners, corner, i -> corner = i);
@@ -400,7 +408,7 @@ final class TemaWorkshop {
    app.getPreferences(Activity.MODE_PRIVATE).edit().putString(preference(role), item.code).apply();
    if (role < 3) {
     fields.get("code" + role).setText(item.code);
-    fields.get("face" + role).setText(mm(item.face));
+    fields.get("face" + role).setText(mm(workingFace(item)));
    }
    refresh.run();
    invalidate();
