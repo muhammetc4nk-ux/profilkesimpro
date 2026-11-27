@@ -521,8 +521,8 @@ final class TemaWorkshop {
      int l=xs.floor(x)==null?0:xs.floor(x),r=xs.ceiling(x)==null?1000000:xs.ceiling(x);
      int u=ys.floor(y)==null?0:ys.floor(y),d=ys.ceiling(y)==null?1000000:ys.ceiling(y);
      for(int[] q:localLines){if(q[0]==q[2]&&y>=q[1]&&y<=q[3]){if(q[0]<x)l=Math.max(l,q[0]);if(q[0]>x)r=Math.min(r,q[0]);}if(q[1]==q[3]&&x>=q[0]&&x<=q[2]){if(q[1]<y)u=Math.max(u,q[1]);if(q[1]>y)d=Math.min(d,q[1]);}}
-     if(mode[0]==0){if(u==0&&d==1000000&&localLines.isEmpty())xs.add(x);else localLines.add(new int[]{x,u,x,d,picks[1]});}
-     else{if(l==0&&r==1000000&&localLines.isEmpty())ys.add(y);else localLines.add(new int[]{l,y,r,y,picks[1]});}
+     if(mode[0]==0){if(u==0&&d==1000000)xs.add(x);else localLines.add(new int[]{x,u,x,d,picks[1]});}
+     else{if(l==0&&r==1000000)ys.add(y);else localLines.add(new int[]{l,y,r,y,picks[1]});}
     }
     else if(mode[0]==3){Integer nearest=null;int distance=60000;boolean vertical=true;for(int q:xs)if(Math.abs(q-x)<distance){nearest=q;distance=Math.abs(q-x);vertical=true;}for(int q:ys)if(Math.abs(q-y)<distance){nearest=q;distance=Math.abs(q-y);vertical=false;}if(nearest!=null){if(vertical)xs.remove(nearest);else ys.remove(nearest);openings.clear();leftCells.clear();emptyCells.clear();}}
     else {int cell=hit.apply(x,y);if(mode[0]==4){openings.remove(cell);leftCells.remove(cell);emptyCells.add(cell);}else if(mode[0]==5){openings.remove(cell);leftCells.remove(cell);emptyCells.remove(cell);}else{if(cell==0){undo.pop();return true;}emptyCells.remove(cell);openings.add(cell);if(mode[0]==2)leftCells.add(cell);else leftCells.remove(cell);}}
@@ -550,12 +550,12 @@ final class TemaWorkshop {
     if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}
     Runnable restore=snapshot.get();
     try{
-     if(!localLines.isEmpty())throw new IllegalArgumentException("Bu araç tam boy kayıtlar içindir; bölgesel kayıtları net ölçü aracıyla düzenleyin.");
+     int originalCount=bays.get().size();
      java.util.TreeSet<Integer> set=axis==0?xs:ys;
      java.util.ArrayList<Integer> pts=new java.util.ArrayList<>(set);pts.add(0,0);pts.add(1000000);
      java.util.TreeSet<Integer> fixed=new java.util.TreeSet<>();fixed.add(0);fixed.add(1000000);
      java.util.ArrayList<int[]> cells=bays.get();
-     for(int i=0;i<cells.size();i++)if(openings.contains(i+1)||emptyCells.contains(i+1)){fixed.add(cells.get(i)[axis]);fixed.add(cells.get(i)[axis+2]);}
+     for(int i=0;i<cells.size();i++)if(openings.contains(i+1)||emptyCells.contains(i+1)){int[] protectedCell=cells.get(i);for(int p:pts)if(p>=protectedCell[axis]&&p<=protectedCell[axis+2])fixed.add(p);Integer lower=set.floor(protectedCell[axis]),upper=set.ceiling(protectedCell[axis+2]);if(lower!=null)fixed.add(lower);if(upper!=null)fixed.add(upper);}
      int total=net.apply(cells.get(0))[axis+2];if(total<=0)throw new IllegalArgumentException("Kasa ölçüsünü kontrol edin.");
      String prefix=axis==0?"v":"h";
      java.util.HashMap<Integer,Integer> faces=new java.util.HashMap<>();
@@ -577,6 +577,8 @@ final class TemaWorkshop {
      for(int p:set){Integer profile=lineProfiles.remove(prefix+p);if(profile!=null)profiles.put(moves.getOrDefault(p,p),profile);}
      java.util.TreeSet<Integer> updated=new java.util.TreeSet<>();for(int p:set)updated.add(moves.getOrDefault(p,p));set.clear();set.addAll(updated);
      for(java.util.Map.Entry<Integer,Integer> e:profiles.entrySet())lineProfiles.put(prefix+e.getKey(),e.getValue());
+     for(int[] q:localLines){q[axis]=moves.getOrDefault(q[axis],q[axis]);q[axis+2]=moves.getOrDefault(q[axis+2],q[axis+2]);}
+     if(bays.get().size()!=originalCount)throw new IllegalArgumentException("Kayıt bağlantıları korunamadı; işlem geri alındı.");
      for(int[] cell:bays.get()){int[] n=net.apply(cell);if(n[0]<=0||n[1]<=0)throw new IllegalArgumentException("Net boşluk yetersiz.");}
      undo.push(restore);redo.clear();persistDrawing.run();board.invalidate();drawingStatus.setText("Net boşluklar eşitlendi; kapı ve kanatlar korundu.");
     }catch(RuntimeException ex){restore.run();board.invalidate();toast(ex.getMessage());}
@@ -619,12 +621,12 @@ final class TemaWorkshop {
    panel.setPadding(app.dp(3),app.dp(3),app.dp(3),app.dp(3));
   for(int i=0;i<panel.getChildCount();i++){
    android.view.View child=panel.getChildAt(i);
-   if(child instanceof Button){Button b=(Button)child;b.setAllCaps(false);b.setTextSize(12);b.setSingleLine(false);b.setMaxLines(6);b.setMinHeight(app.dp(48));b.setMinimumHeight(app.dp(48));b.setPadding(app.dp(8),app.dp(9),app.dp(8),app.dp(9));b.setGravity(android.view.Gravity.CENTER);b.setTextColor(Color.WHITE);boolean tool=false;for(Button tb:toolButtons)if(tb==b)tool=true;if(!tool)b.setBackground(app.rgbPanel(0xff173041,0xff245462,series.accent));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(app.dp(3),app.dp(3),app.dp(3),app.dp(3));b.setLayoutParams(lp);}
+   if(child instanceof Button){Button b=(Button)child;b.setAllCaps(false);b.setTextSize(12);b.setSingleLine(false);b.setMaxLines(6);b.setMinHeight(app.dp(40));b.setMinimumHeight(app.dp(40));b.setPadding(app.dp(3),app.dp(5),app.dp(3),app.dp(5));b.setGravity(android.view.Gravity.CENTER);b.setTextColor(Color.WHITE);boolean tool=false;for(Button tb:toolButtons)if(tb==b)tool=true;if(!tool)b.setBackground(app.rgbPanel(0xff173041,0xff245462,series.accent));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(app.dp(3),app.dp(3),app.dp(3),app.dp(3));b.setLayoutParams(lp);}
    else if(child instanceof EditText){((EditText)child).setTextSize(12);}
    else if(child instanceof android.widget.TextView){((android.widget.TextView)child).setTextSize(11);}
   }
   LinearLayout workspace=new LinearLayout(app);workspace.setOrientation(LinearLayout.HORIZONTAL);
-  scroll.setFillViewport(true);panel.setBackgroundColor(0xffe1eaf0);int screen=app.getResources().getDisplayMetrics().widthPixels;int sidebar=Math.min(app.dp(180),Math.max(app.dp(112),screen/3));workspace.addView(scroll,new LinearLayout.LayoutParams(sidebar,-1));
+  scroll.setFillViewport(true);panel.setBackgroundColor(0xffe1eaf0);int screen=app.getResources().getDisplayMetrics().widthPixels;int sidebar=Math.min(app.dp(140),Math.max(app.dp(100),screen/4));workspace.addView(scroll,new LinearLayout.LayoutParams(sidebar,-1));
   LinearLayout canvasPane=new LinearLayout(app);canvasPane.setOrientation(LinearLayout.VERTICAL);workspace.addView(canvasPane,new LinearLayout.LayoutParams(0,-1,1));
   canvasPane.addView(board,new LinearLayout.LayoutParams(-1,0,1));
   AlertDialog dialog=new AlertDialog.Builder(app).setTitle("Kendin çiz · "+series.label).setView(workspace).setNegativeButton("Kaydet ve çık",null).setPositiveButton("Kesim hesapla",null).create();
