@@ -337,6 +337,7 @@ final class TemaWorkshop {
   java.util.ArrayDeque<Runnable> undo=new java.util.ArrayDeque<>();
   java.util.Map<Integer,Integer> gaps=new java.util.HashMap<>();
   for(String entry:value("individualSashGaps").split(";")){try{String[] pair=entry.split(":");gaps.put(Integer.parseInt(pair[0]),Integer.parseInt(pair[1]));}catch(RuntimeException ignored){}}
+  java.util.ArrayList<int[]> localLines=new java.util.ArrayList<>();
   int[] mode={7};
   boolean[] frameAdded={false};
   Runnable checkpoint=()->{
@@ -344,8 +345,9 @@ final class TemaWorkshop {
    java.util.Set<Integer> oldO=new java.util.HashSet<>(openings),oldL=new java.util.HashSet<>(leftCells),oldE=new java.util.HashSet<>(emptyCells);
    java.util.Map<String,Integer> oldP=new java.util.HashMap<>(lineProfiles);
    java.util.Map<Integer,Integer> oldGaps=new java.util.HashMap<>(gaps);
+   java.util.ArrayList<int[]> oldLines=new java.util.ArrayList<>(localLines);
    boolean oldFrame=frameAdded[0];int[] oldPicks=picks.clone();
-   undo.push(()->{xs.clear();xs.addAll(oldX);ys.clear();ys.addAll(oldY);openings.clear();openings.addAll(oldO);leftCells.clear();leftCells.addAll(oldL);emptyCells.clear();emptyCells.addAll(oldE);lineProfiles.clear();lineProfiles.putAll(oldP);gaps.clear();gaps.putAll(oldGaps);frameAdded[0]=oldFrame;System.arraycopy(oldPicks,0,picks,0,picks.length);});
+   undo.push(()->{xs.clear();xs.addAll(oldX);ys.clear();ys.addAll(oldY);openings.clear();openings.addAll(oldO);leftCells.clear();leftCells.addAll(oldL);emptyCells.clear();emptyCells.addAll(oldE);lineProfiles.clear();lineProfiles.putAll(oldP);gaps.clear();gaps.putAll(oldGaps);localLines.clear();localLines.addAll(oldLines);frameAdded[0]=oldFrame;System.arraycopy(oldPicks,0,picks,0,picks.length);});
   };
   TextView drawingStatus=new TextView(app);drawingStatus.setText("Önce kasa ekleyin.");panel.addView(drawingStatus);
   EditText jointEdit=new EditText(app); jointEdit.setInputType(SIGNED); jointEdit.setText(fields.get("joint").getText());
@@ -366,6 +368,7 @@ final class TemaWorkshop {
     paint.setColor(0xff1565c0);paint.setStrokeWidth(9);
     for(int x:xs){float px=left+(right-left)*x/1000f;c.drawLine(px,top,px,bottom,paint);profileLabel(c,groups[1][lineProfiles.getOrDefault("v"+x,picks[1])].code,px+4,top+30);}
     for(int y:ys){float py=top+(bottom-top)*y/1000f;c.drawLine(left,py,right,py,paint);profileLabel(c,groups[1][lineProfiles.getOrDefault("h"+y,picks[1])].code,left+8,py-5);}
+    for(int[] q:localLines){float x1=left+(right-left)*q[0]/1000f,y1=top+(bottom-top)*q[1]/1000f,x2=left+(right-left)*q[2]/1000f,y2=top+(bottom-top)*q[3]/1000f;c.drawLine(x1,y1,x2,y2,paint);profileLabel(c,groups[1][q[4]].code,x1+4,y1+15);}
     java.util.ArrayList<Integer> a=new java.util.ArrayList<>(xs),b=new java.util.ArrayList<>(ys);a.add(0,0);a.add(1000);b.add(0,0);b.add(1000);
     paint.setColor(0xff008577);paint.setStrokeWidth(3);
     for(int y=0;y<b.size()-1;y++)for(int x=0;x<a.size()-1;x++)if(openings.contains(y*(a.size()-1)+x+1)){
@@ -402,8 +405,13 @@ final class TemaWorkshop {
     }
     if(x<=0||x>=1000||y<=0||y>=1000)return true;
     checkpoint.run();
-    if(mode[0]==0){if(xs.size()<12)xs.add(x);openings.clear();leftCells.clear();emptyCells.clear();gaps.clear();}
-    else if(mode[0]==1){if(ys.size()<12)ys.add(y);openings.clear();leftCells.clear();emptyCells.clear();}
+    if(mode[0]==0||mode[0]==1){
+     int l=xs.floor(x)==null?0:xs.floor(x),r=xs.ceiling(x)==null?1000:xs.ceiling(x);
+     int u=ys.floor(y)==null?0:ys.floor(y),d=ys.ceiling(y)==null?1000:ys.ceiling(y);
+     for(int[] q:localLines){if(q[0]==q[2]&&y>=q[1]&&y<=q[3]){if(q[0]<x)l=Math.max(l,q[0]);if(q[0]>x)r=Math.min(r,q[0]);}if(q[1]==q[3]&&x>=q[0]&&x<=q[2]){if(q[1]<y)u=Math.max(u,q[1]);if(q[1]>y)d=Math.min(d,q[1]);}}
+     if(mode[0]==0){if(u==0&&d==1000&&localLines.isEmpty())xs.add(x);else localLines.add(new int[]{x,u,x,d,picks[1]});}
+     else{if(l==0&&r==1000&&localLines.isEmpty())ys.add(y);else localLines.add(new int[]{l,y,r,y,picks[1]});}
+    }
     else if(mode[0]==3){Integer nearest=null;int distance=60;boolean vertical=true;for(int q:xs)if(Math.abs(q-x)<distance){nearest=q;distance=Math.abs(q-x);vertical=true;}for(int q:ys)if(Math.abs(q-y)<distance){nearest=q;distance=Math.abs(q-y);vertical=false;}if(nearest!=null){if(vertical)xs.remove(nearest);else ys.remove(nearest);openings.clear();leftCells.clear();emptyCells.clear();}}
     else {int cell=ys.headSet(y).size()*(xs.size()+1)+xs.headSet(x).size()+1;if(mode[0]==4){openings.remove(cell);leftCells.remove(cell);emptyCells.add(cell);}else if(mode[0]==5){openings.remove(cell);leftCells.remove(cell);emptyCells.remove(cell);}else{emptyCells.remove(cell);openings.add(cell);if(mode[0]==2)leftCells.add(cell);else leftCells.remove(cell);}}
     drawingStatus.setText("Kasa: 1 | Dikey: "+xs.size()+" | Yatay: "+ys.size()+" | Kanat: "+openings.size());invalidate();return true;
@@ -432,11 +440,12 @@ final class TemaWorkshop {
     int face=workingFace(groups[0][picks[0]]);sizes[0].setText(mm(w+2*face));sizes[1].setText(mm(h+2*face));frameAdded[0]=true;board.invalidate();
    }catch(IllegalArgumentException ex){toast(ex.getMessage());}}).show();
   });
-  Button clear=new Button(app);clear.setText("Çizimi temizle");panel.addView(clear);clear.setOnClickListener(v->{checkpoint.run();frameAdded[0]=false;lineProfiles.clear();xs.clear();ys.clear();openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();});
+  Button clear=new Button(app);clear.setText("Çizimi temizle");panel.addView(clear);clear.setOnClickListener(v->{checkpoint.run();frameAdded[0]=false;localLines.clear();lineProfiles.clear();xs.clear();ys.clear();openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();});
   AlertDialog dialog=new AlertDialog.Builder(app).setTitle("Kendin çiz · "+series.label).setView(scroll).setNegativeButton("Vazgeç",null).setPositiveButton("Kesim hesapla",null).create();
   dialog.setOnShowListener(v->dialog.getButton(-1).setOnClickListener(w->{
    try{
     if(!frameAdded[0])throw new IllegalArgumentException("Önce kasa ekleyin.");
+    if(!localLines.isEmpty())throw new IllegalArgumentException("Bölgesel kayıt kesim hesabı henüz desteklenmiyor.");
     int width=ShopDimensions.tenths(sizes[0].getText().toString(),"Dış en"),height=ShopDimensions.tenths(sizes[1].getText().toString(),"Dış yükseklik");
     int frame=workingFace(groups[0][picks[0]]),record=workingFace(groups[1][picks[1]]);
     String cols=drawSpans(xs,width-2*frame-xs.size()*record),rows=drawSpans(ys,height-2*frame-ys.size()*record);
