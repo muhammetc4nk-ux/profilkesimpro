@@ -343,7 +343,7 @@ final class TemaWorkshop {
   java.util.function.Supplier<java.util.ArrayList<int[]>> bays=()->{
    java.util.ArrayList<int[]> cells=new java.util.ArrayList<>();
    java.util.ArrayList<Integer> ax=new java.util.ArrayList<>(xs),ay=new java.util.ArrayList<>(ys);
-   ax.add(0,0);ax.add(1000);ay.add(0,0);ay.add(1000);
+   ax.add(0,0);ax.add(1000000);ay.add(0,0);ay.add(1000000);
    for(int j=0;j<ay.size()-1;j++)for(int i=0;i<ax.size()-1;i++)cells.add(new int[]{ax.get(i),ay.get(j),ax.get(i+1),ay.get(j+1)});
    for(int[] q:localLines)for(int i=0;i<cells.size();i++){int[] z=cells.get(i);
     if(q[0]==q[2]&&q[0]>z[0]&&q[0]<z[2]&&q[1]<=z[1]&&q[3]>=z[3]){cells.set(i,new int[]{z[0],z[1],q[0],z[3]});cells.add(new int[]{q[0],z[1],z[2],z[3]});}
@@ -357,14 +357,15 @@ final class TemaWorkshop {
   try {
    org.json.JSONObject saved=new org.json.JSONObject(value("editorDrawing"));
    frameAdded[0]=saved.optBoolean("frame");
+    int scale=saved.optInt("coordinateScale",1000)==1000?1000:1;
    for(String key:new String[]{"xs","ys","openings","left","empty"}){
     org.json.JSONArray a=saved.getJSONArray(key);
     java.util.Set<Integer> target=key.equals("xs")?xs:key.equals("ys")?ys:key.equals("openings")?openings:key.equals("left")?leftCells:emptyCells;
-    for(int i=0;i<a.length();i++)target.add(a.getInt(i));
+    for(int i=0;i<a.length();i++)target.add(a.getInt(i)*(key.equals("xs")||key.equals("ys")?scale:1));
    }
    org.json.JSONArray lines=saved.getJSONArray("lines");
-   for(int i=0;i<lines.length();i++){org.json.JSONArray a=lines.getJSONArray(i);int[] q=new int[5];for(int j=0;j<5;j++)q[j]=a.getInt(j);localLines.add(q);}
-   org.json.JSONObject p=saved.getJSONObject("profiles");java.util.Iterator<String> keys=p.keys();while(keys.hasNext()){String k=keys.next();lineProfiles.put(k,p.getInt(k));}
+   for(int i=0;i<lines.length();i++){org.json.JSONArray a=lines.getJSONArray(i);int[] q=new int[5];for(int j=0;j<5;j++)q[j]=a.getInt(j)*(j<4?scale:1);localLines.add(q);}
+   org.json.JSONObject p=saved.getJSONObject("profiles");java.util.Iterator<String> keys=p.keys();while(keys.hasNext()){String k=keys.next();lineProfiles.put(scale!=1&&(k.startsWith("v")||k.startsWith("h"))?k.substring(0,1)+(Integer.parseInt(k.substring(1))*scale):k,p.getInt(k));}
    org.json.JSONObject g=saved.getJSONObject("gaps");keys=g.keys();while(keys.hasNext()){String k=keys.next();gaps.put(Integer.parseInt(k),g.getInt(k));}
    org.json.JSONArray a=saved.getJSONArray("picks");for(int i=0;i<3;i++)picks[i]=a.getInt(i);
    for(int i=0;i<2;i++)sizes[i].setText(saved.getString(sizeKeys[i]));
@@ -392,7 +393,7 @@ final class TemaWorkshop {
   Runnable persistDrawing=()->{
    try{
     org.json.JSONObject o=new org.json.JSONObject();
-    o.put("frame",frameAdded[0]);o.put("xs",new org.json.JSONArray(xs));o.put("ys",new org.json.JSONArray(ys));o.put("openings",new org.json.JSONArray(openings));o.put("left",new org.json.JSONArray(leftCells));o.put("empty",new org.json.JSONArray(emptyCells));
+    o.put("coordinateScale",1000000);o.put("frame",frameAdded[0]);o.put("xs",new org.json.JSONArray(xs));o.put("ys",new org.json.JSONArray(ys));o.put("openings",new org.json.JSONArray(openings));o.put("left",new org.json.JSONArray(leftCells));o.put("empty",new org.json.JSONArray(emptyCells));
     org.json.JSONArray lines=new org.json.JSONArray();for(int[] q:localLines){org.json.JSONArray a=new org.json.JSONArray();for(int n:q)a.put(n);lines.put(a);}o.put("lines",lines);
     o.put("profiles",new org.json.JSONObject(lineProfiles));org.json.JSONObject g=new org.json.JSONObject();for(int k:gaps.keySet())g.put(String.valueOf(k),gaps.get(k));o.put("gaps",g);
     org.json.JSONArray p=new org.json.JSONArray();for(int n:picks)p.put(n);o.put("picks",p);
@@ -404,8 +405,8 @@ final class TemaWorkshop {
   try{org.json.JSONObject o=new org.json.JSONObject(value("editorDrawing"));jointEdit.setText(o.optString("joint",jointEdit.getText().toString()));recordJoint.setText(o.optString("recordJoint",recordJoint.getText().toString()));sashGapEdit.setText(o.optString("sashGap",sashGapEdit.getText().toString()));}catch(org.json.JSONException ignored){}
   java.util.function.Supplier<java.util.ArrayList<int[]>> records=()->{
    java.util.ArrayList<int[]> all=new java.util.ArrayList<>(localLines);
-   for(int x:xs)all.add(new int[]{x,0,x,1000,lineProfiles.getOrDefault("v"+x,picks[1])});
-   for(int y:ys)all.add(new int[]{0,y,1000,y,lineProfiles.getOrDefault("h"+y,picks[1])});
+   for(int x:xs)all.add(new int[]{x,0,x,1000000,lineProfiles.getOrDefault("v"+x,picks[1])});
+   for(int y:ys)all.add(new int[]{0,y,1000000,y,lineProfiles.getOrDefault("h"+y,picks[1])});
    return all;
   };
   java.util.function.Function<int[],int[]> net=z->{
@@ -416,7 +417,7 @@ final class TemaWorkshop {
     if(q[0]==q[2]&&q[1]<=z[1]&&q[3]>=z[3]){if(q[0]==z[0])lf=Math.max(lf,face);if(q[0]==z[2])rf=Math.max(rf,face);}
     if(q[1]==q[3]&&q[0]<=z[0]&&q[2]>=z[2]){if(q[1]==z[1])tf=Math.max(tf,face);if(q[1]==z[3])bf=Math.max(bf,face);}
    }
-   return new int[]{Math.round(iw*z[2]/1000f)-Math.round(iw*z[0]/1000f)-(lf-lf/2)-rf/2,Math.round(ih*z[3]/1000f)-Math.round(ih*z[1]/1000f)-(tf-tf/2)-bf/2,iw,ih};
+   return new int[]{(int)Math.round((double)iw*z[2]/1000000.0)-(int)Math.round((double)iw*z[0]/1000000.0)-(lf-lf/2)-rf/2,(int)Math.round((double)ih*z[3]/1000000.0)-(int)Math.round((double)ih*z[1]/1000000.0)-(tf-tf/2)-bf/2,iw,ih};
   };
   android.view.View board=new android.view.View(app){
    android.graphics.Paint paint=new android.graphics.Paint(3);
@@ -430,7 +431,7 @@ final class TemaWorkshop {
    }
    @Override protected void onDraw(android.graphics.Canvas c){
     super.onDraw(c); left=app.dp(30);top=app.dp(42);right=getWidth()-app.dp(24);bottom=getHeight()-app.dp(28);try{float ratio=Float.parseFloat(sizes[0].getText().toString().replace(',','.'))/Float.parseFloat(sizes[1].getText().toString().replace(',','.'));if(ratio>0&&Float.isFinite(ratio)){float w=right-left,h=bottom-top;if(w/h>ratio){float d=(w-h*ratio)/2;left+=d;right-=d;}else{float d=(h-w/ratio)/2;top+=d;bottom-=d;}}}catch(RuntimeException ignored){} paint.setStyle(android.graphics.Paint.Style.FILL);
-    c.drawColor(0xffe8f1f5); paint.setColor(0xffcbd9e1);paint.setStrokeWidth(1);for(int i=0;i<20;i++){float px=left+(right-left)*i/20f,py=top+(bottom-top)*i/20f;c.drawLine(px,top,px,bottom,paint);c.drawLine(left,py,right,py,paint);} paint.setColor(0xff34495e); paint.setStrokeWidth(7);paint.setStyle(android.graphics.Paint.Style.STROKE);
+    c.drawColor(0xffe8f1f5);paint.setShader(new android.graphics.LinearGradient(0,0,getWidth(),getHeight(),0xfff8fafc,0xffa8bdcf,android.graphics.Shader.TileMode.CLAMP));c.drawRect(0,0,getWidth(),getHeight(),paint);paint.setShader(null); paint.setColor(0xffcbd9e1);paint.setStrokeWidth(1);for(int i=0;i<20;i++){float px=left+(right-left)*i/20f,py=top+(bottom-top)*i/20f;c.drawLine(px,top,px,bottom,paint);c.drawLine(left,py,right,py,paint);} paint.setColor(0xff34495e); paint.setStrokeWidth(7);paint.setStyle(android.graphics.Paint.Style.STROKE);
     if(!frameAdded[0])return;
     paint.setStyle(android.graphics.Paint.Style.FILL);
     for(int depth=app.dp(12);depth>0;depth--){paint.setColor(0xff64748b);c.drawRect(left+depth,top+depth,right+depth,bottom+depth,paint);}
@@ -440,20 +441,20 @@ final class TemaWorkshop {
     profileLabel(c,groups[0][lineProfiles.getOrDefault("frame",picks[0])].code,left+8,top+15);
     dim.setColor(0xff64748b);dim.setStrokeWidth(1);float off=app.dp(22);c.drawLine(left,top,left,top-off,dim);c.drawLine(right,top,right,top-off,dim);c.drawLine(left,top,left-off,top,dim);c.drawLine(left,bottom,left-off,bottom,dim);measure(c,left,top-off,right,top-off,sizes[0].getText()+" mm");measure(c,left-off,top,left-off,bottom,sizes[1].getText()+" mm");paint.setStyle(android.graphics.Paint.Style.STROKE);
     paint.setColor(0xff46535e);paint.setStrokeWidth(app.dp(8));
-    for(int x:xs){float px=left+(right-left)*x/1000f;c.drawLine(px,top,px,bottom,paint);profileLabel(c,groups[1][lineProfiles.getOrDefault("v"+x,picks[1])].code,px+4,top+30);}
-    for(int y:ys){float py=top+(bottom-top)*y/1000f;c.drawLine(left,py,right,py,paint);profileLabel(c,groups[1][lineProfiles.getOrDefault("h"+y,picks[1])].code,left+8,py-5);}
-    for(int[] q:localLines){float x1=left+(right-left)*q[0]/1000f,y1=top+(bottom-top)*q[1]/1000f,x2=left+(right-left)*q[2]/1000f,y2=top+(bottom-top)*q[3]/1000f;c.drawLine(x1,y1,x2,y2,paint);profileLabel(c,groups[1][q[4]].code,x1+4,y1+15);}
-    java.util.ArrayList<Integer> a=new java.util.ArrayList<>(xs),b=new java.util.ArrayList<>(ys);a.add(0,0);a.add(1000);b.add(0,0);b.add(1000);
+    for(int x:xs){float px=left+(right-left)*x/1000000f;c.drawLine(px,top,px,bottom,paint);profileLabel(c,groups[1][lineProfiles.getOrDefault("v"+x,picks[1])].code,px+4,top+30);}
+    for(int y:ys){float py=top+(bottom-top)*y/1000000f;c.drawLine(left,py,right,py,paint);profileLabel(c,groups[1][lineProfiles.getOrDefault("h"+y,picks[1])].code,left+8,py-5);}
+    for(int[] q:localLines){float x1=left+(right-left)*q[0]/1000000f,y1=top+(bottom-top)*q[1]/1000000f,x2=left+(right-left)*q[2]/1000000f,y2=top+(bottom-top)*q[3]/1000000f;c.drawLine(x1,y1,x2,y2,paint);profileLabel(c,groups[1][q[4]].code,x1+4,y1+15);}
+    java.util.ArrayList<Integer> a=new java.util.ArrayList<>(xs),b=new java.util.ArrayList<>(ys);a.add(0,0);a.add(1000000);b.add(0,0);b.add(1000000);
     paint.setColor(0xff008577);paint.setStrokeWidth(3);
     java.util.ArrayList<int[]> cells=bays.get();
     for(int i=0;i<cells.size();i++)if(openings.contains(i+1)){
      int[] z=cells.get(i);
-     float l=left+(right-left)*z[0]/1000f+7,r=left+(right-left)*z[2]/1000f-7,t=top+(bottom-top)*z[1]/1000f+7,d=top+(bottom-top)*z[3]/1000f-7;
+     float l=left+(right-left)*z[0]/1000000f+7,r=left+(right-left)*z[2]/1000000f-7,t=top+(bottom-top)*z[1]/1000000f+7,d=top+(bottom-top)*z[3]/1000000f-7;
      if(r<=l||d<=t)continue; c.save();c.clipRect(l,t,r,d);paint.setStyle(android.graphics.Paint.Style.STROKE);paint.setColor(0xff087e79);paint.setStrokeWidth(app.dp(3));c.drawRect(l,t,r,d,paint);profileLabel(c,groups[2][lineProfiles.getOrDefault("s"+(i+1),picks[2])].code,l+3,t+14);boolean isLeft=leftCells.contains(i+1);float hinge=isLeft?l:r,handle=isLeft?r:l;c.drawLine(hinge,t,handle,(t+d)/2,paint);c.drawLine(handle,(t+d)/2,hinge,d,paint);c.restore();
     }
     paint.setStyle(android.graphics.Paint.Style.FILL);
-    for(int[] z:cells){try{int[] n=net.apply(z);float cx=left+(right-left)*(z[0]+z[2])/2000f,cy=top+(bottom-top)*(z[1]+z[3])/2000f;
-     float l=left+(right-left)*z[0]/1000f,r=left+(right-left)*z[2]/1000f,t=top+(bottom-top)*z[1]/1000f,bm=top+(bottom-top)*z[3]/1000f;if(r-l>app.dp(65)&&bm-t>app.dp(65)){measure(c,l,t+(bm-t)*0.25f,r,t+(bm-t)*0.25f,"Net "+mm(n[0]));measure(c,l+(r-l)*0.22f,t,l+(r-l)*0.22f,bm,"Net "+mm(n[1]));}
+    for(int[] z:cells){try{int[] n=net.apply(z);float cx=left+(right-left)*(z[0]+z[2])/2000000f,cy=top+(bottom-top)*(z[1]+z[3])/2000000f;
+     float l=left+(right-left)*z[0]/1000000f,r=left+(right-left)*z[2]/1000000f,t=top+(bottom-top)*z[1]/1000000f,bm=top+(bottom-top)*z[3]/1000000f;if(r-l>app.dp(65)&&bm-t>app.dp(65)){measure(c,l,t+(bm-t)*0.25f,r,t+(bm-t)*0.25f,"Net "+mm(n[0]));measure(c,l+(r-l)*0.22f,t,l+(r-l)*0.22f,bm,"Net "+mm(n[1]));}
      String label=mm(n[0])+" × "+mm(n[1]);paint.setTextSize(app.dp(12));float available=r-l-app.dp(12);if(available<app.dp(25)||bm-t<app.dp(28))continue;paint.setTextSize(Math.min(app.dp(12),app.dp(12)*available/Math.max(1,paint.measureText(label))));float w=paint.measureText(label)/2+app.dp(4);
      paint.setColor(0xfff8fafc);c.drawRoundRect(cx-w,cy-app.dp(12),cx+w,cy+app.dp(12),5,5,paint);paint.setColor(0xff173041);c.drawText(label,cx-w+app.dp(5),cy+app.dp(4),paint);
     }catch(RuntimeException ignored){}}
@@ -466,7 +467,7 @@ final class TemaWorkshop {
     if(e.getActionMasked()==android.view.MotionEvent.ACTION_CANCEL){getParent().requestDisallowInterceptTouchEvent(false);return true;}
     if(e.getActionMasked()!=android.view.MotionEvent.ACTION_UP)return true;
     getParent().requestDisallowInterceptTouchEvent(false);
-    int x=Math.round(1000*(e.getX()-left)/(right-left)),y=Math.round(1000*(e.getY()-top)/(bottom-top));
+    int x=Math.round(1000000f*(e.getX()-left)/(right-left)),y=Math.round(1000000f*(e.getY()-top)/(bottom-top));
     if(!frameAdded[0]){toast("Önce kasa ekleyin.");return true;}
     if(mode[0]==9){
      int cell=hit.apply(x,y);if(cell==0)return true;int[] z=bays.get().get(cell-1);
@@ -476,13 +477,13 @@ final class TemaWorkshop {
        Runnable restore=snapshot.get();int countBefore=bays.get().size();
        try{int[] wanted={ShopDimensions.tenths(en.getText().toString(),"Net en"),ShopDimensions.tenths(boy.getText().toString(),"Net boy")};
         for(int axis=0;axis<2;axis++){if(wanted[axis]<=0)throw new IllegalArgumentException("Ölçü pozitif olmalı.");if(wanted[axis]==n[axis])continue;
-         int lo=z[axis],hi=z[axis+2],delta=Math.round(1000f*(wanted[axis]-n[axis])/n[axis+2]);
-         int old=hi<1000?hi:lo, next=hi<1000?hi+delta:lo-delta;
+         int lo=z[axis],hi=z[axis+2],delta=Math.round(1000000f*(wanted[axis]-n[axis])/n[axis+2]);
+         int old=hi<1000000?hi:lo, next=hi<1000000?hi+delta:lo-delta;
          java.util.TreeSet<Integer> bounds=axis==0?xs:ys;
          Integer upper=bounds.higher(old);
-         if(hi<1000&&lo>0&&(next>=1000||(upper!=null&&next>=upper)||next<=lo)){old=lo;next=lo-delta;}
+         if(hi<1000000&&lo>0&&(next>=1000000||(upper!=null&&next>=upper)||next<=lo)){old=lo;next=lo-delta;}
          if(delta==0)continue;
-         if(old==0||old==1000||next<=0||next>=1000)throw new IllegalArgumentException("Dış kasa ölçüsünü veya komşu kaydı kontrol edin.");
+         if(old==0||old==1000000||next<=0||next>=1000000)throw new IllegalArgumentException("Dış kasa ölçüsünü veya komşu kaydı kontrol edin.");
          java.util.TreeSet<Integer> set=axis==0?xs:ys;
          if(set.contains(old)){Integer prev=set.lower(old),after=set.higher(old);if((prev!=null&&next<=prev)||(after!=null&&next>=after))throw new IllegalArgumentException("Kayıt diğer bölmeyi geçemez.");set.remove(old);set.add(next);String prefix=axis==0?"v":"h";Integer profile=lineProfiles.remove(prefix+old);if(profile!=null)lineProfiles.put(prefix+next,profile);}
          else {boolean found=false;for(int[] q:localLines)if(q[axis]==old&&q[axis+2]==old&&q[1-axis]<=z[1-axis]&&q[3-axis]>=z[3-axis])found=true;if(!found)throw new IllegalArgumentException("Bölme sınırı bulunamadı.");}
@@ -502,28 +503,28 @@ final class TemaWorkshop {
      new AlertDialog.Builder(app).setTitle(cell+". kanat kasa boşluğu (mm/kenar)").setView(gap).setNegativeButton("Vazgeç",null).setPositiveButton("Uygula",(d,k)->{try{int n=ShopDimensions.tenths(gap.getText().toString(),"Kanat kasa boşluğu");if(n<0)throw new IllegalArgumentException("Boşluk negatif olamaz.");checkpoint.run();gaps.put(cell,n);invalidate();}catch(IllegalArgumentException ex){toast(ex.getMessage());}}).show();return true;
     }
     if(mode[0]==7){
-     String key=null;int role=1;int best=65;
+     String key=null;int role=1;int best=65000;
      for(int q:xs)if(Math.abs(q-x)<best){best=Math.abs(q-x);key="v"+q;}
      for(int q:ys)if(Math.abs(q-y)<best){best=Math.abs(q-y);key="h"+q;}
-     int edge=Math.min(Math.min(Math.abs(x),Math.abs(1000-x)),Math.min(Math.abs(y),Math.abs(1000-y)));
+     int edge=Math.min(Math.min(Math.abs(x),Math.abs(1000000-x)),Math.min(Math.abs(y),Math.abs(1000000-y)));
      if(edge<best){role=0;key="frame";}
      if(key==null){int cell=hit.apply(x,y);if(openings.contains(cell)){role=2;key="s"+cell;}}
      if(key==null){toast("Bir profil çizgisine dokunun.");return true;}
      final String selectedKey=key;final int selectedRole=role;
      chooseProfile("Profil değiştir",groups[role],lineProfiles.getOrDefault(key,picks[role]),index->{checkpoint.run();lineProfiles.put(selectedKey,index);invalidate();});return true;
     }
-    if(x<=0||x>=1000||y<=0||y>=1000)return true;
+    if(x<=0||x>=1000000||y<=0||y>=1000000)return true;
     checkpoint.run();
     if(mode[0]==0||mode[0]==1){
      if((mode[0]==0&&xs.contains(x))||(mode[0]==1&&ys.contains(y))){undo.pop();return true;}
      openings.clear();leftCells.clear();emptyCells.clear();gaps.clear();
-     int l=xs.floor(x)==null?0:xs.floor(x),r=xs.ceiling(x)==null?1000:xs.ceiling(x);
-     int u=ys.floor(y)==null?0:ys.floor(y),d=ys.ceiling(y)==null?1000:ys.ceiling(y);
+     int l=xs.floor(x)==null?0:xs.floor(x),r=xs.ceiling(x)==null?1000000:xs.ceiling(x);
+     int u=ys.floor(y)==null?0:ys.floor(y),d=ys.ceiling(y)==null?1000000:ys.ceiling(y);
      for(int[] q:localLines){if(q[0]==q[2]&&y>=q[1]&&y<=q[3]){if(q[0]<x)l=Math.max(l,q[0]);if(q[0]>x)r=Math.min(r,q[0]);}if(q[1]==q[3]&&x>=q[0]&&x<=q[2]){if(q[1]<y)u=Math.max(u,q[1]);if(q[1]>y)d=Math.min(d,q[1]);}}
-     if(mode[0]==0){if(u==0&&d==1000&&localLines.isEmpty())xs.add(x);else localLines.add(new int[]{x,u,x,d,picks[1]});}
-     else{if(l==0&&r==1000&&localLines.isEmpty())ys.add(y);else localLines.add(new int[]{l,y,r,y,picks[1]});}
+     if(mode[0]==0){if(u==0&&d==1000000&&localLines.isEmpty())xs.add(x);else localLines.add(new int[]{x,u,x,d,picks[1]});}
+     else{if(l==0&&r==1000000&&localLines.isEmpty())ys.add(y);else localLines.add(new int[]{l,y,r,y,picks[1]});}
     }
-    else if(mode[0]==3){Integer nearest=null;int distance=60;boolean vertical=true;for(int q:xs)if(Math.abs(q-x)<distance){nearest=q;distance=Math.abs(q-x);vertical=true;}for(int q:ys)if(Math.abs(q-y)<distance){nearest=q;distance=Math.abs(q-y);vertical=false;}if(nearest!=null){if(vertical)xs.remove(nearest);else ys.remove(nearest);openings.clear();leftCells.clear();emptyCells.clear();}}
+    else if(mode[0]==3){Integer nearest=null;int distance=60000;boolean vertical=true;for(int q:xs)if(Math.abs(q-x)<distance){nearest=q;distance=Math.abs(q-x);vertical=true;}for(int q:ys)if(Math.abs(q-y)<distance){nearest=q;distance=Math.abs(q-y);vertical=false;}if(nearest!=null){if(vertical)xs.remove(nearest);else ys.remove(nearest);openings.clear();leftCells.clear();emptyCells.clear();}}
     else {int cell=hit.apply(x,y);if(mode[0]==4){openings.remove(cell);leftCells.remove(cell);emptyCells.add(cell);}else if(mode[0]==5){openings.remove(cell);leftCells.remove(cell);emptyCells.remove(cell);}else{if(cell==0){undo.pop();return true;}emptyCells.remove(cell);openings.add(cell);if(mode[0]==2)leftCells.add(cell);else leftCells.remove(cell);}}
     drawingStatus.setText("Kasa: 1 | Dikey: "+xs.size()+" | Yatay: "+ys.size()+" | Kanat: "+openings.size());persistDrawing.run();invalidate();return true;
    }
@@ -551,25 +552,25 @@ final class TemaWorkshop {
     try{
      if(!localLines.isEmpty())throw new IllegalArgumentException("Bu araç tam boy kayıtlar içindir; bölgesel kayıtları net ölçü aracıyla düzenleyin.");
      java.util.TreeSet<Integer> set=axis==0?xs:ys;
-     java.util.ArrayList<Integer> pts=new java.util.ArrayList<>(set);pts.add(0,0);pts.add(1000);
-     java.util.TreeSet<Integer> fixed=new java.util.TreeSet<>();fixed.add(0);fixed.add(1000);
+     java.util.ArrayList<Integer> pts=new java.util.ArrayList<>(set);pts.add(0,0);pts.add(1000000);
+     java.util.TreeSet<Integer> fixed=new java.util.TreeSet<>();fixed.add(0);fixed.add(1000000);
      java.util.ArrayList<int[]> cells=bays.get();
      for(int i=0;i<cells.size();i++)if(openings.contains(i+1)||emptyCells.contains(i+1)){fixed.add(cells.get(i)[axis]);fixed.add(cells.get(i)[axis+2]);}
      int total=net.apply(cells.get(0))[axis+2];if(total<=0)throw new IllegalArgumentException("Kasa ölçüsünü kontrol edin.");
      String prefix=axis==0?"v":"h";
      java.util.HashMap<Integer,Integer> faces=new java.util.HashMap<>();
-     for(int p:pts)faces.put(p,p==0||p==1000?0:workingFace(groups[1][lineProfiles.getOrDefault(prefix+p,picks[1])]));
+     for(int p:pts)faces.put(p,p==0||p==1000000?0:workingFace(groups[1][lineProfiles.getOrDefault(prefix+p,picks[1])]));
      java.util.HashMap<Integer,Integer> moves=new java.util.HashMap<>();
      int start=0;
      for(int end:fixed){if(end==0)continue;
       int l=pts.indexOf(start),h=pts.indexOf(end);
       if(l<0||h<=l)throw new IllegalArgumentException("Bölme sınırı bulunamadı.");
-      double available=total*(end-start)/1000.0-(faces.get(start)-faces.get(start)/2)-faces.get(end)/2;
+      double available=(double)total*(end-start)/1000000.0-(faces.get(start)-faces.get(start)/2)-faces.get(end)/2;
       for(int j=l+1;j<h;j++)available-=faces.get(pts.get(j));
       double gap=available/(h-l);if(gap<=0)throw new IllegalArgumentException("Net boşluk yetersiz.");
-      double cursor=total*start/1000.0+(faces.get(start)-faces.get(start)/2);
+      double cursor=(double)total*start/1000000.0+(faces.get(start)-faces.get(start)/2);
       int previous=start;
-      for(int j=l+1;j<h;j++){int p=pts.get(j);cursor+=gap+faces.get(p)/2;int next=(int)Math.round(cursor*1000/total);if(next<=previous||next>=end)throw new IllegalArgumentException("Kayıt çakışması.");moves.put(p,next);previous=next;cursor+=faces.get(p)-faces.get(p)/2;}
+      for(int j=l+1;j<h;j++){int p=pts.get(j);cursor+=gap+faces.get(p)/2;int next=(int)Math.round(cursor*1000000/total);if(next<=previous||next>=end)throw new IllegalArgumentException("Kayıt çakışması.");moves.put(p,next);previous=next;cursor+=faces.get(p)-faces.get(p)/2;}
       start=end;
      }
      java.util.HashMap<Integer,Integer> profiles=new java.util.HashMap<>();
@@ -581,10 +582,10 @@ final class TemaWorkshop {
     }catch(RuntimeException ex){restore.run();board.invalidate();toast(ex.getMessage());}
    });
   }
-  Button addV=new Button(app);addV.setText("+ Dikey kayıt (eşit böl)");panel.addView(addV);addV.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}if(xs.size()>=12)return;checkpoint.run();int n=xs.size()+2;xs.clear();for(int i=1;i<n;i++)xs.add(Math.round(1000f*i/n));openings.clear();leftCells.clear();emptyCells.clear();drawingStatus.setText("Dikey: "+xs.size()+" | Yatay: "+ys.size());board.invalidate();});
-  Button addH=new Button(app);addH.setText("+ Yatay kayıt (eşit böl)");panel.addView(addH);addH.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}if(ys.size()>=12)return;checkpoint.run();int n=ys.size()+2;ys.clear();for(int i=1;i<n;i++)ys.add(Math.round(1000f*i/n));openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();});
+  Button addV=new Button(app);addV.setText("+ Dikey kayıt (eşit böl)");panel.addView(addV);addV.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}if(xs.size()>=12)return;checkpoint.run();int n=xs.size()+2;xs.clear();for(int i=1;i<n;i++)xs.add(Math.round(1000000f*i/n));openings.clear();leftCells.clear();emptyCells.clear();drawingStatus.setText("Dikey: "+xs.size()+" | Yatay: "+ys.size());board.invalidate();});
+  Button addH=new Button(app);addH.setText("+ Yatay kayıt (eşit böl)");panel.addView(addH);addH.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}if(ys.size()>=12)return;checkpoint.run();int n=ys.size()+2;ys.clear();for(int i=1;i<n;i++)ys.add(Math.round(1000000f*i/n));openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();});
   for(EditText size:sizes)size.addTextChangedListener(watcher(board::invalidate));
-  Button exact=new Button(app);exact.setText("Kayıt konumunu mm olarak gir");panel.addView(exact);exact.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}EditText pos=new EditText(app);pos.setInputType(DECIMAL);new AlertDialog.Builder(app).setTitle("Kasa içi net konum (mm)").setView(pos).setNegativeButton("Vazgeç",null).setPositiveButton("Ekle",(d,k)->{try{boolean vertical=mode[0]!=1;int total=ShopDimensions.tenths(sizes[vertical?0:1].getText().toString(),"Dış ölçü")-2*workingFace(groups[0][picks[0]]);int point=Math.round(1000f*ShopDimensions.tenths(pos.getText().toString(),"Konum")/total);java.util.TreeSet<Integer> target=vertical?xs:ys;if(point<=0||point>=1000||target.size()>=12)throw new IllegalArgumentException("Konum kasa içinde olmalı.");checkpoint.run();target.add(point);openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();}catch(IllegalArgumentException ex){toast(ex.getMessage());}}).show();});
+  Button exact=new Button(app);exact.setText("Kayıt konumunu mm olarak gir");panel.addView(exact);exact.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}EditText pos=new EditText(app);pos.setInputType(DECIMAL);new AlertDialog.Builder(app).setTitle("Kasa içi net konum (mm)").setView(pos).setNegativeButton("Vazgeç",null).setPositiveButton("Ekle",(d,k)->{try{boolean vertical=mode[0]!=1;int total=ShopDimensions.tenths(sizes[vertical?0:1].getText().toString(),"Dış ölçü")-2*workingFace(groups[0][picks[0]]);int point=Math.round(1000000f*ShopDimensions.tenths(pos.getText().toString(),"Konum")/total);java.util.TreeSet<Integer> target=vertical?xs:ys;if(point<=0||point>=1000000||target.size()>=12)throw new IllegalArgumentException("Konum kasa içinde olmalı.");checkpoint.run();target.add(point);openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();}catch(IllegalArgumentException ex){toast(ex.getMessage());}}).show();});
   Button netSizes=new Button(app);netSizes.setText("Kasa içi net en ve boy gir");panel.addView(netSizes);
   netSizes.setOnClickListener(v->{
    LinearLayout p=new LinearLayout(app);p.setOrientation(LinearLayout.VERTICAL);
@@ -602,7 +603,20 @@ final class TemaWorkshop {
   for(Button b:toolButtons){((android.view.ViewGroup)b.getParent()).removeView(b);}
   for(int i=panel.getChildCount()-1;i>=0;i--){android.view.View child=panel.getChildAt(i);if(child instanceof LinearLayout&&((LinearLayout)child).getChildCount()==0)panel.removeViewAt(i);}
   for(int i=toolButtons.length-1;i>=0;i--)panel.addView(toolButtons[i],0,new LinearLayout.LayoutParams(-1,app.dp(38)));
-  panel.setPadding(app.dp(3),app.dp(3),app.dp(3),app.dp(3));
+  LinearLayout parts=new LinearLayout(app);parts.setOrientation(LinearLayout.VERTICAL);
+   LinearLayout edits=new LinearLayout(app);edits.setOrientation(LinearLayout.VERTICAL);
+   java.util.ArrayList<Button> partList=new java.util.ArrayList<>(),editList=new java.util.ArrayList<>();
+   for(int i=0;i<panel.getChildCount();i++){android.view.View child=panel.getChildAt(i);if(child instanceof Button){Button b=(Button)child;String label=b.getText().toString();if(label.startsWith("+")||label.contains("kanat")&& !label.contains("hariç")&&!label.contains("boşluğu"))partList.add(b);else if(label.contains("kayıt")||label.contains("eşitle")||label.contains("Net ölçü"))editList.add(b);}}
+   for(Button b:partList){panel.removeView(b);parts.addView(b,new LinearLayout.LayoutParams(-1,-2));}
+   for(Button b:editList){panel.removeView(b);edits.addView(b,new LinearLayout.LayoutParams(-1,-2));}
+   Button partMenu=new Button(app);partMenu.setText("+ Parça ekle");Button editMenu=new Button(app);editMenu.setText("+ Orta kayıt düzenle");
+   panel.addView(partMenu,0);panel.addView(parts,1);panel.addView(editMenu,2);panel.addView(edits,3);
+   parts.setVisibility(View.GONE);edits.setVisibility(View.GONE);
+   partMenu.setOnClickListener(v->parts.setVisibility(parts.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));
+   editMenu.setOnClickListener(v->edits.setVisibility(edits.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));
+   for(Button b:partList){b.setSingleLine(false);b.setMaxLines(5);b.setTextSize(12);b.setMinHeight(app.dp(48));}
+   for(Button b:editList){b.setSingleLine(false);b.setMaxLines(5);b.setTextSize(12);b.setMinHeight(app.dp(48));}
+   panel.setPadding(app.dp(3),app.dp(3),app.dp(3),app.dp(3));
   for(int i=0;i<panel.getChildCount();i++){
    android.view.View child=panel.getChildAt(i);
    if(child instanceof Button){Button b=(Button)child;b.setAllCaps(false);b.setTextSize(12);b.setSingleLine(false);b.setMaxLines(6);b.setMinHeight(app.dp(48));b.setMinimumHeight(app.dp(48));b.setPadding(app.dp(8),app.dp(9),app.dp(8),app.dp(9));b.setGravity(android.view.Gravity.CENTER);b.setTextColor(Color.WHITE);boolean tool=false;for(Button tb:toolButtons)if(tb==b)tool=true;if(!tool)b.setBackground(app.rgbPanel(0xff173041,0xff245462,series.accent));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(app.dp(3),app.dp(3),app.dp(3),app.dp(3));b.setLayoutParams(lp);}
@@ -630,11 +644,11 @@ final class TemaWorkshop {
     StringBuilder bayData=new StringBuilder(),recordData=new StringBuilder();
     {
      for(int[] z:bays.get())bayData.append(z[0]).append(',').append(z[1]).append(',').append(z[2]).append(',').append(z[3]).append(';');
-     for(int x:xs)recordData.append(x).append(",0,").append(x).append(",1000,").append(lineProfiles.getOrDefault("v"+x,picks[1])).append(';');
-     for(int y:ys)recordData.append("0,").append(y).append(",1000,").append(y).append(',').append(lineProfiles.getOrDefault("h"+y,picks[1])).append(';');
+     for(int x:xs)recordData.append(x).append(",0,").append(x).append(",1000000,").append(lineProfiles.getOrDefault("v"+x,picks[1])).append(';');
+     for(int y:ys)recordData.append("0,").append(y).append(",1000000,").append(y).append(',').append(lineProfiles.getOrDefault("h"+y,picks[1])).append(';');
      for(int[] q:localLines)recordData.append(q[0]).append(',').append(q[1]).append(',').append(q[2]).append(',').append(q[3]).append(',').append(q[4]).append(';');
     }
-    draft.put("regionalBays",bayData.toString());draft.put("regionalRecords",recordData.toString());
+    draft.put("regionalScale","1000000");draft.put("regionalBays",bayData.toString());draft.put("regionalRecords",recordData.toString());
     chosenSashes.clear();chosenSashes.addAll(openings);expectedFixed=-1;updateLayout();invalidate();dialog.dismiss();
     toast("Çizim aktarıldı. Montaj ve fiş paylarını kontrol edip hesaplayın.");
    }catch(IllegalArgumentException ex){toast(ex.getMessage());}
@@ -647,8 +661,8 @@ final class TemaWorkshop {
  private String drawSpans(java.util.TreeSet<Integer> points,int total){
   if(total<=0)throw new IllegalArgumentException("Profil payları dış ölçüyü aşıyor.");
   StringBuilder result=new StringBuilder();int previous=0;
-  java.util.ArrayList<Integer> ends=new java.util.ArrayList<>(points);ends.add(1000);
-  for(int end:ends){int next=Math.round(total*end/1000f);if(next<=previous)throw new IllegalArgumentException("Bölme çok dar.");if(result.length()>0)result.append(";");result.append(mm(next-previous));previous=next;}
+  java.util.ArrayList<Integer> ends=new java.util.ArrayList<>(points);ends.add(1000000);
+  for(int end:ends){int next=(int)Math.round((double)total*end/1000000.0);if(next<=previous)throw new IllegalArgumentException("Bölme çok dar.");if(result.length()>0)result.append(";");result.append(mm(next-previous));previous=next;}
   return result.toString();
  }
 
@@ -1005,15 +1019,16 @@ final class TemaWorkshop {
     if (hasSashes) order.sashGlass = mm("sashGlass", "Kanat camı payı");
    }
    if(regional){
+    int coordinateScale="1000000".equals(value("regionalScale"))?1000000:1000;
     int iw=order.width-2*order.frameFace,ih=order.height-2*order.frameFace;
     java.util.ArrayList<int[]> lines=new java.util.ArrayList<>();
     for(String entry:value("regionalRecords").split(";")){if(entry.isEmpty())continue;String[] p=entry.split(",");int[] q=new int[5];for(int i=0;i<5;i++)q[i]=Integer.parseInt(p[i]);lines.add(q);}
     order.localRecords=new ArrayList<>();order.localBays=new ArrayList<>();
     for(int[] q:lines){
      boolean v=q[0]==q[2];int start=v?q[1]:q[0],end=v?q[3]:q[2],axis=v?ih:iw;
-     int len=Math.round(axis*end/1000f)-Math.round(axis*start/1000f);
+     int len=(int)Math.round((double)axis*end/coordinateScale)-(int)Math.round((double)axis*start/coordinateScale);
      len+=start==0?order.frameJoint:order.mullionJoint-order.mullionFace/2;
-     len+=end==1000?order.frameJoint:order.mullionJoint-order.mullionFace/2;
+     len+=end==coordinateScale?order.frameJoint:order.mullionJoint-order.mullionFace/2;
      order.localRecords.add(new TemaJoinery.LocalRecord(v,len,series.mullions[q[4]].code));
     }
     int n=0;
@@ -1024,17 +1039,17 @@ final class TemaWorkshop {
       int face=workingFace(series.mullions[q[4]]);
       if(q[0]==q[2] && q[1]<=t && q[3]>=b){
        if(q[0]==l && l!=0)lf=Math.max(lf,face);
-       if(q[0]==r && r!=1000)rf=Math.max(rf,face);
+       if(q[0]==r && r!=coordinateScale)rf=Math.max(rf,face);
       }
       if(q[1]==q[3] && q[0]<=l && q[2]>=r){
        if(q[1]==t && t!=0)tf=Math.max(tf,face);
-       if(q[1]==b && b!=1000)bf=Math.max(bf,face);
+       if(q[1]==b && b!=coordinateScale)bf=Math.max(bf,face);
       }
      }
-     int w=Math.round(iw*r/1000f)-Math.round(iw*l/1000f)-(lf-lf/2)-rf/2;
-     int h=Math.round(ih*b/1000f)-Math.round(ih*t/1000f)-(tf-tf/2)-bf/2;
+     int w=(int)Math.round((double)iw*r/coordinateScale)-(int)Math.round((double)iw*l/coordinateScale)-(lf-lf/2)-rf/2;
+     int h=(int)Math.round((double)ih*b/coordinateScale)-(int)Math.round((double)ih*t/coordinateScale)-(tf-tf/2)-bf/2;
      if(w<=0||h<=0)throw new IllegalArgumentException(n+". bölmenin net kasa açıklığı geçersiz.");
-     order.localBays.add(new TemaJoinery.LocalBay(w,h,chosenSashes.contains(n),order.emptyCells.contains(n),l==0?order.frameGlass:order.mullionGlass,r==1000?order.frameGlass:order.mullionGlass,t==0?order.frameGlass:order.mullionGlass,b==1000?order.frameGlass:order.mullionGlass));
+     order.localBays.add(new TemaJoinery.LocalBay(w,h,chosenSashes.contains(n),order.emptyCells.contains(n),l==0?order.frameGlass:order.mullionGlass,r==coordinateScale?order.frameGlass:order.mullionGlass,t==0?order.frameGlass:order.mullionGlass,b==coordinateScale?order.frameGlass:order.mullionGlass));
     }
    }
    TemaJoinery.Plan plan = TemaJoinery.calculate(order);
