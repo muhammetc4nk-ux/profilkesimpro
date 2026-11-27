@@ -597,7 +597,23 @@ final class TemaWorkshop {
    }catch(IllegalArgumentException ex){toast(ex.getMessage());}}).show();
   });
   Button clear=new Button(app);clear.setText("Çizimi temizle");panel.addView(clear);clear.setOnClickListener(v->{checkpoint.run();frameAdded[0]=false;localLines.clear();lineProfiles.clear();xs.clear();ys.clear();openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();});
-  AlertDialog dialog=new AlertDialog.Builder(app).setTitle("Kendin çiz · "+series.label).setView(scroll).setNegativeButton("Kaydet ve çık",null).setPositiveButton("Kesim hesapla",null).create();
+  // Full-screen CAD workspace: scrollable compact tools on the left, fixed canvas on the right.
+  panel.removeView(board);
+  for(Button b:toolButtons){((android.view.ViewGroup)b.getParent()).removeView(b);}
+  for(int i=panel.getChildCount()-1;i>=0;i--){android.view.View child=panel.getChildAt(i);if(child instanceof LinearLayout&&((LinearLayout)child).getChildCount()==0)panel.removeViewAt(i);}
+  for(int i=toolButtons.length-1;i>=0;i--)panel.addView(toolButtons[i],0,new LinearLayout.LayoutParams(-1,app.dp(38)));
+  panel.setPadding(app.dp(3),app.dp(3),app.dp(3),app.dp(3));
+  for(int i=0;i<panel.getChildCount();i++){
+   android.view.View child=panel.getChildAt(i);
+   if(child instanceof Button){Button b=(Button)child;b.setAllCaps(false);b.setTextSize(11);b.setMinHeight(0);b.setMinimumHeight(0);b.setPadding(app.dp(3),0,app.dp(3),0);b.setGravity(android.view.Gravity.CENTER_VERTICAL|android.view.Gravity.START);b.setLayoutParams(new LinearLayout.LayoutParams(-1,-2));}
+   else if(child instanceof EditText){((EditText)child).setTextSize(12);}
+   else if(child instanceof android.widget.TextView){((android.widget.TextView)child).setTextSize(11);}
+  }
+  LinearLayout workspace=new LinearLayout(app);workspace.setOrientation(LinearLayout.HORIZONTAL);
+  scroll.setFillViewport(true);workspace.addView(scroll,new LinearLayout.LayoutParams(app.dp(112),-1));
+  LinearLayout canvasPane=new LinearLayout(app);canvasPane.setOrientation(LinearLayout.VERTICAL);workspace.addView(canvasPane,new LinearLayout.LayoutParams(0,-1,1));
+  canvasPane.addView(board,new LinearLayout.LayoutParams(-1,0,1));
+  AlertDialog dialog=new AlertDialog.Builder(app).setTitle("Kendin çiz · "+series.label).setView(workspace).setNegativeButton("Kaydet ve çık",null).setPositiveButton("Kesim hesapla",null).create();
   dialog.setOnDismissListener(v->{persistDrawing.run();Bundle history=new Bundle();saveState(history);history.putBoolean("temaEditing",true);app.saveHistory(series.label,history);});
   dialog.setOnShowListener(v->dialog.getButton(-1).setOnClickListener(w->{
    try{
@@ -623,6 +639,7 @@ final class TemaWorkshop {
     toast("Çizim aktarıldı. Montaj ve fiş paylarını kontrol edip hesaplayın.");
    }catch(IllegalArgumentException ex){toast(ex.getMessage());}
   }));dialog.show();
+  if(dialog.getWindow()!=null)dialog.getWindow().setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT,android.view.ViewGroup.LayoutParams.MATCH_PARENT);
  }
 
  private String cellList(java.util.Set<Integer> cells){StringBuilder b=new StringBuilder();for(int n:cells){if(b.length()>0)b.append(";");b.append(n);}return b.toString();}
