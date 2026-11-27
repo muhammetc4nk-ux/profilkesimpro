@@ -112,6 +112,7 @@ final class TemaWorkshop {
   fixedBeadProfile = profile(profiles, 3, "Sabit cam çıtası", series.beads);
   sashBeadProfile = profile(profiles, 4, "Kanat cam çıtası", series.beads);
   chooseButton(profiles, "Tema katalog PDF’ini aç", () -> openUrl(series.url));
+  chooseButton(profiles, "Ölçülendirme ve fiş payları", this::dimensionDialog);
 
   LinearLayout material = section("Hesapla");
   app.planLabel(material, "Gönye boyları uzun uçtan ölçülür.", 13, 0xffc9dbe3);
@@ -263,7 +264,7 @@ final class TemaWorkshop {
   photoBayCount.setVisibility(expectedFixed < 0 ? View.GONE : View.VISIBLE);
   bayButton.setEnabled(cells > 0);
   recordProfile.setVisibility(cells > 1 ? View.VISIBLE : View.GONE);
-  sashProfile.setVisibility(open > 0 ? View.VISIBLE : View.GONE);
+  sashProfile.setVisibility(View.VISIBLE);
   sashBeadProfile.setVisibility(open > 0 ? View.VISIBLE : View.GONE);
   fixedBeadProfile.setVisibility(cells > open ? View.VISIBLE : View.GONE);
  }
@@ -301,6 +302,33 @@ final class TemaWorkshop {
    }
   }));
   dialog.show();
+ }
+
+ private void dimensionDialog() {
+  ScrollView scroll = new ScrollView(app);
+  LinearLayout panel = new LinearLayout(app);
+  panel.setOrientation(LinearLayout.VERTICAL);
+  panel.setPadding(app.dp(16), app.dp(8), app.dp(16), app.dp(8));
+  scroll.addView(panel);
+  String[] keys = {"width","height","face0","face1","face2","columns","rows","joint","sashGap","beadEdge"};
+  String[] labels = {"Dış en (mm)","Dış yükseklik (mm)","Kasa düşüm yüzü (mm)","Kayıt yüzü (mm)","Kanat yüzü (mm)","Net yatay açıklıklar (; ile ayır)","Net dikey açıklıklar (; ile ayır)","Fiş / kayıt bağlantı farkı (mm/uç, eksi düşer)","Kanat boşluğu (mm/kenar)","Çıta oturma farkı (mm/kenar)"};
+  EditText[] edits = new EditText[keys.length];
+  for (int i = 0; i < keys.length; i++) {
+   TextView label = new TextView(app);
+   label.setText(labels[i]);
+   panel.addView(label);
+   EditText edit = new EditText(app);
+   edit.setSingleLine(true);
+   edit.setInputType(i == 5 || i == 6 ? InputType.TYPE_CLASS_TEXT : SIGNED);
+   edit.setText(fields.get(keys[i]).getText().toString());
+   panel.addView(edit);
+   edits[i] = edit;
+  }
+  new AlertDialog.Builder(app).setTitle("İmalat ölçülendirme").setView(scroll)
+   .setNegativeButton("Vazgeç", null).setPositiveButton("Ölçüleri uygula", (dialog, which) -> {
+    for (int i = 0; i < keys.length; i++) fields.get(keys[i]).setText(edits[i].getText().toString());
+    invalidate();
+   }).show();
  }
 
  private void chooseBays() {
