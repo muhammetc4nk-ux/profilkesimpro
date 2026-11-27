@@ -132,10 +132,10 @@ final class TemaDiagramView extends View {
   }
   paint.setColor(0xff101a29);
   canvas.drawRect(left, top, right, bottom, paint);
-  float glassGap = TemaJoinery.GLASS_VERTICAL_GAP * scale;
+  float glassGap = TemaJoinery.GLASS_DEDUCTION * scale / 2;
   paint.setColor(0xffffffff);
   paint.setShader(sash ? openingGlass : fixedGlass);
-  canvas.drawRect(left, top + glassGap, right, bottom - glassGap, paint);
+  canvas.drawRect(left + glassGap, top + glassGap, right - glassGap, bottom - glassGap, paint);
   paint.setShader(null);
   if (sash) {
    paint.setColor(0xffb8a3e7);
@@ -158,7 +158,7 @@ final class TemaDiagramView extends View {
   drawChip(canvas, title, center, middle - 8 * density, width, color, 11);
   drawChip(canvas, glass, center, middle + 8 * density, width, color, 11);
   if (rows >= 4) {
-   String inside = "İç " + size(pane.width, pane.height + 2 * TemaJoinery.GLASS_VERTICAL_GAP);
+   String inside = "İç " + size(pane.insideWidth, pane.insideHeight);
    drawChip(canvas, inside, center, middle - 24 * density, width, color, 10);
    if (pane.beadCode != null) drawChip(canvas, "Çıta " + pane.beadCode, center, middle + 24 * density, width, color, 10);
   }

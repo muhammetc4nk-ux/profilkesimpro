@@ -92,7 +92,7 @@ final class TemaLayout {
  final Frame frame;
  final List<Opening> bays = new ArrayList<>();
  final List<Span> rails;
- private final List<Record> records;
+ final List<Record> records;
 
  TemaLayout(int width, int height, Frame frame, int scale, List<int[]> cells, List<Record> records,
             Set<Integer> floorDoors) {
@@ -100,7 +100,7 @@ final class TemaLayout {
   this.height = height;
   this.frame = frame;
   this.scale = scale;
-  this.records = new ArrayList<>(records);
+  this.records = Collections.unmodifiableList(new ArrayList<>(records));
   if (scale <= 0 || cells.isEmpty()) throw new IllegalArgumentException("Çizimde en az bir bölme olmalı.");
   for (Record record : records) {
    if (record.axis <= 0 || record.axis >= scale || record.start < 0 || record.end > scale) {

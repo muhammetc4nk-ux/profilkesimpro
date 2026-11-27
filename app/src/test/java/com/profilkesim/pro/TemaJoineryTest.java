@@ -27,9 +27,9 @@ public final class TemaJoineryTest {
   assertEquals(90, plan.cuts.get(2).angle);
   assertEquals(12, plan.mullionEnds);
   assertEquals(4, plan.panes.size());
-  assertEquals(9265, plan.panes.get(0).width);
-  assertEquals(6565, plan.panes.get(0).height);
-  assertEquals(0, plan.glassArea.compareTo(ShopDimensions.area(9265, 6565, 8)));
+  assertEquals(9165, plan.panes.get(0).width);
+  assertEquals(6665, plan.panes.get(0).height);
+  assertEquals(0, plan.glassArea.compareTo(ShopDimensions.area(9165, 6665, 8)));
  }
 
  @Test public void aldoksStraightFrameAndSashUseDifferentCutReferences() {
@@ -43,8 +43,8 @@ public final class TemaJoineryTest {
   assertEquals(90, plan.cuts.get(1).angle);
   assertEquals(11096, plan.cuts.get(2).length);
   assertEquals(45, plan.cuts.get(2).angle);
-  assertEquals(9916, plan.panes.get(0).width);
-  assertEquals(7716, plan.panes.get(0).height);
+  assertEquals(9816, plan.panes.get(0).width);
+  assertEquals(7816, plan.panes.get(0).height);
  }
 
  @Test public void customOpeningsAndHorizontalPriorityUseCorrectSpans() {
@@ -60,7 +60,7 @@ public final class TemaJoineryTest {
   assertEquals(6000, plan.cuts.get(3).length);
   assertEquals(6600, plan.cuts.get(4).length);
   assertEquals(6, plan.mullionEnds);
-  assertEquals(8600, plan.panes.get(3).width);
+  assertEquals(8500, plan.panes.get(3).width);
   order.columnOpenings = Arrays.asList(8000, 8700);
   assertThrows(IllegalArgumentException.class, () -> TemaJoinery.calculate(order));
  }
@@ -124,10 +124,10 @@ public final class TemaJoineryTest {
   assertCut(plan, "T.3111", "Kanat cam çıtası yatay", 7855, 90, 4);
   assertCut(plan, "T.3111", "Kanat cam çıtası dikey", 12270, 90, 4);
   assertEquals(4, plan.mullionEnds);
-  assertEquals(9265, plan.panes.get(0).width);
-  assertEquals(13820, plan.panes.get(0).height);
-  assertEquals(7845, plan.panes.get(1).width);
-  assertEquals(12400, plan.panes.get(1).height);
+  assertEquals(9165, plan.panes.get(0).width);
+  assertEquals(13920, plan.panes.get(0).height);
+  assertEquals(7745, plan.panes.get(1).width);
+  assertEquals(12500, plan.panes.get(1).height);
  }
 
  @Test public void readsLabelledDrawingPairsAndRecordCountsWithoutInferringLayout() {
@@ -161,8 +161,8 @@ public final class TemaJoineryTest {
   assertEquals(13964,plan.layout.bays.get(0).width());
   assertEquals(13962,plan.layout.bays.get(2).width());
   assertEquals(13315,plan.layout.bays.get(2).height());
-  assertEquals(11662,plan.panes.get(2).width);
-  assertEquals(10815,plan.panes.get(2).height);
+  assertEquals(11562,plan.panes.get(2).width);
+  assertEquals(10915,plan.panes.get(2).height);
   TemaJoinery.ProfileMark sill = plan.profileMarks.get(1);
   assertEquals("T.3001", sill.code);
   assertEquals(14366, sill.length);
@@ -230,13 +230,37 @@ public final class TemaJoineryTest {
   assertCut(plan,"T.3107","Kanat adaptörü dikey",21510,45,90,2);
  }
 
- @Test public void glassNeedsPositiveHeightAfterBothTenMillimeterClearances() {
-  TemaJoinery.Order order = order(6000, 1200, 500);
+ @Test public void glassNeedsPositiveDimensionsAfterTenMillimeterDeduction() {
+  TemaJoinery.Order order = order(6000, 1100, 500);
   assertThrows(IllegalArgumentException.class, () -> TemaJoinery.calculate(order));
-  order.height = 1201;
+  order.height = 1101;
   TemaJoinery.Plan plan = TemaJoinery.calculate(order);
-  assertEquals(5000, plan.panes.get(0).width);
+  assertEquals(4900, plan.panes.get(0).width);
   assertEquals(1, plan.panes.get(0).height);
+  order.width = 1100;
+  assertThrows(IllegalArgumentException.class, () -> TemaJoinery.calculate(order));
+ }
+
+ @Test public void changingTheGridKeepsWholeBayAssignmentsAndTheirProfileOverrides() {
+  int[] fixed = {0, 0, 500, 1000};
+  int[] door = {500, 0, 1000, 1000};
+  List<int[]> before = Arrays.asList(fixed, door);
+  List<int[]> after = Arrays.asList(new int[]{0, 0, 500, 500}, new int[]{0, 500, 500, 1000}, door.clone());
+  java.util.Set<Integer> openings = new java.util.LinkedHashSet<>(Collections.singletonList(2));
+  java.util.Set<Integer> left = new java.util.LinkedHashSet<>(openings);
+  java.util.Set<Integer> empty = new java.util.LinkedHashSet<>(Collections.singletonList(1));
+  java.util.Map<String, Integer> profiles = new java.util.LinkedHashMap<>();
+  profiles.put("v500", 1);
+  profiles.put("s2", 3);
+
+  TemaWorkshop.retainBays(before, after, openings, left, empty, profiles);
+
+  assertEquals(Collections.singleton(3), openings);
+  assertEquals(Collections.singleton(3), left);
+  assertTrue(empty.isEmpty());
+  assertEquals(Integer.valueOf(1), profiles.get("v500"));
+  assertEquals(Integer.valueOf(3), profiles.get("s3"));
+  assertFalse(profiles.containsKey("s2"));
  }
 
  private static void assertCut(TemaJoinery.Plan plan, String code, String role, int length, int angle, int count) {

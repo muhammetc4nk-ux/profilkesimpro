@@ -28,17 +28,38 @@ public class MainActivity extends Activity {
  private boolean rgbRunning;
  private TemaWorkshop temaWorkshop;
  private final Map<TemaCatalog.Series, TemaWorkshop> temaWorkshops = new java.util.EnumMap<>(TemaCatalog.Series.class);
- Uri cameraUri;
- final Map<Integer, List<CutRow>> detected = new LinkedHashMap<>();
- final Map<String, String> stockDrafts = new HashMap<>();
- String[] extraDraft = {"", "", "", String.valueOf(DEFAULT_PROFILE_STOCK), String.valueOf(DEFAULT_KERF)};
- int photoNumber;
- boolean photoBatchRunning;
+ private final PhotoReview generalReview = new PhotoReview("Fotoğraflardan kesim listesi", null, null);
+ private final PhotoReview albertReview = new PhotoReview("Albert Genau İmalat Kesim Listesi", null, null);
+ private PhotoReview photoReview = generalReview;
+ private boolean photoBatchRunning;
  private LinearLayout scanPanel;
- Runnable savePhotoReview;
- final Map<Integer, String> failedPhotos = new LinkedHashMap<>();
- final Map<Integer, Uri> photoSources = new LinkedHashMap<>();
- final Map<Integer, CutPhotoReader.Result> scans = new LinkedHashMap<>();
+ private Runnable savePhotoReview;
+ Runnable pageBack;
+
+ private static final class PhotoReview {
+  final String title;
+  final PhotoResult<Map<Integer, List<CutRow>>> accept;
+  final Runnable back;
+  final Map<Integer, List<CutRow>> detected = new LinkedHashMap<>();
+  final Map<String, String> stockDrafts = new HashMap<>();
+  final Map<Integer, String> failedPhotos = new LinkedHashMap<>(), sourceNames = new LinkedHashMap<>();
+  final Map<Integer, Uri> photoSources = new LinkedHashMap<>();
+  final Map<Integer, CutPhotoReader.Result> scans = new LinkedHashMap<>();
+  String[] extraDraft = {"", "", "", String.valueOf(DEFAULT_PROFILE_STOCK), String.valueOf(DEFAULT_KERF)};
+  Uri cameraUri;
+  int photoNumber;
+
+  PhotoReview(String title, PhotoResult<Map<Integer, List<CutRow>>> accept, Runnable back) {
+   this.title = title;
+   this.accept = accept;
+   this.back = back;
+  }
+
+  String sourceName(int number) {
+   String name = sourceNames.get(number);
+   return name == null ? "Fotoğraf " + number : name;
+  }
+ }
  static class CutRow {
   String code, name;
   final int length, qty;
@@ -223,6 +244,7 @@ public class MainActivity extends Activity {
 
  void page(String title, boolean home) {
   savePhotoReview = null;
+  pageBack = null;
   scanPanel = null;
   musicButton = null;
   if (shell == null) {
@@ -485,7 +507,8 @@ public class MainActivity extends Activity {
    return;
   }
   if (savePhotoReview != null) savePhotoReview.run();
-  home();
+  if (pageBack != null) pageBack.run();
+  else home();
  }
  private String historyId;
  private android.os.Bundle historyRestore;
@@ -525,35 +548,67 @@ public class MainActivity extends Activity {
   homeButton("İşlem geçmişi", android.R.drawable.ic_menu_recent_history, () -> history());
   temaMenu(TemaCatalog.Series.ALDOKS);
   temaMenu(TemaCatalog.Series.C60);
-  homeButton("Fotoğraftan kesim listesi oku", android.R.drawable.ic_menu_camera, () -> photo());
+  homeButton("Fotoğraftan kesim listesi oku", android.R.drawable.ic_menu_camera, () -> openPhotoReview(generalReview));
   homeButton("Profil kesim optimizasyonu", android.R.drawable.ic_menu_sort_by_size, () -> opt());
   homeButton("Cam m² hesaplama", android.R.drawable.ic_menu_crop, () -> glass());
-  homeButton("Kanat eşit bölme hesabı", android.R.drawable.ic_menu_agenda, () -> panels());
+  homeButton("Albert Genau İmalat Kesim Listesi", android.R.drawable.ic_menu_agenda, () -> openPhotoReview(albertReview));
  }
 
  private void temaMenu(TemaCatalog.Series series) {
-  homeButton("Tema " + series.label + " imalat hesabı", android.R.drawable.ic_menu_manage, series.accent, () -> {
+  homeButton("Tema " + series.label + " imalat", android.R.drawable.ic_menu_manage, series.accent, () -> {
    temaWorkshop = temaWorkshops.get(series);
    temaWorkshop.open();
   });
  }
- void photo() {
-  if (photoNumber > 0) {
+ private void openPhotoReview(PhotoReview review) {
+  photoReview = review;
+  photo();
+ }
+
+ void openTemaCutReview(String series, PhotoResult<Map<Integer, List<CutRow>>> accept, Runnable back) {
+  openPhotoReview(new PhotoReview("Tema " + series + " · Kesim listesi tara", accept, back));
+ }
+
+ private void photo() {
+  if (photoReview.photoNumber > 0) {
    showDetected();
    return;
   }
-  page("Fotoğraflardan kesim listesi");
-  note("Kesim föyü veya el yazılı liste ekleyin. Aynı profiller tek kesim planında birleşir.");
+  page(photoReview.title);
+  pageBack = photoReview.back == null ? null : this::closeTemaCutReview;
+  note("Kesim föyü, el yazılı liste veya PDF ekleyin. Her kaynağın ölçülerini ve adetlerini kontrol edin.");
   addPhotoButtons(() -> {});
-  button("Elle satır ekle", () -> showDetected());
-  button("Ana menü", () -> home());
+  if (photoReview.accept == null) button("Elle satır ekle", this::showDetected);
+  addPhotoBackButton();
+ }
+
+ private void closeTemaCutReview() {
+  Runnable back = photoReview.back;
+  releaseTemaCutReview();
+  if (back != null) back.run();
+ }
+
+ private void releaseTemaCutReview() {
+  if (photoReview.back == null) return;
+  for (Uri source : photoReview.photoSources.values()) CutDocumentPages.deleteRendered(this, source);
+  photoReview = generalReview;
+ }
+
+ private void addPhotoBackButton() {
+  Runnable back = photoReview.back;
+  button(back == null ? "Ana menü" : "Pozlara dön", () -> {
+   if (savePhotoReview != null) savePhotoReview.run();
+   if (back != null) closeTemaCutReview();
+   else home();
+  });
  }
 
  void addPhotoButtons(Runnable saveDraft) {
-  button("Galeriden fotoğraf ekle", () -> {
+  button("Fotoğraf veya PDF ekle", () -> {
    saveDraft.run();
    Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-   picker.setType("image/*");
+   picker.setType("*/*");
+   picker.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/*", "application/pdf"});
    picker.addCategory(Intent.CATEGORY_OPENABLE);
    picker.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
    picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
@@ -562,8 +617,8 @@ public class MainActivity extends Activity {
   button("Kameradan fotoğraf ekle", () -> {
    saveDraft.run();
    try {
-    cameraUri = cameraFile();
-    capturePhoto(cameraUri, TAKE_PHOTO);
+    photoReview.cameraUri = cameraFile();
+    capturePhoto(photoReview.cameraUri, TAKE_PHOTO);
    } catch (Exception e) {
     Toast.makeText(this, "Kamera açılamadı: " + e.getMessage(), Toast.LENGTH_LONG).show();
    }
@@ -590,8 +645,8 @@ public class MainActivity extends Activity {
   if (temaWorkshop != null && temaWorkshop.handlePhotoResult(request, result, data)) return;
   if (result != RESULT_OK || photoBatchRunning) return;
   LinkedHashSet<Uri> selected = new LinkedHashSet<>();
-  if (request == TAKE_PHOTO && cameraUri != null) {
-   selected.add(cameraUri);
+  if (request == TAKE_PHOTO && photoReview.cameraUri != null) {
+   selected.add(photoReview.cameraUri);
   } else if (request == PICK_IMAGE && data != null) {
    android.content.ClipData clips = data.getClipData();
    if (clips != null) {
@@ -608,30 +663,54 @@ public class MainActivity extends Activity {
    catch (SecurityException ignored) { }
   }
   photoBatchRunning = true;
-  TextView progress = scanningPage("");
-  readPhotoBatch(new ArrayList<>(selected), 0, progress,
-   TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS));
+  TextView progress = scanningPage("Dosyalar hazırlanıyor…");
+  PhotoReview review = photoReview;
+  new Thread(() -> {
+   List<CutDocumentPages.Page> pages = new ArrayList<>();
+   int invalid = 0;
+   for (Uri uri : selected) {
+    try {
+     pages.addAll(CutDocumentPages.read(this, uri));
+    } catch (java.io.IOException | RuntimeException error) {
+     invalid++;
+    }
+   }
+   int unreadable = invalid;
+   runOnUiThread(() -> {
+    if (isDestroyed() || isFinishing()) {
+     for (CutDocumentPages.Page page : pages) CutDocumentPages.deleteRendered(this, page.uri);
+     return;
+    }
+    for (int i = 0; i < unreadable; i++) {
+     int number = ++review.photoNumber;
+     review.sourceNames.put(number, "Dosya " + number);
+     review.failedPhotos.put(number, "Dosya açılamadı. Görüntüyü veya PDF dosyasını yeniden ekleyin.");
+    }
+    readPhotoBatch(pages, 0, progress, TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS));
+   });
+  }, "cut-document-pages").start();
  }
 
- void readPhotoBatch(List<Uri> photos, int index, TextView progress,
-                     com.google.mlkit.vision.text.TextRecognizer recognizer) {
+ private void readPhotoBatch(List<CutDocumentPages.Page> pages, int index, TextView progress,
+                             com.google.mlkit.vision.text.TextRecognizer recognizer) {
   if (isDestroyed() || isFinishing()) {
    recognizer.close();
    return;
   }
-  if (index == photos.size()) {
+  if (index == pages.size()) {
    recognizer.close();
    photoBatchRunning = false;
    showDetected();
    return;
   }
-  int number = ++photoNumber;
-  progress.setText("Fotoğraf " + (index + 1) + " / " + photos.size() + " okunuyor…");
-  Runnable next = () -> readPhotoBatch(photos, index + 1, progress, recognizer);
-  Uri source = photos.get(index);
-  photoSources.put(number, source);
-  readPhoto(source, number, null, recognizer, reason -> {
-   failedPhotos.put(number, reason);
+  CutDocumentPages.Page page = pages.get(index);
+  int number = ++photoReview.photoNumber;
+  if (page.label != null) photoReview.sourceNames.put(number, page.label);
+  progress.setText(photoReview.sourceName(number) + " · " + (index + 1) + " / " + pages.size());
+  Runnable next = () -> readPhotoBatch(pages, index + 1, progress, recognizer);
+  photoReview.photoSources.put(number, page.uri);
+  readPhoto(page.uri, number, null, recognizer, reason -> {
+   photoReview.failedPhotos.put(number, reason);
    next.run();
   }, result -> {
    acceptScan(number, result);
@@ -721,12 +800,12 @@ public class MainActivity extends Activity {
  }
 
  private void acceptScan(int number, CutPhotoReader.Result result) {
-  scans.put(number, result);
+  photoReview.scans.put(number, result);
   if (result.rows.isEmpty()) {
-   failedPhotos.put(number, "Kesim satırı bulunamadı. Liste alanını seçip yeniden tarayabilirsiniz.");
+   photoReview.failedPhotos.put(number, "Kesim satırı bulunamadı. Liste alanını seçip yeniden tarayabilirsiniz.");
   } else {
-   detected.put(number, result.rows);
-   failedPhotos.remove(number);
+   photoReview.detected.put(number, result.rows);
+   photoReview.failedPhotos.remove(number);
   }
  }
 
@@ -746,7 +825,7 @@ public class MainActivity extends Activity {
  }
 
  private void retryPhoto(int number, CutPhotoReader.Selection selection) {
-  Uri source = photoSources.get(number);
+  Uri source = photoReview.photoSources.get(number);
   if (source == null || photoBatchRunning) return;
   savePhotoReview.run();
   photoBatchRunning = true;
@@ -755,13 +834,13 @@ public class MainActivity extends Activity {
   readPhoto(source, number, selection, recognizer, reason -> {
    recognizer.close();
    photoBatchRunning = false;
-   if (!detected.containsKey(number)) failedPhotos.put(number, reason);
+   if (!photoReview.detected.containsKey(number)) photoReview.failedPhotos.put(number, reason);
    Toast.makeText(this, reason, Toast.LENGTH_LONG).show();
    showDetected();
   }, result -> {
    recognizer.close();
    photoBatchRunning = false;
-   if (result.rows.isEmpty() && detected.containsKey(number)) {
+   if (result.rows.isEmpty() && photoReview.detected.containsKey(number)) {
     Toast.makeText(this, "Seçilen alanda tablo bulunamadı. Mevcut satırlar saklandı.", Toast.LENGTH_LONG).show();
    } else acceptScan(number, result);
    showDetected();
@@ -807,33 +886,35 @@ public class MainActivity extends Activity {
 
  private void showPhotoSource(int number, String status) {
   LinearLayout card = planCard(body, 0xff13283a, 0xff20414d, 0xff55ddd5);
-  planLabel(card, "Fotoğraf " + number, 19, Color.WHITE).setTypeface(null, Typeface.BOLD);
+  planLabel(card, photoReview.sourceName(number), 19, Color.WHITE).setTypeface(null, Typeface.BOLD);
   if (status != null) planLabel(card, status, 14, 0xffffcc8b);
-  CutPhotoReader.Result scan = scans.get(number);
+  CutPhotoReader.Result scan = photoReview.scans.get(number);
   if (scan != null && scan.preview != null) {
    card.addView(new PhotoScanView(this, scan.preview, scan.highlights, false), new LinearLayout.LayoutParams(-1, dp(167)));
    photoSelectionButton(card, "Liste alanını seç ve yeniden tara", () -> selectCutArea(number, scan.original, DrawingMeasureView.Mode.AREA));
    if (status != null) photoSelectionButton(card, "Profil, ölçü ve adet sütunlarını seç", () ->
     selectCutArea(number, scan.original, DrawingMeasureView.Mode.COLUMNS));
   }
-  if (status != null) {
-   Button remove = new Button(this);
-   remove.setAllCaps(false);
-   remove.setText("Fotoğrafı plandan çıkar");
-   remove.setTextColor(0xffffddae);
-   remove.setBackground(rgbPanel(0xff1b273b, 0xff413447, 0xffe4a26d));
-   remove.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
-    .setMessage("Fotoğraf " + number + " bu kesim planından çıkarılsın mı?")
-    .setNegativeButton("Vazgeç", null).setPositiveButton("Plandan çıkar", (d, w) -> {
-     savePhotoReview.run();
-     failedPhotos.remove(number);
-     photoSources.remove(number);
-     scans.remove(number);
-     showDetected();
-    }).show());
-   card.addView(remove, new LinearLayout.LayoutParams(-1, dp(48)));
-  }
+  Button remove = new Button(this);
+  remove.setAllCaps(false);
+  remove.setText("Kaynağı plandan çıkar");
+  remove.setTextColor(0xffffddae);
+  remove.setBackground(rgbPanel(0xff1b273b, 0xff413447, 0xffe4a26d));
+  remove.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
+   .setMessage(photoReview.sourceName(number) + " bu kesim planından çıkarılsın mı?")
+   .setNegativeButton("Vazgeç", null).setPositiveButton("Plandan çıkar", (d, w) -> {
+    savePhotoReview.run();
+    photoReview.detected.remove(number);
+    photoReview.failedPhotos.remove(number);
+    CutDocumentPages.deleteRendered(this, photoReview.photoSources.remove(number));
+    photoReview.scans.remove(number);
+    photoReview.sourceNames.remove(number);
+    showDetected();
+   }).show());
+  card.addView(remove, new LinearLayout.LayoutParams(-1, dp(48)));
  }
+
+ String cutSourceName(int number) { return photoReview.sourceName(number); }
 
  private void photoSelectionButton(LinearLayout card, String label, Runnable select) {
   Button button = new Button(this);
@@ -921,22 +1002,22 @@ public class MainActivity extends Activity {
  }
 
  void showDetected() {
-  page("Profil kesim föyleri – kontrol");
+  page(photoReview.title + " · Kontrol");
+  pageBack = photoReview.back == null ? null : this::closeTemaCutReview;
   int rowCount = 0;
-  for (List<CutRow> rows : detected.values()) rowCount += rows.size();
-  note(detected.size() + " fotoğraf okundu  ·  " + rowCount + " profil satırı");
-  for (Map.Entry<Integer, String> failed : failedPhotos.entrySet()) showPhotoSource(failed.getKey(), failed.getValue());
+  for (List<CutRow> rows : photoReview.detected.values()) rowCount += rows.size();
+  note(photoReview.detected.size() + " kaynak okundu · " + rowCount + " profil satırı");
+  for (Map.Entry<Integer, String> failed : photoReview.failedPhotos.entrySet()) showPhotoSource(failed.getKey(), failed.getValue());
 
   Map<CutRow, EditText[]> fields = new LinkedHashMap<>();
   Map<String, List<EditText>> stocks = new HashMap<>();
   Map<Integer, CheckBox> confirmations = new LinkedHashMap<>();
-  addPhotoButtons(() -> savePhotoReview.run());
-  EditText saw = input("TESTERE PAYI (mm / parça arası)", extraDraft[4]);
-  saw.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
-  if (detected.isEmpty()) note("Henüz profil okunmadı. Fotoğraf ekleyebilir veya aşağıdan elle satır girebilirsiniz.");
-  else note("Her fotoğrafı kontrol edip onaylayın. Aynı profiller tek kesim planında birleşir.");
+  addPhotoButtons(() -> { if (savePhotoReview != null) savePhotoReview.run(); });
+  boolean tema = photoReview.accept != null;
+  if (!photoReview.detected.isEmpty()) note("Her kaynağın satırlarını kontrol edip onaylayın.");
+  if (tema) note("Onaylanan her kaynak bir poz olur. Stok boyu ve testere payı Tema ekranından alınır.");
 
-  for (Map.Entry<Integer, List<CutRow>> photo : detected.entrySet()) {
+  for (Map.Entry<Integer, List<CutRow>> photo : photoReview.detected.entrySet()) {
    int number = photo.getKey();
    showPhotoSource(number, null);
    CheckBox confirmed = new CheckBox(this);
@@ -951,7 +1032,7 @@ public class MainActivity extends Activity {
     edit.setContentDescription("Profil adını ve kodunu düzelt");
     edit.setOnClickListener(v -> editPhotoProfile(row));
     profileHeader.addView(edit, new LinearLayout.LayoutParams(-2, -2));
-    addProfileStockInput(profile, profileStockKey(row), stocks);
+    if (!tema) addProfileStockInput(profile, profileStockKey(row), stocks);
     String[] values = row.draft != null ? row.draft : new String[]{
      row.length < 0 ? "" : ShopDimensions.mm(row.length), row.qty < 0 ? "" : String.valueOf(row.qty)};
     EditText measure = input(profile, "KESİM ÖLÇÜSÜ (mm)", values[0]);
@@ -972,66 +1053,76 @@ public class MainActivity extends Activity {
     quantity.addTextChangedListener(invalidateConfirmation);
     fields.put(row, new EditText[]{measure, quantity});
    }
-   confirmed.setText("Fotoğraf " + number + " için kesim ölçülerini ve adetleri kontrol ettim.");
+   confirmed.setText(photoReview.sourceName(number) + " için ölçüleri ve adetleri kontrol ettim.");
    confirmed.setTextColor(0xffeffaff);
    confirmed.setButtonTintList(android.content.res.ColorStateList.valueOf(0xff5af4ca));
    addTextPanel(confirmed, 0xff15283b, 0xff244d5a, 0xff51cfc0);
    confirmations.put(number, confirmed);
   }
 
-  if (!detected.isEmpty()) button("Tüm fotoğrafları birlikte optimize et", () -> {
-   if (!failedPhotos.isEmpty()) {
-    Toast.makeText(this, "Önce okunamayan fotoğrafın tablo alanını tarayın veya fotoğrafı plandan çıkarın.", Toast.LENGTH_LONG).show();
+  if (!photoReview.detected.isEmpty()) button(tema ? "Onayla ve pozlara ekle" : "Tüm kaynakları birlikte optimize et", () -> {
+   if (!photoReview.failedPhotos.isEmpty()) {
+    Toast.makeText(this, "Okunamayan listeyi yeniden tarayın veya kaynağı plandan çıkarın.", Toast.LENGTH_LONG).show();
     return;
    }
    for (Map.Entry<Integer, CheckBox> entry : confirmations.entrySet()) {
     if (!entry.getValue().isChecked()) {
-     Toast.makeText(this, "Önce Fotoğraf " + entry.getKey() + " için ölçü ve adetleri onaylayın.", Toast.LENGTH_LONG).show();
+     Toast.makeText(this, "Önce " + photoReview.sourceName(entry.getKey()) + " için ölçü ve adetleri onaylayın.", Toast.LENGTH_LONG).show();
      return;
     }
    }
    savePhotoReview.run();
    try {
-    int kerf = readKerf();
-    Collection<ProfileCutPlan> plans = combinePhotoCuts(detected, stockDrafts);
-    showPhotoOptimization(plans, kerf, detected.size() + " fotoğraftan birleşik kesim planı");
+    if (tema) {
+     photoReview.accept.accept(photoReview.detected);
+     releaseTemaCutReview();
+    } else {
+     int kerf = readKerf();
+     Collection<ProfileCutPlan> plans = combinePhotoCuts(photoReview.detected, photoReview.stockDrafts);
+     showPhotoOptimization(plans, kerf, photoReview.detected.size() + " kaynaktan birleşik kesim planı");
+    }
    } catch (IllegalArgumentException e) {
     Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
    }
   });
 
+  if (tema) {
+   savePhotoReview = () -> saveCutReviewFields(fields);
+   addPhotoBackButton();
+   return;
+  }
+  EditText saw = input("TESTERE PAYI (mm / parça arası)", photoReview.extraDraft[4]);
+  saw.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
   note("Elle kesim ekle");
-  EditText extraName = input("Profil kodu / adı", extraDraft[0]);
-  EditText extraMeasure = input("Kesim ölçüsü (mm)", extraDraft[1]);
-  EditText extraQuantity = input("Kesim adedi", extraDraft[2]);
-  EditText extraStock = input("Profil stok boyu (mm)", extraDraft[3]);
+  EditText extraName = input("Profil kodu / adı", photoReview.extraDraft[0]);
+  EditText extraMeasure = input("Kesim ölçüsü (mm)", photoReview.extraDraft[1]);
+  EditText extraQuantity = input("Kesim adedi", photoReview.extraDraft[2]);
+  EditText extraStock = input("Profil stok boyu (mm)", photoReview.extraDraft[3]);
   extraMeasure.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
   extraQuantity.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
   extraStock.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
   EditText[] extraFields = {extraName, extraMeasure, extraQuantity, extraStock, saw};
   savePhotoReview = () -> {
-   for (Map.Entry<CutRow, EditText[]> entry : fields.entrySet()) {
-    entry.getKey().draft = fieldValues(entry.getValue());
-   }
+   saveCutReviewFields(fields);
    for (Map.Entry<String, List<EditText>> entry : stocks.entrySet()) {
     String value = entry.getValue().get(0).getText().toString().trim();
-    stockDrafts.put(entry.getKey(), value);
+    photoReview.stockDrafts.put(entry.getKey(), value);
     try {
      int length = Integer.parseInt(value);
      if (length > 0) getPreferences(MODE_PRIVATE).edit().putInt("stock_" + entry.getKey(), length).apply();
     } catch (NumberFormatException ignored) {}
    }
-   extraDraft = fieldValues(extraFields);
+   photoReview.extraDraft = fieldValues(extraFields);
   };
 
   button("Elle girilen kesim için plan oluştur", () -> {
    savePhotoReview.run();
    try {
-    String name = extraDraft[0].trim();
+    String name = photoReview.extraDraft[0].trim();
     if (name.isEmpty()) throw new IllegalArgumentException("Profilin kodunu veya adını yazın.");
-    int size = ShopDimensions.tenths(extraDraft[1], "Kesim ölçüsü");
-    int quantity = cutNumber(extraDraft[2], "Kesim adedi");
-    int stock = ShopDimensions.tenths(extraDraft[3], "Stok boyu");
+    int size = ShopDimensions.tenths(photoReview.extraDraft[1], "Kesim ölçüsü");
+    int quantity = cutNumber(photoReview.extraDraft[2], "Kesim adedi");
+    int stock = ShopDimensions.tenths(photoReview.extraDraft[3], "Stok boyu");
     int kerf = readKerf();
     if (quantity == 0) throw new IllegalArgumentException("Kesim adedi en az 1 olmalı.");
     validateCut(size, quantity, stock, name);
@@ -1043,28 +1134,33 @@ public class MainActivity extends Activity {
    }
   });
 
-  if (photoNumber > 0) button("Yeni fotoğraf planı başlat", () -> new android.app.AlertDialog.Builder(this)
+  if (photoReview.photoNumber > 0) button("Yeni fotoğraf planı başlat", () -> new android.app.AlertDialog.Builder(this)
    .setMessage("Bu plandaki fotoğraflar ve düzenlenen kesim satırları temizlensin mi? Profil stok boyları saklanır.")
    .setNegativeButton("Vazgeç", null)
    .setPositiveButton("Yeni plan", (dialog, which) -> {
     savePhotoReview.run();
-    detected.clear();
-    stockDrafts.clear();
-    photoNumber = 0;
-    failedPhotos.clear();
-    photoSources.clear();
-    scans.clear();
-    extraDraft = new String[]{"", "", "", String.valueOf(DEFAULT_PROFILE_STOCK), String.valueOf(DEFAULT_KERF)};
+    photoReview.detected.clear();
+    photoReview.stockDrafts.clear();
+    photoReview.photoNumber = 0;
+    photoReview.failedPhotos.clear();
+    for (Uri source : photoReview.photoSources.values()) CutDocumentPages.deleteRendered(this, source);
+    photoReview.photoSources.clear();
+    photoReview.scans.clear();
+    photoReview.sourceNames.clear();
+    photoReview.extraDraft = new String[]{"", "", "", String.valueOf(DEFAULT_PROFILE_STOCK), String.valueOf(DEFAULT_KERF)};
     photo();
    }).show());
-  button("Ana menü", () -> {
-   savePhotoReview.run();
-   home();
-  });
+  addPhotoBackButton();
+ }
+
+ private void saveCutReviewFields(Map<CutRow, EditText[]> fields) {
+  for (Map.Entry<CutRow, EditText[]> entry : fields.entrySet()) {
+   entry.getKey().draft = fieldValues(entry.getValue());
+  }
  }
 
  int readKerf() {
-  int kerf = ShopDimensions.tenths(extraDraft[4], "Testere payı");
+  int kerf = ShopDimensions.tenths(photoReview.extraDraft[4], "Testere payı");
   if (kerf < 0) throw new IllegalArgumentException("Testere payı negatif olamaz.");
   return kerf;
  }
@@ -1102,7 +1198,7 @@ public class MainActivity extends Activity {
 
  void addProfileStockInput(LinearLayout card, String code, Map<String, List<EditText>> stocks) {
   int saved = getPreferences(MODE_PRIVATE).getInt("stock_" + code, DEFAULT_PROFILE_STOCK);
-  String length = stockDrafts.get(code);
+  String length = photoReview.stockDrafts.get(code);
   if (length == null) length = String.valueOf(saved);
   EditText stock = input(card, "PROFİL STOK BOYU (mm)", length);
   stock.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
@@ -1117,7 +1213,7 @@ public class MainActivity extends Activity {
    @Override public void beforeTextChanged(CharSequence text, int start, int count, int after) {}
    @Override public void onTextChanged(CharSequence text, int start, int before, int count) {
     String value = text.toString();
-    if (value.equals(stockDrafts.put(code, value))) return;
+    if (value.equals(photoReview.stockDrafts.put(code, value))) return;
     for (EditText field : matchingFields) {
      if (field != stock && !value.contentEquals(field.getText())) field.setText(value);
     }
@@ -1171,7 +1267,7 @@ public class MainActivity extends Activity {
     allBars++;
    }
   }
-  page("Kesim optimizasyon sonucu");
+  page(photoReview == albertReview ? "Albert Genau · Kesim optimizasyonu" : "Kesim optimizasyon sonucu");
   note(source);
   planSummary(commonLength, kerf, allBars, allPieces, net, remaining, ShopDimensions.PER_MM);
   body.addView(cards);
@@ -1286,6 +1382,11 @@ public class MainActivity extends Activity {
 
  void planBar(LinearLayout parent, int number, List<Integer> cuts, int length, int kerf,
               int remaining, boolean animated, int unitsPerMm) {
+  planBar(parent, number, cuts, length, kerf, remaining, animated, unitsPerMm, null);
+ }
+
+ void planBar(LinearLayout parent, int number, List<Integer> cuts, int length, int kerf,
+              int remaining, boolean animated, int unitsPerMm, List<TemaCutBatch.Piece> positions) {
   LinearLayout card = planCard(parent, 0xff121c33, 0xff203453, 0xff557b9b);
   planLabel(card, "Stok profil " + number + "  ·  " + formatMm(length, unitsPerMm) + " mm", 17, Color.WHITE)
    .setTypeface(null, Typeface.BOLD);
@@ -1294,9 +1395,15 @@ public class MainActivity extends Activity {
   params.setMargins(0, dp(9), 0, dp(9));
   card.addView(bar, params);
   StringBuilder sizes = new StringBuilder();
-  for (int size : cuts) {
-   if (sizes.length() > 0) sizes.append("  ·  ");
-   sizes.append(formatMm(size, unitsPerMm));
+  for (int i = 0; i < cuts.size(); i++) {
+   if (i > 0) sizes.append("  ·  ");
+   sizes.append(formatMm(cuts.get(i), unitsPerMm));
+   if (positions != null) {
+    TemaCutBatch.Piece piece = positions.get(i);
+    sizes.append(" [").append(piece.position);
+    if (!piece.ends.isEmpty()) sizes.append(" / ").append(piece.ends);
+    sizes.append(']');
+   }
   }
   planLabel(card, "Kesilen (mm)  " + sizes, 14, 0xffff8c9d);
   planLabel(card, "Kalan  " + formatMm(remaining, unitsPerMm) + " mm", 15, 0xff6af5c0);
@@ -1441,7 +1548,7 @@ public class MainActivity extends Activity {
      if (common != bar.stock) common = 0;
     }
     saveFields("Optimizasyon",profileName,stock,kerf,cuts);
-    page("Kesim optimizasyon sonucu");
+    page(photoReview == albertReview ? "Albert Genau · Kesim optimizasyonu" : "Kesim optimizasyon sonucu");
     planSummary(common, saw, bars.size(), pieces.size(), net, remaining, ShopDimensions.PER_MM);
     String name = profileName.getText().toString().trim();
     LinearLayout profile = planCard(body, 0xff172b44, 0xff254662, 0xff597d9b);

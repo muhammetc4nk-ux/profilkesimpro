@@ -11,7 +11,7 @@ import java.util.Set;
 /** Rectangular joinery geometry. Dimensions are integer tenths of a millimetre. */
 final class TemaJoinery {
  static final int SASH_GAP = 5 * ShopDimensions.PER_MM;
- static final int GLASS_VERTICAL_GAP = 10 * ShopDimensions.PER_MM;
+ static final int GLASS_DEDUCTION = 10 * ShopDimensions.PER_MM;
 
  enum Corner { MITER, VERTICAL_FULL, HORIZONTAL_FULL }
  enum Continuous { VERTICAL, HORIZONTAL }
@@ -65,14 +65,16 @@ final class TemaJoinery {
  }
 
  static final class Pane {
-  final int number, width, height;
+  final int number, width, height, insideWidth, insideHeight;
   final TemaLayout.Section sash;
   final String beadCode, adapterCode;
 
-  Pane(int number, int width, int height, TemaLayout.Section sash, Bead bead, String adapterCode) {
+  Pane(int number, int insideWidth, int insideHeight, TemaLayout.Section sash, Bead bead, String adapterCode) {
    this.number = number;
-   this.width = width;
-   this.height = height;
+   this.insideWidth = insideWidth;
+   this.insideHeight = insideHeight;
+   this.width = insideWidth - GLASS_DEDUCTION;
+   this.height = insideHeight - GLASS_DEDUCTION;
    this.sash = sash;
    this.beadCode = bead == null ? null : bead.code;
    this.adapterCode = adapterCode;
@@ -188,7 +190,7 @@ final class TemaJoinery {
   return plan;
  }
 
- private static Plan gridPlan(Order o) {
+ static Plan gridPlan(Order o) {
   int columnCount = o.vertical + 1, rowCount = o.horizontal + 1;
   Set<Integer> doors = new LinkedHashSet<>();
   if (o.removeDoorSills) {
@@ -339,13 +341,13 @@ final class TemaJoinery {
    width -= 2 * sash.face;
    height -= 2 * sash.face;
   }
-  int glassHeight = height - 2 * GLASS_VERTICAL_GAP;
-  if (width <= 0 || glassHeight <= 0) {
-   throw new IllegalArgumentException(number + ". bölmede cam için üstte ve altta 10 mm paya yer kalmıyor.");
+  Pane pane = new Pane(number, width, height, sash, bead, opening ? o.adapterCode : null);
+  if (pane.width <= 0 || pane.height <= 0) {
+   throw new IllegalArgumentException(number + ". bölmede cam için iç en ve boydan 10 mm düşülemiyor.");
   }
   addBead(plan, bead, opening ? "Kanat cam çıtası" : "Sabit cam çıtası", width, height, o.quantity);
-  plan.panes.add(new Pane(number, width, glassHeight, sash, bead, opening ? o.adapterCode : null));
-  plan.glassArea = plan.glassArea.add(ShopDimensions.area(width, glassHeight, o.quantity));
+  plan.panes.add(pane);
+  plan.glassArea = plan.glassArea.add(ShopDimensions.area(pane.width, pane.height, o.quantity));
  }
 
  private static void addBead(Plan plan, Bead bead, String role, int width, int height, int quantity) {
