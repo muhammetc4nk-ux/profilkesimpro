@@ -478,6 +478,10 @@ final class TemaWorkshop {
         for(int axis=0;axis<2;axis++){if(wanted[axis]<=0)throw new IllegalArgumentException("Ölçü pozitif olmalı.");if(wanted[axis]==n[axis])continue;
          int lo=z[axis],hi=z[axis+2],delta=Math.round(1000f*(wanted[axis]-n[axis])/n[axis+2]);
          int old=hi<1000?hi:lo, next=hi<1000?hi+delta:lo-delta;
+         java.util.TreeSet<Integer> bounds=axis==0?xs:ys;
+         Integer upper=bounds.higher(old);
+         if(hi<1000&&lo>0&&(next>=1000||(upper!=null&&next>=upper)||next<=lo)){old=lo;next=lo-delta;}
+         if(delta==0)continue;
          if(old==0||old==1000||next<=0||next>=1000)throw new IllegalArgumentException("Dış kasa ölçüsünü veya komşu kaydı kontrol edin.");
          java.util.TreeSet<Integer> set=axis==0?xs:ys;
          if(set.contains(old)){Integer prev=set.lower(old),after=set.higher(old);if((prev!=null&&next<=prev)||(after!=null&&next>=after))throw new IllegalArgumentException("Kayıt diğer bölmeyi geçemez.");set.remove(old);set.add(next);String prefix=axis==0?"v":"h";Integer profile=lineProfiles.remove(prefix+old);if(profile!=null)lineProfiles.put(prefix+next,profile);}
@@ -538,6 +542,45 @@ final class TemaWorkshop {
   Button[] toolButtons=new Button[modes.length];
   for(int i=0;i<modes.length;i++){final int m=i;Button b=new Button(app);b.setAllCaps(false);b.setText(modes[i]);b.setTextSize(12);b.setPadding(app.dp(4),app.dp(4),app.dp(4),app.dp(4));toolButtons[i]=b;b.setTextColor(Color.WHITE);b.setBackground(app.rgbPanel(i==mode[0]?0xff087e79:0xff173041,0xff245462,series.accent));if(i%3==0&&i!=0){toolsRow=new LinearLayout(app);toolsRow.setOrientation(LinearLayout.HORIZONTAL);panel.addView(toolsRow);}LinearLayout.LayoutParams toolLp=new LinearLayout.LayoutParams(0,app.dp(56),1);toolLp.setMargins(app.dp(3),app.dp(3),app.dp(3),app.dp(3));toolsRow.addView(b,toolLp);b.setOnClickListener(v->{mode[0]=m;for(int j=0;j<toolButtons.length;j++)toolButtons[j].setBackground(app.rgbPanel(j==m?0xff087e79:0xff173041,0xff245462,series.accent));drawingStatus.setText("Seçili araç: "+modes[m]+" · çizime dokunun.");});}
 
+  for(int axisIndex=0;axisIndex<2;axisIndex++){
+   final int axis=axisIndex;
+   Button equal=new Button(app);equal.setAllCaps(false);equal.setText(axis==0?"Kapı/kanat hariç dik boşlukları eşitle":"Kapı/kanat hariç yatay boşlukları eşitle");panel.addView(equal);
+   equal.setOnClickListener(v->{
+    if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}
+    Runnable restore=snapshot.get();
+    try{
+     if(!localLines.isEmpty())throw new IllegalArgumentException("Bu araç tam boy kayıtlar içindir; bölgesel kayıtları net ölçü aracıyla düzenleyin.");
+     java.util.TreeSet<Integer> set=axis==0?xs:ys;
+     java.util.ArrayList<Integer> pts=new java.util.ArrayList<>(set);pts.add(0,0);pts.add(1000);
+     java.util.TreeSet<Integer> fixed=new java.util.TreeSet<>();fixed.add(0);fixed.add(1000);
+     java.util.ArrayList<int[]> cells=bays.get();
+     for(int i=0;i<cells.size();i++)if(openings.contains(i+1)||emptyCells.contains(i+1)){fixed.add(cells.get(i)[axis]);fixed.add(cells.get(i)[axis+2]);}
+     int total=net.apply(cells.get(0))[axis+2];if(total<=0)throw new IllegalArgumentException("Kasa ölçüsünü kontrol edin.");
+     String prefix=axis==0?"v":"h";
+     java.util.HashMap<Integer,Integer> faces=new java.util.HashMap<>();
+     for(int p:pts)faces.put(p,p==0||p==1000?0:workingFace(groups[1][lineProfiles.getOrDefault(prefix+p,picks[1])]));
+     java.util.HashMap<Integer,Integer> moves=new java.util.HashMap<>();
+     int start=0;
+     for(int end:fixed){if(end==0)continue;
+      int l=pts.indexOf(start),h=pts.indexOf(end);
+      if(l<0||h<=l)throw new IllegalArgumentException("Bölme sınırı bulunamadı.");
+      double available=total*(end-start)/1000.0-(faces.get(start)-faces.get(start)/2)-faces.get(end)/2;
+      for(int j=l+1;j<h;j++)available-=faces.get(pts.get(j));
+      double gap=available/(h-l);if(gap<=0)throw new IllegalArgumentException("Net boşluk yetersiz.");
+      double cursor=total*start/1000.0+(faces.get(start)-faces.get(start)/2);
+      int previous=start;
+      for(int j=l+1;j<h;j++){int p=pts.get(j);cursor+=gap+faces.get(p)/2;int next=(int)Math.round(cursor*1000/total);if(next<=previous||next>=end)throw new IllegalArgumentException("Kayıt çakışması.");moves.put(p,next);previous=next;cursor+=faces.get(p)-faces.get(p)/2;}
+      start=end;
+     }
+     java.util.HashMap<Integer,Integer> profiles=new java.util.HashMap<>();
+     for(int p:set){Integer profile=lineProfiles.remove(prefix+p);if(profile!=null)profiles.put(moves.getOrDefault(p,p),profile);}
+     java.util.TreeSet<Integer> updated=new java.util.TreeSet<>();for(int p:set)updated.add(moves.getOrDefault(p,p));set.clear();set.addAll(updated);
+     for(java.util.Map.Entry<Integer,Integer> e:profiles.entrySet())lineProfiles.put(prefix+e.getKey(),e.getValue());
+     for(int[] cell:bays.get()){int[] n=net.apply(cell);if(n[0]<=0||n[1]<=0)throw new IllegalArgumentException("Net boşluk yetersiz.");}
+     undo.push(restore);redo.clear();persistDrawing.run();board.invalidate();drawingStatus.setText("Net boşluklar eşitlendi; kapı ve kanatlar korundu.");
+    }catch(RuntimeException ex){restore.run();board.invalidate();toast(ex.getMessage());}
+   });
+  }
   Button addV=new Button(app);addV.setText("+ Dikey kayıt (eşit böl)");panel.addView(addV);addV.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}if(xs.size()>=12)return;checkpoint.run();int n=xs.size()+2;xs.clear();for(int i=1;i<n;i++)xs.add(Math.round(1000f*i/n));openings.clear();leftCells.clear();emptyCells.clear();drawingStatus.setText("Dikey: "+xs.size()+" | Yatay: "+ys.size());board.invalidate();});
   Button addH=new Button(app);addH.setText("+ Yatay kayıt (eşit böl)");panel.addView(addH);addH.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}if(ys.size()>=12)return;checkpoint.run();int n=ys.size()+2;ys.clear();for(int i=1;i<n;i++)ys.add(Math.round(1000f*i/n));openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();});
   for(EditText size:sizes)size.addTextChangedListener(watcher(board::invalidate));
