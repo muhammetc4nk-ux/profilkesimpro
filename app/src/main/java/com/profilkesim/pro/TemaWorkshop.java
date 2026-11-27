@@ -421,17 +421,24 @@ final class TemaWorkshop {
   android.view.View board=new android.view.View(app){
    android.graphics.Paint paint=new android.graphics.Paint(3);
    float left=24,top=24,right,bottom;
+   final android.graphics.Paint dim=new android.graphics.Paint(3);
+   private void measure(android.graphics.Canvas c,float x,float y,float X,float Y,String label){
+    dim.setColor(0xff075985);dim.setStrokeWidth(app.dp(1));dim.setStyle(android.graphics.Paint.Style.STROKE);c.drawLine(x,y,X,Y,dim);
+    float dx=X-x,dy=Y-y,len=(float)Math.hypot(dx,dy);if(len<1)return;dx/=len;dy/=len;float k=app.dp(5);
+    for(int i=0;i<2;i++){float px=i==0?x:X,py=i==0?y:Y,sign=i==0?1:-1;c.drawLine(px-dy*k,py+dx*k,px+dy*k,py-dx*k,dim);c.drawLine(px,py,px+sign*dx*k-dy*k/2,py+sign*dy*k+dx*k/2,dim);c.drawLine(px,py,px+sign*dx*k+dy*k/2,py+sign*dy*k-dx*k/2,dim);}
+    c.save();c.translate((x+X)/2,(y+Y)/2);if(Math.abs(dy)>Math.abs(dx))c.rotate(-90);dim.setStyle(android.graphics.Paint.Style.FILL);dim.setTextSize(app.dp(10));dim.setTextAlign(android.graphics.Paint.Align.CENTER);float w=dim.measureText(label)/2+app.dp(3);dim.setColor(0xfff8fafc);c.drawRoundRect(-w,-app.dp(8),w,app.dp(8),4,4,dim);dim.setColor(0xff075985);c.drawText(label,0,app.dp(3),dim);c.restore();
+   }
    @Override protected void onDraw(android.graphics.Canvas c){
-    super.onDraw(c); right=getWidth()-24; bottom=getHeight()-24;
+    super.onDraw(c); left=app.dp(38);top=app.dp(48);right=getWidth()-app.dp(38);bottom=getHeight()-app.dp(38);try{float ratio=Float.parseFloat(sizes[0].getText().toString().replace(',','.'))/Float.parseFloat(sizes[1].getText().toString().replace(',','.'));if(ratio>0&&Float.isFinite(ratio)){float w=right-left,h=bottom-top;if(w/h>ratio){float d=(w-h*ratio)/2;left+=d;right-=d;}else{float d=(h-w/ratio)/2;top+=d;bottom-=d;}}}catch(RuntimeException ignored){} paint.setStyle(android.graphics.Paint.Style.FILL);
     c.drawColor(0xffe8f1f5); paint.setColor(0xffcbd9e1);paint.setStrokeWidth(1);for(int i=0;i<20;i++){float px=left+(right-left)*i/20f,py=top+(bottom-top)*i/20f;c.drawLine(px,top,px,bottom,paint);c.drawLine(left,py,right,py,paint);} paint.setColor(0xff34495e); paint.setStrokeWidth(7);paint.setStyle(android.graphics.Paint.Style.STROKE);
     if(!frameAdded[0])return;
     paint.setStyle(android.graphics.Paint.Style.FILL);
-    paint.setColor(0xffa9b9c4);c.drawRect(left+6,top+6,right+6,bottom+6,paint);
+    for(int depth=app.dp(12);depth>0;depth--){paint.setColor(0xff64748b);c.drawRect(left+depth,top+depth,right+depth,bottom+depth,paint);}
     paint.setShader(new android.graphics.LinearGradient(left,top,right,bottom,0xffedf8fc,0xffa9cbdc,android.graphics.Shader.TileMode.CLAMP));c.drawRect(left,top,right,bottom,paint);paint.setShader(null);
     paint.setStyle(android.graphics.Paint.Style.STROKE);paint.setColor(0xff303b45);paint.setStrokeWidth(app.dp(9));c.drawRect(left,top,right,bottom,paint);
     paint.setColor(0xff9da8b0);paint.setStrokeWidth(app.dp(2));c.drawRect(left-2,top-2,right-2,bottom-2,paint);
     profileLabel(c,groups[0][lineProfiles.getOrDefault("frame",picks[0])].code,left+8,top+15);
-    paint.setStyle(android.graphics.Paint.Style.FILL);paint.setTextSize(14);c.drawText(sizes[0].getText()+" mm",left+10,18,paint);c.drawText(sizes[1].getText()+" mm",left+10,bottom+18,paint);paint.setStyle(android.graphics.Paint.Style.STROKE);
+    dim.setColor(0xff64748b);dim.setStrokeWidth(1);float off=app.dp(22);c.drawLine(left,top,left,top-off,dim);c.drawLine(right,top,right,top-off,dim);c.drawLine(left,top,left-off,top,dim);c.drawLine(left,bottom,left-off,bottom,dim);measure(c,left,top-off,right,top-off,sizes[0].getText()+" mm");measure(c,left-off,top,left-off,bottom,sizes[1].getText()+" mm");paint.setStyle(android.graphics.Paint.Style.STROKE);
     paint.setColor(0xff46535e);paint.setStrokeWidth(app.dp(8));
     for(int x:xs){float px=left+(right-left)*x/1000f;c.drawLine(px,top,px,bottom,paint);profileLabel(c,groups[1][lineProfiles.getOrDefault("v"+x,picks[1])].code,px+4,top+30);}
     for(int y:ys){float py=top+(bottom-top)*y/1000f;c.drawLine(left,py,right,py,paint);profileLabel(c,groups[1][lineProfiles.getOrDefault("h"+y,picks[1])].code,left+8,py-5);}
@@ -446,6 +453,7 @@ final class TemaWorkshop {
     }
     paint.setStyle(android.graphics.Paint.Style.FILL);
     for(int[] z:cells){try{int[] n=net.apply(z);float cx=left+(right-left)*(z[0]+z[2])/2000f,cy=top+(bottom-top)*(z[1]+z[3])/2000f;
+     float l=left+(right-left)*z[0]/1000f,r=left+(right-left)*z[2]/1000f,t=top+(bottom-top)*z[1]/1000f,bm=top+(bottom-top)*z[3]/1000f;if(r-l>app.dp(65)&&bm-t>app.dp(65)){measure(c,l,t+(bm-t)*0.25f,r,t+(bm-t)*0.25f,"Net "+mm(n[0]));measure(c,l+(r-l)*0.22f,t,l+(r-l)*0.22f,bm,"Net "+mm(n[1]));}
      String label=mm(n[0])+" × "+mm(n[1]);paint.setTextSize(app.dp(12));float w=paint.measureText(label)/2+app.dp(5);
      paint.setColor(0xfff8fafc);c.drawRoundRect(cx-w,cy-app.dp(12),cx+w,cy+app.dp(12),5,5,paint);paint.setColor(0xff173041);c.drawText(label,cx-w+app.dp(5),cy+app.dp(4),paint);
     }catch(RuntimeException ignored){}}
@@ -524,11 +532,11 @@ final class TemaWorkshop {
   undoButton.setOnClickListener(v->{if(undo.isEmpty()){toast("Geri alınacak işlem yok.");return;}redo.push(snapshot.get());undo.pop().run();persistDrawing.run();drawingStatus.setText("Son işlem geri alındı.");board.invalidate();});
   Button frameButton=new Button(app);frameButton.setText("+ Kasa ekle");panel.addView(frameButton);frameButton.setOnClickListener(v->{checkpoint.run();frameAdded[0]=true;drawingStatus.setText("Kasa eklendi: "+groups[0][picks[0]].label());board.invalidate();});
   Button sashButton=new Button(app);sashButton.setText("+ Kanat ekle (ilk boş bölme)");panel.addView(sashButton);sashButton.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}int count=bays.get().size();for(int i=1;i<=count;i++)if(!openings.contains(i)){checkpoint.run();openings.add(i);drawingStatus.setText("Kanat: "+openings.size()+" / "+count);board.invalidate();return;}toast("Tüm bölmelerde kanat var.");});
-  panel.addView(board,new LinearLayout.LayoutParams(-1,app.dp(520)));
+  panel.addView(board,new LinearLayout.LayoutParams(-1,app.dp(560)));
   LinearLayout toolsRow=new LinearLayout(app);toolsRow.setOrientation(LinearLayout.HORIZONTAL);panel.addView(toolsRow);
   String[] modes={"↕ Dikey kayıt","↔ Yatay kayıt","Sol kanat","Sil","Boş kasa","Sabit cam","Sağ kanat","Profil seç","Kanat boşluğu","Net ölçü gir"};
   Button[] toolButtons=new Button[modes.length];
-  for(int i=0;i<modes.length;i++){final int m=i;Button b=new Button(app);b.setAllCaps(false);b.setText(modes[i]);toolButtons[i]=b;b.setTextColor(Color.WHITE);b.setBackground(app.rgbPanel(i==mode[0]?0xff087e79:0xff173041,0xff245462,series.accent));if(i%3==0&&i!=0){toolsRow=new LinearLayout(app);toolsRow.setOrientation(LinearLayout.HORIZONTAL);panel.addView(toolsRow);}toolsRow.addView(b,new LinearLayout.LayoutParams(0,app.dp(60),1));b.setOnClickListener(v->{mode[0]=m;for(int j=0;j<toolButtons.length;j++)toolButtons[j].setBackground(app.rgbPanel(j==m?0xff087e79:0xff173041,0xff245462,series.accent));drawingStatus.setText("Seçili araç: "+modes[m]+" · çizime dokunun.");});}
+  for(int i=0;i<modes.length;i++){final int m=i;Button b=new Button(app);b.setAllCaps(false);b.setText(modes[i]);b.setTextSize(12);b.setPadding(app.dp(4),app.dp(4),app.dp(4),app.dp(4));toolButtons[i]=b;b.setTextColor(Color.WHITE);b.setBackground(app.rgbPanel(i==mode[0]?0xff087e79:0xff173041,0xff245462,series.accent));if(i%3==0&&i!=0){toolsRow=new LinearLayout(app);toolsRow.setOrientation(LinearLayout.HORIZONTAL);panel.addView(toolsRow);}LinearLayout.LayoutParams toolLp=new LinearLayout.LayoutParams(0,app.dp(56),1);toolLp.setMargins(app.dp(3),app.dp(3),app.dp(3),app.dp(3));toolsRow.addView(b,toolLp);b.setOnClickListener(v->{mode[0]=m;for(int j=0;j<toolButtons.length;j++)toolButtons[j].setBackground(app.rgbPanel(j==m?0xff087e79:0xff173041,0xff245462,series.accent));drawingStatus.setText("Seçili araç: "+modes[m]+" · çizime dokunun.");});}
 
   Button addV=new Button(app);addV.setText("+ Dikey kayıt (eşit böl)");panel.addView(addV);addV.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}if(xs.size()>=12)return;checkpoint.run();int n=xs.size()+2;xs.clear();for(int i=1;i<n;i++)xs.add(Math.round(1000f*i/n));openings.clear();leftCells.clear();emptyCells.clear();drawingStatus.setText("Dikey: "+xs.size()+" | Yatay: "+ys.size());board.invalidate();});
   Button addH=new Button(app);addH.setText("+ Yatay kayıt (eşit böl)");panel.addView(addH);addH.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}if(ys.size()>=12)return;checkpoint.run();int n=ys.size()+2;ys.clear();for(int i=1;i<n;i++)ys.add(Math.round(1000f*i/n));openings.clear();leftCells.clear();emptyCells.clear();board.invalidate();});
