@@ -1461,7 +1461,8 @@ final class TemaWorkshop {
    if (selected != null) for (java.util.Iterator<String> keys = selected.keys(); keys.hasNext();) {
     String key = keys.next();
     int index = selected.getInt(key);
-    if (index >= 0 && index < (key.startsWith("frame") ? series.frames.length : series.sashes.length)) selections.put(key,index);
+    int limit = key.startsWith("frame") ? series.frames.length : key.startsWith("s") ? series.sashes.length : series.mullions.length;
+    if (index >= 0 && index < limit) selections.put(key,index);
    }
   } catch (org.json.JSONException ignored) {}
   order.layout = new TemaLayout(order.width, order.height,
