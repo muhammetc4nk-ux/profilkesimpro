@@ -659,7 +659,23 @@ final class TemaWorkshop {
      if(key==null){toast("Bir profil çizgisine dokunun.");return;}
      final String selectedKey=key;final int selectedRole=role;
      int initial=lineProfiles.getOrDefault(key,role==0?lineProfiles.getOrDefault("frame",picks[0]):picks[role]);
-     chooseProfile("Profil değiştir",groups[selectedRole],initial,index->{checkpoint.run();lineProfiles.put(selectedKey,index);persistDrawing.run();invalidate();});return;
+     chooseProfile("Profil değiştir",groups[selectedRole],initial,index->{
+      Runnable restore=snapshot.get();
+      try {
+       TemaLayout prior=geometry.get();
+       lineProfiles.put(selectedKey,index);
+       if(selectedRole!=2){
+        TemaOpeningResize.Drawing model=resizeDrawing.get();
+        for(int i=0;i<prior.bays.size();i++)if(openings.contains(i+1)){
+         TemaLayout.Opening target=prior.bays.get(i);
+         model=TemaOpeningResize.resize(model,i,target.width(),target.height(),allowances.apply(prior.bays.size()),resizeLayout);
+        }
+        if(model.width!=prior.width||model.height!=prior.height)throw new IllegalArgumentException("Dış kasa ölçüsü korunamadı.");
+        applyDrawing.accept(model);
+       }
+       undo.push(restore);redo.clear();persistDrawing.run();invalidate();
+      }catch(RuntimeException ex){restore.run();invalidate();toast(ex.getMessage());}
+     });return;
     }
     if(x<=0||x>=1000000||y<=0||y>=1000000)return;
     checkpoint.run();
