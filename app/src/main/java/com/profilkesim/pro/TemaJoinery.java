@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
@@ -119,6 +120,19 @@ final class TemaJoinery {
    this.columns = columns;
    this.rows = rows;
    this.layout = layout;
+  }
+
+  Map<String, List<Cut>> cutsByProfile() {
+   Map<String, List<Cut>> grouped = new LinkedHashMap<>();
+   for (Cut cut : cuts) {
+    List<Cut> parts = grouped.get(cut.code);
+    if (parts == null) {
+     parts = new ArrayList<>();
+     grouped.put(cut.code, parts);
+    }
+    parts.add(cut);
+   }
+   return grouped;
   }
 
   void addCut(String code, String role, int length, int angle, int quantity) {

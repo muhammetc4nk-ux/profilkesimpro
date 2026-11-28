@@ -13,6 +13,7 @@ final class TemaDiagramRenderer {
  private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
  private final float density;
  private final TemaElevation elevation;
+ private final TemaBayDimensions dimensions = new TemaBayDimensions();
  private final Typeface typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL);
  private final Set<Integer> leftCells;
  private final TemaJoinery.Pane[] panes;
@@ -79,40 +80,18 @@ final class TemaDiagramRenderer {
   float left = x + bay.left * scale, right = x + bay.right * scale;
   float top = y + bay.top * scale, bottom = y + bay.bottom * scale;
   if (canvas.quickReject(left, top, right, bottom, Canvas.EdgeType.AA)) return;
-  if (pane == null) {
-   drawChip(canvas, number + " · Boş kasa", (left + right) / 2, (top + bottom) / 2,
-    right - left - 4 * density, 0xff24424f, 11);
-   return;
+  RectF bounds = new RectF(left, top, right, bottom);
+  boolean sash = pane != null && pane.sash != null;
+  String glass = null;
+  if (pane != null) {
+   elevation.opening(canvas, bay, pane.sash, leftCells.contains(number), order.sashCorner, x, y, scale, scale);
+   glass = TemaBayDimensions.size(pane.width, pane.height);
+   if (pane.adapterCode != null && bounds.height() >= 115 * density && bounds.width() >= 65 * density) {
+    elevation.accessoryLabel(canvas, pane.adapterCode, bounds.centerX(), bounds.top + 14 * density,
+     bounds.width() - 12 * density, 0xff1d3448);
+   }
   }
-  boolean sash = pane.sash != null;
-  RectF inside = elevation.opening(canvas, bay, pane.sash, leftCells.contains(number), order.sashCorner, x, y, scale, scale);
-  if (inside == null) return;
-  left = inside.left;
-  right = inside.right;
-  top = inside.top;
-  bottom = inside.bottom;
-  float center = (left + right) / 2, middle = (top + bottom) / 2;
-  float width = right - left - 4 * density;
-  float rows = (bottom - top) / (16 * density);
-  int color = 0xff1d3448;
-  String title = "Bölme " + number + " · " + (bay.door ? "Kapı" : sash ? "Kanat" : "Sabit");
-  String glass = "Cam " + size(pane.width, pane.height);
-  if (rows < 2) {
-   if (rows >= 0.8f) drawChip(canvas, number + " · " + glass, center, middle, width, color, 11);
-   return;
-  }
-  drawChip(canvas, title, center, middle - 8 * density, width, color, 11);
-  drawChip(canvas, glass, center, middle + 8 * density, width, color, 11);
-  if (rows >= 4) {
-   drawChip(canvas, "İç " + size(pane.insideWidth, pane.insideHeight), center, middle - 24 * density, width, color, 10);
-  }
-  if (rows >= 4 && pane.adapterCode != null) {
-   elevation.accessoryLabel(canvas, pane.adapterCode, center, middle + 24 * density, width, color);
-  }
- }
-
- private static String size(int width, int height) {
-  return ShopDimensions.mm(width) + " × " + ShopDimensions.mm(height) + " mm";
+  dimensions.draw(canvas, bounds, bay, number, TemaBayDimensions.kind(bay, sash, pane == null), true, density, glass);
  }
 
  private void drawProfileMark(Canvas canvas, TemaJoinery.ProfileMark mark, float left, float top, float scale) {
@@ -133,26 +112,6 @@ final class TemaDiagramRenderer {
   elevation.fabricationLabel(canvas, mark, x, y, (mark.end - mark.start) * scale, color);
  }
 
- private void drawChip(Canvas canvas, String value, float x, float y, float maxWidth, int background, float sp) {
-  float pad = 3 * density;
-  if (maxWidth <= 2 * pad) return;
-  paint.setTypeface(typeface);
-  paint.setTextSize(sp * density);
-  float textWidth = paint.measureText(value);
-  if (textWidth + 2 * pad > maxWidth) {
-   float fitted = sp * density * (maxWidth - 2 * pad) / textWidth;
-   if (fitted < 8 * density) return;
-   paint.setTextSize(fitted);
-   textWidth = paint.measureText(value);
-  }
-  float halfWidth = textWidth / 2 + pad;
-  float halfHeight = (paint.descent() - paint.ascent()) / 2 + density;
-  float baseline = y - (paint.ascent() + paint.descent()) / 2;
-  paint.setColor(background);
-  canvas.drawRoundRect(x - halfWidth, y - halfHeight, x + halfWidth, y + halfHeight,
-   3 * density, 3 * density, paint);
-  drawLabel(canvas, value, x, baseline, paint.getTextSize(), 0xffe8f8f8);
- }
  private void drawLabel(Canvas canvas, String value, float x, float y, float size, int color) {
   paint.setColor(color);
   paint.setTextAlign(Paint.Align.CENTER);

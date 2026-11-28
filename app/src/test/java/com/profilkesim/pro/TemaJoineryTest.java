@@ -266,6 +266,74 @@ public final class TemaJoineryTest {
   assertFalse(profiles.containsKey("s2"));
  }
 
+ @Test public void bayMeasurementsKeepTheClearFrameOpeningSeparateFromGlassSizes() {
+  TemaJoinery.Order order = order(10000, 22000, 490);
+  order.sashFace = 660;
+  order.openingSashes = Collections.singleton(1);
+  order.removeDoorSills = true;
+  TemaJoinery.Plan plan = TemaJoinery.calculate(order);
+  TemaLayout.Opening bay = plan.layout.bays.get(0);
+  TemaJoinery.Pane pane = plan.panes.get(0);
+
+  assertEquals("Bölme 1 · Kapı", TemaBayDimensions.caption(1, TemaBayDimensions.kind(bay, true, false)));
+  assertEquals("902 × 2151 mm", TemaBayDimensions.size(bay.width(), bay.height()));
+  assertEquals("750 × 1999 mm", TemaBayDimensions.size(pane.width, pane.height));
+  assertEquals("Boş kasa", TemaBayDimensions.kind(bay, true, true));
+ }
+
+ @Test public void groupedCutRowsKeepDifferentEndsSeparateAndPreserveQuantities() {
+  TemaJoinery.Plan plan = new TemaJoinery.Plan(Collections.emptyList(), Collections.emptyList(), null);
+  plan.addCut("T.3001", "Kasa yatay", 12005, 45, 45, 2);
+  plan.addCut("T.3004", "Kasa dikey", 10800, 90, 90, 1);
+  plan.addCut("T.3001", "Kasa yatay", 12005, 45, 90, 1);
+  plan.addCut("T.3001", "Kasa yatay", 12005, 45, 45, 1);
+
+  java.util.Map<String, List<TemaJoinery.Cut>> grouped = plan.cutsByProfile();
+  assertEquals(Arrays.asList("T.3001", "T.3004"), new java.util.ArrayList<>(grouped.keySet()));
+  List<TemaJoinery.Cut> narrow = grouped.get("T.3001");
+  assertEquals(2, narrow.size());
+  assertEquals(12005, narrow.get(0).length);
+  assertEquals(3, narrow.get(0).quantity);
+  assertEquals(45, narrow.get(0).endAngle);
+  assertEquals(45, narrow.get(1).angle);
+  assertEquals(90, narrow.get(1).endAngle);
+  assertEquals(1, narrow.get(1).quantity);
+  assertTrue(TemaCatalog.Series.ALDOKS.find("T.3001").image != TemaCatalog.Series.ALDOKS.find("T.3004").image);
+ }
+
+ @Test public void clearOpeningUsesTheLargestActualProfileAlongASegmentedBoundary() {
+  TemaLayout.Section frame = new TemaLayout.Section("T.3101", 490);
+  TemaLayout.Section narrow = new TemaLayout.Section("T.3103", 207);
+  TemaLayout.Section wide = new TemaLayout.Section("T.3102", 900);
+  TemaLayout.Section cross = new TemaLayout.Section("T.3101", 490);
+  List<int[]> cells = Arrays.asList(new int[]{0, 0, 500, 1000}, new int[]{500, 0, 1000, 500},
+   new int[]{500, 500, 1000, 1000});
+  List<TemaLayout.Record> records = Arrays.asList(new TemaLayout.Record(500, 0, 500, 500, narrow),
+   new TemaLayout.Record(500, 500, 500, 1000, wide), new TemaLayout.Record(500, 500, 1000, 500, cross));
+  TemaLayout layout = new TemaLayout(21000, 23000, new TemaLayout.Frame(frame), 1000, cells, records, Collections.emptySet());
+
+  assertEquals(layout.x(500) - 450 - frame.face, layout.bays.get(0).width());
+  assertEquals(21000 - frame.face - layout.x(500) - 104, layout.bays.get(1).width());
+  assertEquals(21000 - frame.face - layout.x(500) - 450, layout.bays.get(2).width());
+ }
+
+ @Test public void recordEndAccountsForEverySectionTouchingTheFaceAtTheJoint() {
+  TemaLayout.Section frame = new TemaLayout.Section("T.3101", 490);
+  TemaLayout.Section narrow = new TemaLayout.Section("T.3103", 207);
+  TemaLayout.Section wide = new TemaLayout.Section("T.3102", 900);
+  TemaLayout.Section cross = new TemaLayout.Section("T.3006", 765);
+  List<int[]> cells = Arrays.asList(new int[]{0, 0, 500, 490}, new int[]{0, 490, 500, 1000},
+   new int[]{500, 0, 1000, 1000});
+  List<TemaLayout.Record> records = Arrays.asList(new TemaLayout.Record(500, 0, 500, 500, narrow),
+   new TemaLayout.Record(500, 500, 500, 1000, wide), new TemaLayout.Record(0, 490, 500, 490, cross));
+  TemaLayout layout = new TemaLayout(21000, 23000, new TemaLayout.Frame(frame), 1000, cells, records, Collections.emptySet());
+  TemaLayout.Member cut = layout.members(TemaJoinery.Continuous.VERTICAL).get(2);
+
+  assertEquals("T.3006", cut.section.code);
+  assertEquals(layout.x(500) - 450, cut.end);
+  assertEquals(layout.x(500) - frame.face - 450 + 18 - 7, cut.cutLength(18, -7));
+ }
+
  private static void assertCut(TemaJoinery.Plan plan, String code, String role, int length, int angle, int count) {
   assertCut(plan,code,role,length,angle,angle,count);
  }

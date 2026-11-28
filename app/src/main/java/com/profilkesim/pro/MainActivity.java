@@ -96,162 +96,21 @@ public class MainActivity extends Activity {
   TextView t=new TextView(this);t.setText(s);t.setTextSize(size);
   t.setTextColor(navy);t.setPadding(dp(12),dp(12),dp(12),dp(12));return t;
  }
- private static final String MUSIC_MUTED = "home_music_muted";
- private static final String MUSIC_SETTINGS = "MainActivity";
- private static boolean musicScreenResumed;
- private Button musicButton;
- private final android.content.SharedPreferences.OnSharedPreferenceChangeListener musicSettingsChanged =
-  (preferences, key) -> {
-   if (MUSIC_MUTED.equals(key)) updateMusicButton();
-  };
+ private WorkshopClock clock;
+ private boolean screenResumed;
+ private TextView homeTime, homeDate, homeTimeSource;
+ private final android.os.Handler clockHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+ private final Runnable clockTick = this::updateHomeClock;
 
- private void updateMusicButton() {
-  if (musicButton == null) return;
-  boolean muted = getPreferences(MODE_PRIVATE).getBoolean(MUSIC_MUTED, false);
-  musicButton.setText(muted ? "Sesi aç" : "Sustur");
-  musicButton.setContentDescription(muted ? "Müziği aç" : "Müziği sustur");
- }
-
- private void updateMusicService() {
-  Intent command = new Intent(this, MusicService.class);
-  if (!musicScreenResumed || getPreferences(MODE_PRIVATE).getBoolean(MUSIC_MUTED, false)) {
-   stopService(command);
-  } else if (hasWindowFocus()) {
-   try {
-    startService(command);
-   } catch (IllegalStateException ignored) {
-    // A concurrent screen transition can still make Android deny the start.
-    // Resume or the next focus gain will retry if music is enabled.
-   }
-  }
- }
-
- public static final class MusicService extends android.app.Service {
-  private static final String CHANNEL = "profile_music";
-  private static final String MUTE_ACTION = "com.profilkesim.pro.MUTE_MUSIC";
-  private static final int NOTIFICATION = 31;
-  private android.media.AudioManager audio;
-  private android.media.MediaPlayer player;
-  private boolean destroyed, prepared, focused, focusRequested;
-
-  private final android.media.AudioManager.OnAudioFocusChangeListener focusListener = change -> {
-   if (change == android.media.AudioManager.AUDIOFOCUS_LOSS) {
-    stopSelf();
-    return;
-   }
-   focused = change == android.media.AudioManager.AUDIOFOCUS_GAIN;
-   applyPlayback();
-  };
-
-  @Override public android.os.IBinder onBind(Intent intent) { return null; }
-
-  @Override public int onStartCommand(Intent intent, int flags, int startId) {
-   android.content.SharedPreferences settings = getSharedPreferences(MUSIC_SETTINGS, MODE_PRIVATE);
-   if (intent != null && MUTE_ACTION.equals(intent.getAction())) {
-    settings.edit().putBoolean(MUSIC_MUTED, true).apply();
-    stopSelf();
-    return START_NOT_STICKY;
-   }
-   if (!mayPlay()) {
-    stopSelf();
-    return START_NOT_STICKY;
-   }
-   startForeground(NOTIFICATION, playbackNotification());
-   if (player == null) {
-    Uri track = new Uri.Builder().scheme(android.content.ContentResolver.SCHEME_ANDROID_RESOURCE)
-     .authority(getPackageName()).appendPath(String.valueOf(R.raw.home_music)).build();
-    prepareTrack(track);
-   }
-   return START_NOT_STICKY;
-  }
-
-  private boolean mayPlay() {
-   return musicScreenResumed && !getSharedPreferences(MUSIC_SETTINGS, MODE_PRIVATE).getBoolean(MUSIC_MUTED, false);
-  }
-
-  private android.app.Notification playbackNotification() {
-   android.app.NotificationManager manager = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-   android.app.Notification.Builder notification;
-   if (android.os.Build.VERSION.SDK_INT >= 26) {
-    manager.createNotificationChannel(new android.app.NotificationChannel(CHANNEL,
-     "ProfilKesimPro müzik", android.app.NotificationManager.IMPORTANCE_LOW));
-    notification = new android.app.Notification.Builder(this, CHANNEL);
-   } else {
-    notification = new android.app.Notification.Builder(this);
-   }
-   Intent open = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-   int pendingFlags = android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE;
-   android.app.PendingIntent openApp = android.app.PendingIntent.getActivity(this, 0, open, pendingFlags);
-   Intent mute = new Intent(this, MusicService.class).setAction(MUTE_ACTION);
-   android.app.PendingIntent muteAction = android.app.PendingIntent.getService(this, 1, mute, pendingFlags);
-   return notification.setSmallIcon(android.R.drawable.ic_media_play)
-    .setContentTitle("ProfilKesimPro").setContentText("Uygulama müziği")
-    .setContentIntent(openApp).setOngoing(true).setOnlyAlertOnce(true)
-    .addAction(new android.app.Notification.Action.Builder(android.R.drawable.ic_media_pause,
-     "Sustur", muteAction).build()).build();
-  }
-
-  private void prepareTrack(Uri source) {
-   try {
-    player = new android.media.MediaPlayer();
-    player.setAudioAttributes(new android.media.AudioAttributes.Builder()
-     .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-     .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build());
-    player.setWakeMode(this, android.os.PowerManager.PARTIAL_WAKE_LOCK);
-    player.setDataSource(this, source);
-    player.setOnErrorListener((failed, what, extra) -> {
-     if (failed == player && !destroyed) playbackError();
-     return true;
-    });
-    player.setOnPreparedListener(ready -> {
-     if (ready != player || destroyed) return;
-    if (!mayPlay()) {
-     stopSelf();
-     return;
-    }
-     prepared = true;
-     ready.setLooping(true);
-     audio = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
-     if (!focusRequested && audio != null) {
-      focusRequested = audio.requestAudioFocus(focusListener, android.media.AudioManager.STREAM_MUSIC,
-       android.media.AudioManager.AUDIOFOCUS_GAIN) == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
-      focused = focusRequested;
-     }
-     if (focusRequested) applyPlayback();
-     else stopSelf();
-    });
-    player.prepareAsync();
-   } catch (java.io.IOException | RuntimeException e) {
-    playbackError();
-   }
-  }
-
-  private void applyPlayback() {
-   if (player == null || !prepared) return;
-   if (focused && mayPlay()) player.start();
-   else if (player.isPlaying()) player.pause();
-  }
-
-  private void playbackError() {
-   if (mayPlay()) Toast.makeText(this, "Uygulama müziği açılamadı.", Toast.LENGTH_LONG).show();
-   stopSelf();
-  }
-
-  private void releaseTrack() {
-   prepared = false;
-   if (player != null) {
-    player.release();
-    player = null;
-   }
-  }
-
-  @Override public void onDestroy() {
-   destroyed = true;
-   releaseTrack();
-   if (focusRequested && audio != null) audio.abandonAudioFocus(focusListener);
-   stopForeground(true);
-   super.onDestroy();
-  }
+ private void updateHomeClock() {
+  if (homeTime == null) return;
+  clock.refresh();
+  WorkshopClock.Reading reading = clock.read();
+  homeTime.setText(WorkshopClock.format(reading.millis, "HH:mm:ss"));
+  homeDate.setText(WorkshopClock.format(reading.millis, "dd.MM.yyyy"));
+  homeTimeSource.setText(reading.online ? "İnternet saati" : "Telefon saati");
+  clockHandler.removeCallbacks(clockTick);
+  if (screenResumed) clockHandler.postDelayed(clockTick, 1000L - reading.millis % 1000L);
  }
 
  void page(String title) {
@@ -262,7 +121,8 @@ public class MainActivity extends Activity {
   savePhotoReview = null;
   pageBack = null;
   scanPanel = null;
-  musicButton = null;
+  clockHandler.removeCallbacks(clockTick);
+  homeTime = homeDate = homeTimeSource = null;
   if (shell == null) {
    shell = new FrameLayout(this);
    backdrop = new BalconyBackdrop(this);
@@ -305,7 +165,7 @@ public class MainActivity extends Activity {
   identity.addView(brand);
 
   TextView tagline = new InterfaceMotion.Tagline(this, this::rgbRunning);
-  tagline.setText("Yeni gelmedik, geri geldik");
+  tagline.setText("Cannuryapı Cam Sistemleri");
   tagline.setTextSize(13);
   tagline.setTypeface(null, Typeface.BOLD);
   tagline.setTextColor(0xffc7f9ef);
@@ -322,16 +182,6 @@ public class MainActivity extends Activity {
   lightSize.topMargin = dp(5);
   identity.addView(light, lightSize);
 
-  musicButton = new Button(this);
-  musicButton.setAllCaps(false);
-  musicButton.setTextSize(13);
-  musicButton.setTextColor(Color.WHITE);
-  musicButton.setPadding(dp(9), 0, dp(9), 0);
-  musicButton.setBackground(new android.graphics.drawable.RippleDrawable(
-   android.content.res.ColorStateList.valueOf(0x66a1fff3),
-   rgbPanel(0xff172e3b, 0xff1b4651, 0xff5e98a1), null));
-  InterfaceMotion.buttonFeedback(musicButton);
-  masthead.addView(musicButton, new LinearLayout.LayoutParams(-2, dp(48)));
   header.addView(masthead, new FrameLayout.LayoutParams(-1, -2));
   LedTrace trace = new LedTrace(this);
   mastheadTrace = trace;
@@ -341,33 +191,55 @@ public class MainActivity extends Activity {
   LinearLayout.LayoutParams headerSize = new LinearLayout.LayoutParams(-1, -2);
   headerSize.setMargins(dp(10), dp(7), dp(10), dp(4));
   root.addView(header, headerSize);
-  mastheadTrace.setActive(musicScreenResumed && InterfaceMotion.enabled(this));
-  updateMusicButton();
-  musicButton.setOnClickListener(view -> {
-   android.content.SharedPreferences settings = getPreferences(MODE_PRIVATE);
-   boolean muted = !settings.getBoolean(MUSIC_MUTED, false);
-   settings.edit().putBoolean(MUSIC_MUTED, muted).apply();
-   updateMusicButton();
-   updateMusicService();
-  });
+  mastheadTrace.setActive(screenResumed && InterfaceMotion.enabled(this));
 
   ScrollView scroll=new ScrollView(this);
   scroll.setFillViewport(true);
   root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
   body=new LinearLayout(this);body.setOrientation(1);
   body.setPadding(dp(14),dp(8),dp(14),dp(22));scroll.addView(body);
-  TextView h=text(title,home ? 31 : 24);
-  h.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-  h.setTextColor(Color.WHITE);
   if (home) {
-   h.setPadding(dp(8), dp(20), dp(8), dp(3));
-   h.setShadowLayer(dp(9), 0, dp(1), 0xff07131d);
-   body.addView(h);
+   buildHomeIdentity(title);
   } else {
+   TextView h = text(title, 24);
+   h.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+   h.setTextColor(Color.WHITE);
    addTextPanel(h, 0xff132432, 0xff173b47, 0xff548b95);
   }
   if (!home) reveal(body, 0);
  }
+ private void buildHomeIdentity(String title) {
+  LinearLayout card = planCard(body, 0xf5102440, 0xfa145562, 0xff8bd9d1);
+  lightPanel(card);
+  LinearLayout row = new LinearLayout(this);
+  row.setGravity(Gravity.CENTER_VERTICAL);
+  card.addView(row, new LinearLayout.LayoutParams(-1, -2));
+  LinearLayout appIdentity = new LinearLayout(this);
+  appIdentity.setOrientation(LinearLayout.VERTICAL);
+  LinearLayout.LayoutParams identitySize = new LinearLayout.LayoutParams(0, -2, 1f);
+  identitySize.setMarginEnd(dp(9));
+  row.addView(appIdentity, identitySize);
+  TextView name = planLabel(appIdentity, title, 26, 0xfff2fcff);
+  name.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
+  try {
+   String version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+   TextView badge = planLabel(appIdentity, "Sürüm " + version, 12, 0xffffe2a7);
+   badge.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+  } catch (android.content.pm.PackageManager.NameNotFoundException ignored) { }
+
+  LinearLayout clockPanel = new LinearLayout(this);
+  clockPanel.setOrientation(LinearLayout.VERTICAL);
+  clockPanel.setGravity(Gravity.CENTER);
+  clockPanel.setPadding(dp(6), dp(8), dp(6), dp(8));
+  clockPanel.setBackground(rgbPanel(0xff122b3d, 0xff244858, 0xff7bc8ca));
+  row.addView(clockPanel, new LinearLayout.LayoutParams(dp(110), -2));
+  homeTime = planLabel(clockPanel, "", 17, 0xffb9fff1);
+  homeTime.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+  homeDate = planLabel(clockPanel, "", 12, 0xfff7e0b6);
+  homeTimeSource = planLabel(clockPanel, "", 10, 0xffb5d8e1);
+  updateHomeClock();
+ }
+
  void note(String s){
   TextView t = text(s, 14);
   t.setTextColor(0xffdff5ff);
@@ -375,11 +247,7 @@ public class MainActivity extends Activity {
  }
  Button button(String s,Runnable r){
   Button b=new Button(this);b.setText(s);b.setAllCaps(false);
-  b.setTextColor(Color.WHITE);
-  b.setBackground(new android.graphics.drawable.RippleDrawable(
-   android.content.res.ColorStateList.valueOf(0x66a1fff3),
-   rgbPanel(0xff152a3b, 0xff1a5360, 0xff64969f), null));
-  b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+  WorkshopActions.style(this, b, WorkshopActions.byLabel(s));
   b.setPadding(dp(12), 0, dp(12), 0);
   b.setElevation(dp(4));
   InterfaceMotion.buttonFeedback(b);
@@ -390,18 +258,12 @@ public class MainActivity extends Activity {
   return b;
  }
 
- void homeButton(String label, int iconResource, Runnable action) {
-  homeButton(label, iconResource, 0xff9ae9e4, action);
- }
-
- void homeButton(String label, int iconResource, int accent, Runnable action) {
+ void homeButton(String label, int iconResource, WorkshopActions.Tone tone, int accent, Runnable action) {
   LinearLayout tile = new LinearLayout(this);
   tile.setGravity(Gravity.CENTER_VERTICAL);
   tile.setMinimumHeight(dp(59));
   tile.setPaddingRelative(dp(15), dp(9), dp(15), dp(9));
-  tile.setBackground(new android.graphics.drawable.RippleDrawable(
-   android.content.res.ColorStateList.valueOf(0x5894f6ef),
-   rgbPanel(0xff142836, 0xff164550, 0xff6ba6aa), null));
+  tile.setBackground(WorkshopActions.surface(this, tone, accent));
   ImageView icon = new ImageView(this);
   icon.setImageResource(iconResource);
   icon.setColorFilter(accent);
@@ -413,6 +275,11 @@ public class MainActivity extends Activity {
   caption.setPaddingRelative(dp(13), 0, 0, 0);
   caption.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
   tile.addView(caption, new LinearLayout.LayoutParams(0, -2, 1f));
+  TextView arrow = text("›", 25);
+  arrow.setTextColor(accent);
+  arrow.setPadding(0, 0, 0, 0);
+  arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+  tile.addView(arrow, new LinearLayout.LayoutParams(-2, -2));
   tile.setContentDescription(label);
   tile.setFocusable(true);
   tile.setAccessibilityDelegate(new View.AccessibilityDelegate() {
@@ -466,8 +333,8 @@ public class MainActivity extends Activity {
   super.onCreate(state);
   getWindow().setStatusBarColor(0xff0b1925);
   getWindow().setNavigationBarColor(0xff081620);
-  setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC);
-  getPreferences(MODE_PRIVATE).registerOnSharedPreferenceChangeListener(musicSettingsChanged);
+  clock = new WorkshopClock(this);
+  clock.refresh();
   if (state != null) {
    String cachedPdf = state.getString("pendingTemaPdf");
    if (cachedPdf != null && cachedPdf.startsWith("tema_pdf_") && cachedPdf.equals(new java.io.File(cachedPdf).getName())) {
@@ -498,31 +365,27 @@ public class MainActivity extends Activity {
  }
  @Override protected void onResume() {
   super.onResume();
-  musicScreenResumed = true;
-  updateMusicButton();
-  updateMusicService();
+  screenResumed = true;
+  clock.refresh();
+  updateHomeClock();
   boolean motion = InterfaceMotion.enabled(this);
   rgbRunning = motion;
   InterfaceMotion.redraw(root);
   if (backdrop != null) backdrop.setActive(motion);
   if (mastheadTrace != null) mastheadTrace.setActive(motion);
  }
- @Override public void onWindowFocusChanged(boolean hasFocus) {
-  super.onWindowFocusChanged(hasFocus);
-  if (hasFocus && musicScreenResumed) updateMusicService();
- }
  @Override protected void onPause() {
-  musicScreenResumed = false;
+  screenResumed = false;
+  clockHandler.removeCallbacks(clockTick);
   rgbRunning = false;
   if (backdrop != null) backdrop.setActive(false);
   if (mastheadTrace != null) mastheadTrace.setActive(false);
-  updateMusicService();
   if (savePhotoReview != null) savePhotoReview.run();
   super.onPause();
  }
  @Override protected void onDestroy() {
   if (backdrop != null) backdrop.setActive(false);
-  getPreferences(MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(musicSettingsChanged);
+  clockHandler.removeCallbacks(clockTick);
   super.onDestroy();
  }
  @Override public void onBackPressed(){
@@ -560,30 +423,66 @@ public class MainActivity extends Activity {
  void home(){
   historyId=null;historyRestore=null;
   page(getApplicationInfo().loadLabel(getPackageManager()).toString(), true);
-  String version = "";
-  try {
-   version = " · Sürüm " + getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
-  } catch (android.content.pm.PackageManager.NameNotFoundException ignored) { }
-  TextView description = text("Cam balkon ve doğrama" + version, 14);
-  description.setTextColor(0xffd2ebee);
-  description.setShadowLayer(dp(7), 0, dp(1), 0xff07131d);
-  description.setPadding(dp(9), 0, dp(8), dp(18));
-  body.addView(description);
-  homeButton("İşlem geçmişi", android.R.drawable.ic_menu_recent_history, () -> history());
+  homeButton("İşlem geçmişi", android.R.drawable.ic_menu_recent_history, WorkshopActions.Tone.NAVIGATION, 0xffa9c4e1, this::history);
   temaMenu(TemaCatalog.Series.ALDOKS);
   temaMenu(TemaCatalog.Series.C60);
-  homeButton("Fotoğraftan kesim listesi oku", android.R.drawable.ic_menu_camera, () -> openPhotoReview(generalReview));
-  homeButton("Profil kesim optimizasyonu", android.R.drawable.ic_menu_sort_by_size, () -> opt());
-  homeButton("Cam m² hesaplama", android.R.drawable.ic_menu_crop, () -> glass());
-  homeButton("Albert Genau İmalat Kesim Listesi", android.R.drawable.ic_menu_agenda, () -> openPhotoReview(albertReview));
+  homeButton("Fotoğraftan kesim listesi oku", android.R.drawable.ic_menu_camera, WorkshopActions.Tone.IMPORT, 0xff96c0ff,
+   () -> openPhotoReview(generalReview));
+  homeButton("Profil kesim optimizasyonu", android.R.drawable.ic_menu_sort_by_size, WorkshopActions.Tone.PRIMARY, 0xff6bedae, this::opt);
+  homeButton("Cam m² hesaplama", android.R.drawable.ic_menu_crop, WorkshopActions.Tone.EDIT, 0xffd7b7ff, this::glass);
+  homeButton("Albert Genau İmalat Kesim Listesi", android.R.drawable.ic_lock_lock, WorkshopActions.Tone.DOCUMENT, 0xffffd192,
+   this::openDealerGate);
  }
 
  private void temaMenu(TemaCatalog.Series series) {
-  homeButton("Tema " + series.label + " imalat", android.R.drawable.ic_menu_manage, series.accent, () -> {
+  WorkshopActions.Tone tone = series == TemaCatalog.Series.C60 ? WorkshopActions.Tone.PRIMARY : WorkshopActions.Tone.DOCUMENT;
+  homeButton("Tema " + series.label + " imalat", android.R.drawable.ic_menu_manage, tone, series.accent, () -> {
    temaWorkshop = temaWorkshops.get(series);
    temaWorkshop.open();
   });
  }
+
+ private void openDealerGate() {
+  page(albertReview.title);
+  LinearLayout card = planCard(body, 0xff162b40, 0xff24445b, 0xff93daea);
+  lightPanel(card);
+  planLabel(card, "Bayilere özel", 23, 0xffe5faff).setTypeface(null, Typeface.BOLD);
+  EditText password = input(card, "Bayi şifresi", "");
+  password.setContentDescription("Bayi şifresi");
+  password.setSingleLine(true);
+  password.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+  password.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+  Button toggle = new Button(this);
+  toggle.setText("Şifreyi göster");
+  WorkshopActions.style(this, toggle, WorkshopActions.Tone.EDIT);
+  card.addView(toggle, new LinearLayout.LayoutParams(-1, dp(46)));
+  InterfaceMotion.buttonFeedback(toggle);
+  toggle.setOnClickListener(view -> {
+   boolean hidden = password.getTransformationMethod() instanceof android.text.method.PasswordTransformationMethod;
+   password.setTransformationMethod(hidden ? null : android.text.method.PasswordTransformationMethod.getInstance());
+   password.setSelection(password.length());
+   toggle.setText(hidden ? "Şifreyi gizle" : "Şifreyi göster");
+  });
+  Runnable enter = () -> {
+   if (!AlbertDealerAccess.accepts(password.getText())) {
+    password.setError("Şifre hatalı.");
+    return;
+   }
+   android.view.inputmethod.InputMethodManager keyboard =
+    (android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
+   if (keyboard != null) keyboard.hideSoftInputFromWindow(password.getWindowToken(), 0);
+   password.setText("");
+   openPhotoReview(albertReview);
+  };
+  button("Giriş yap", enter);
+  password.setOnEditorActionListener((view, action, event) -> {
+   if (action != android.view.inputmethod.EditorInfo.IME_ACTION_DONE) return false;
+   enter.run();
+   return true;
+  });
+  button("Ana menü", this::home);
+ }
+
  private void openPhotoReview(PhotoReview review) {
   photoReview = review;
   photo();
@@ -675,15 +574,16 @@ public class MainActivity extends Activity {
   String fileName = "Tema-" + series.label + "-" + (safeName.isEmpty() ? "Poz" : safeName) + ".pdf";
   pdfMessage("PDF hazırlanıyor…");
   new Thread(() -> {
+   long timestamp = clock.forDocument();
    if (android.os.Build.VERSION.SDK_INT >= 29) {
-    saveTemaPdfToDownloads(fileName, name, series, order, plan, leftHinges);
+    saveTemaPdfToDownloads(fileName, name, series, order, plan, leftHinges, timestamp);
     return;
    }
    java.io.File file = null;
    try {
     file = java.io.File.createTempFile("tema_pdf_", ".pdf", getCacheDir());
     try (java.io.OutputStream output = new java.io.FileOutputStream(file)) {
-     TemaPdfExport.write(output, name, series, order, plan, leftHinges);
+     TemaPdfExport.write(output, getResources(), name, series, order, plan, leftHinges, timestamp);
     }
    } catch (java.io.IOException | RuntimeException error) {
     if (file != null) file.delete();
@@ -713,7 +613,7 @@ public class MainActivity extends Activity {
 
  @android.annotation.TargetApi(29)
  private void saveTemaPdfToDownloads(String fileName, String name, TemaCatalog.Series series, TemaJoinery.Order order,
-                                    TemaJoinery.Plan plan, Set<Integer> leftHinges) {
+                                    TemaJoinery.Plan plan, Set<Integer> leftHinges, long timestamp) {
   android.content.ContentValues metadata = new android.content.ContentValues();
   metadata.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
   metadata.put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf");
@@ -725,7 +625,7 @@ public class MainActivity extends Activity {
    if (uri == null) throw new java.io.IOException("İndirilenler klasörü açılamadı.");
    try (java.io.OutputStream output = getContentResolver().openOutputStream(uri)) {
     if (output == null) throw new java.io.IOException("PDF dosyası açılamadı.");
-    TemaPdfExport.write(output, name, series, order, plan, leftHinges);
+    TemaPdfExport.write(output, getResources(), name, series, order, plan, leftHinges, timestamp);
    }
    android.content.ContentValues completed = new android.content.ContentValues();
    completed.put(MediaStore.MediaColumns.IS_PENDING, 0);

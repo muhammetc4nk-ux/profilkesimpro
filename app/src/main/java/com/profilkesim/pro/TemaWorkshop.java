@@ -370,6 +370,7 @@ final class TemaWorkshop {
    float left=24,top=24,right,bottom, innerLeft,innerRight,innerTop,innerBottom;
    final android.graphics.Paint dim=new android.graphics.Paint(3);
    final TemaElevation elevation = new TemaElevation(series, app.getResources().getDisplayMetrics().density);
+   final TemaBayDimensions bayDimensions = new TemaBayDimensions();
    private void measure(android.graphics.Canvas c,float x,float y,float X,float Y,String label){
     dim.setColor(0xffc5eaff);dim.setStrokeWidth(app.dp(1));dim.setStyle(android.graphics.Paint.Style.STROKE);c.drawLine(x,y,X,Y,dim);
     float dx=X-x,dy=Y-y,len=(float)Math.hypot(dx,dy);if(len<1)return;dx/=len;dy/=len;float k=app.dp(5);
@@ -402,21 +403,20 @@ final class TemaWorkshop {
      measure(c, left, top - off, right, top - off, sizes[0].getText() + " mm");
      measure(c, left - off, top, left - off, bottom, sizes[1].getText() + " mm");
     }
+    float annotation = drawingPixels(app.getResources().getDisplayMetrics().density);
     for (int i = 0; i < layout.bays.size(); i++) {
      TemaLayout.Opening bay = layout.bays.get(i);
-     if (emptyCells.contains(i + 1)) continue;
-     TemaCatalog.Profile sash = openings.contains(i + 1) ? groups[2][lineProfiles.getOrDefault("s" + (i + 1), picks[2])] : null;
-     android.graphics.RectF inside = elevation.opening(c, bay, sash == null ? null : section(sash), leftCells.contains(i + 1),
-      TemaJoinery.Corner.values()[sashCorner], left, top, sx, sy);
-     if (inside == null) continue;
-     if (sash != null) labelSash(c, bay, sash, sx, sy);
-     if (!measured || inside.width() < app.dp(42) || inside.height() < app.dp(32)) continue;
-     paint.setStyle(android.graphics.Paint.Style.FILL);
-     paint.setTextSize(app.dp(11));
-     paint.setTextAlign(android.graphics.Paint.Align.CENTER);
-     paint.setColor(0xffeefbff);
-     String text = "Bölme " + (i + 1) + " · " + mm(bay.width()) + " × " + mm(bay.height());
-     if (paint.measureText(text) <= inside.width() - app.dp(4)) c.drawText(text, inside.centerX(), inside.centerY(), paint);
+     int number = i + 1;
+     boolean empty = emptyCells.contains(number), opening = openings.contains(number);
+     TemaCatalog.Profile sash = opening ? groups[2][lineProfiles.getOrDefault("s" + number, picks[2])] : null;
+     if (!empty) {
+      elevation.opening(c, bay, sash == null ? null : section(sash), leftCells.contains(number),
+       TemaJoinery.Corner.values()[sashCorner], left, top, sx, sy);
+      if (sash != null) labelSash(c, bay, sash, sx, sy);
+     }
+     android.graphics.RectF bounds = new android.graphics.RectF(left + bay.left * sx, top + bay.top * sy,
+      left + bay.right * sx, top + bay.bottom * sy);
+     bayDimensions.draw(c, bounds, bay, number, TemaBayDimensions.kind(bay, opening, empty), measured, annotation, null);
     }
     labelStructure(c, layout, members, sx, sy);
     drawRecordGuide(c);
@@ -813,7 +813,8 @@ final class TemaWorkshop {
     toolsRow.addView(button, size);
    }
   }
-  Button align = chooseButton(workspace, "Kapı üstüne hizala", () -> {
+  LinearLayout dimensionTools = horizontal(workspace);
+  Button align = chooseButton(column(dimensionTools), "Kapı üstüne hizala", () -> {
    try {
     TemaOpeningResize.Drawing drawing = resizeDrawing.get();
     TemaLayout layout = resizeLayout.layout(drawing);
@@ -849,6 +850,14 @@ final class TemaWorkshop {
    }
   });
   align.setTextSize(13);
+  Button openingsButton = chooseButton(column(dimensionTools), "Bölme iç ölçüleri", () -> {
+   try {
+    showBayMeasurements(geometry.get(), openings, emptyCells);
+   } catch (IllegalArgumentException error) {
+    toast(error.getMessage());
+   }
+  });
+  openingsButton.setTextSize(13);
   HorizontalScrollView ribbonScroll = new HorizontalScrollView(app);
   LinearLayout ribbon = new LinearLayout(app);
   ribbonScroll.addView(ribbon);
@@ -1047,14 +1056,12 @@ final class TemaWorkshop {
  }
 
  private void styleTool(Button button, boolean selected) {
-  button.setAllCaps(false);
+  WorkshopActions.style(app, button, selected ? WorkshopActions.Tone.ACTIVE : WorkshopActions.byLabel(button.getText()));
   button.setTextSize(12);
-  button.setTextColor(Color.WHITE);
   button.setMaxLines(2);
   button.setMinHeight(0);
   button.setMinimumHeight(0);
   button.setPadding(app.dp(6), 0, app.dp(6), 0);
-  button.setBackground(app.rgbPanel(selected ? 0xff087e79 : 0xff163752, 0xff102740, series.accent));
  }
 
  private static void appendCoordinates(StringBuilder result, int[] coordinates) {
@@ -1128,10 +1135,8 @@ final class TemaWorkshop {
 
  private Button chooseButton(LinearLayout parent, String label, Runnable action) {
   Button button = new Button(app);
-  button.setAllCaps(false);
   button.setText(label);
-  button.setTextColor(0xffeff8fd);
-  button.setBackground(app.rgbPanel(0xff173041, 0xff245462, series.accent));
+  WorkshopActions.style(app, button, WorkshopActions.byLabel(label));
   InterfaceMotion.buttonFeedback(button);
   button.setPadding(app.dp(10), app.dp(6), app.dp(10), app.dp(6));
   button.setMinHeight(app.dp(48));
@@ -1616,6 +1621,26 @@ final class TemaWorkshop {
   app.exportTemaPdf(position.name, series, order, plan, leftHinges());
  }
 
+ private void showBayMeasurements(TemaLayout layout, Set<Integer> openings, Set<Integer> empty) {
+  ScrollView scroll = new ScrollView(app);
+  LinearLayout list = new LinearLayout(app);
+  list.setOrientation(LinearLayout.VERTICAL);
+  list.setPadding(app.dp(16), app.dp(8), app.dp(16), app.dp(8));
+  scroll.addView(list);
+  listBayMeasurements(list, layout, openings, empty, 0xff1b4154);
+  new AlertDialog.Builder(app).setTitle("Bölme iç ölçüleri · En × Boy").setView(scroll).setPositiveButton("Kapat", null).show();
+ }
+
+ private void listBayMeasurements(LinearLayout list, TemaLayout layout, Set<Integer> openings, Set<Integer> empty, int color) {
+  for (int i = 0; i < layout.bays.size(); i++) {
+   int number = i + 1;
+   TemaLayout.Opening bay = layout.bays.get(i);
+   String kind = TemaBayDimensions.kind(bay, openings.contains(number), empty.contains(number));
+   app.planLabel(list, TemaBayDimensions.caption(number, kind) + "  ·  "
+    + TemaBayDimensions.size(bay.width(), bay.height()), 14, color);
+  }
+ }
+
  private void showPlan(TemaPosition position, TemaJoinery.Order order, TemaJoinery.Plan plan) {
   app.page(position.name + " · " + series.label + " imalat föyü");
   app.pageBack = this::open;
@@ -1627,9 +1652,8 @@ final class TemaWorkshop {
   app.planLabel(drawingCard, "Pay, profilin açıklıktan aldığı ölçüdür. Orta kayıtta iki komşu bölmenin payı ayrı yazılır.", 13, 0xffc9dbe3);
   Button expand = new Button(app);
   expand.setText("Çizimi büyüt");
-  expand.setAllCaps(false);
-  expand.setTextColor(Color.WHITE);
-  expand.setBackground(app.rgbPanel(0xff173041, 0xff245462, series.accent));
+  WorkshopActions.style(app, expand, WorkshopActions.Tone.EDIT);
+  InterfaceMotion.buttonFeedback(expand);
   drawingCard.addView(expand, new LinearLayout.LayoutParams(-1, app.dp(48)));
   expand.setOnClickListener(view -> showDetailedDrawing(order, plan, leftHinges));
   chooseButton(drawingCard, "Çizimi PDF al", () -> exportDrawing(position, order, plan));
@@ -1639,6 +1663,8 @@ final class TemaWorkshop {
   for (TemaLayout.Record record : plan.layout.records) if (record.vertical) verticalRecords++;
   app.planLabel(drawingCard, (plan.panes.size() - open) + " sabit  ·  " + open + " açılır  ·  "
    + verticalRecords + " dikey, " + (plan.layout.records.size() - verticalRecords) + " yatay kayıt", 14, 0xffa7e9e3);
+  listBayMeasurements(section("Bölme iç ölçüleri · En × Boy"), plan.layout,
+   order.openingSashes, order.emptyCells, 0xffecf5f7);
   addOptimizationLink(section("Birleşik stok planı"), position);
   LinearLayout profiles = section("Profil ve orta kayıt kesimleri");
   showCuts(profiles, plan);
@@ -1673,17 +1699,8 @@ final class TemaWorkshop {
  }
 
  private void showCuts(LinearLayout parent, TemaJoinery.Plan plan) {
-  Map<String, List<TemaJoinery.Cut>> groups = new LinkedHashMap<>();
-  for (TemaJoinery.Cut cut : plan.cuts) {
-   List<TemaJoinery.Cut> cuts = groups.get(cut.code);
-   if (cuts == null) {
-    cuts = new ArrayList<>();
-    groups.put(cut.code, cuts);
-   }
-   cuts.add(cut);
-  }
   int index = 0;
-  for (Map.Entry<String, List<TemaJoinery.Cut>> group : groups.entrySet()) {
+  for (Map.Entry<String, List<TemaJoinery.Cut>> group : plan.cutsByProfile().entrySet()) {
    LinearLayout card = app.planCard(parent, 0xff172b3c, 0xff224655, series.accent);
    TemaCatalog.Profile item = series.find(group.getKey());
    android.graphics.Bitmap bitmap = item == null ? null : BitmapFactory.decodeResource(app.getResources(), item.image);

@@ -182,22 +182,27 @@ final class TemaLayout {
 
  private int coordinate(Record record, int at) { return record.vertical ? y(at) : x(at); }
 
- private int contactFace(Record record, int at) {
+ private int contactFace(Record piece, int at) {
   if (at == 0 || at == scale) return 0;
-  return faceAt(!record.vertical, at, record.axis, record.axis);
+  int axis = piece.vertical ? x(piece.axis) : y(piece.axis);
+  int low = axis - piece.section.face / 2, high = axis + afterCentre(piece.section.face);
+  int face = 0;
+  for (Record support : records) {
+   if (support.vertical == piece.vertical || support.axis != at) continue;
+   int start = coordinate(support, support.start), end = coordinate(support, support.end);
+   if (start < high && end > low) face = Math.max(face, support.section.face);
+  }
+  return face;
  }
 
  private int wallFace(int[] cell, int edge) {
   if (cell[edge] == 0 || cell[edge] == scale) return 0;
   boolean vertical = edge == LEFT || edge == RIGHT;
-  return faceAt(vertical, cell[edge], cell[vertical ? TOP : LEFT], cell[vertical ? BOTTOM : RIGHT]);
- }
-
- private int faceAt(boolean vertical, int axis, int start, int end) {
+  int start = cell[vertical ? TOP : LEFT], end = cell[vertical ? BOTTOM : RIGHT];
   int face = 0;
-  for (Record record : records) {
-   if (record.vertical == vertical && record.axis == axis && record.start <= start && record.end >= end) {
-    face = Math.max(face, record.section.face);
+  for (Record boundary : records) {
+   if (boundary.vertical == vertical && boundary.axis == cell[edge] && boundary.start < end && boundary.end > start) {
+    face = Math.max(face, boundary.section.face);
    }
   }
   return face;

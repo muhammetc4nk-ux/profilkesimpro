@@ -53,7 +53,7 @@ final class TemaElevation {
   }
  }
 
- RectF opening(Canvas canvas, TemaLayout.Opening bay, TemaLayout.Section sash, boolean leftHinge,
+ void opening(Canvas canvas, TemaLayout.Opening bay, TemaLayout.Section sash, boolean leftHinge,
                TemaJoinery.Corner sashCorner, float x, float y, float sx, float sy) {
   float left = x + bay.left * sx, top = y + bay.top * sy;
   float right = x + bay.right * sx, bottom = y + bay.bottom * sy;
@@ -61,7 +61,7 @@ final class TemaElevation {
   canvas.drawRect(left, top, right, bottom, paint);
   if (sash == null) {
    glass(canvas, left, top, right, bottom, sx, sy);
-   return new RectF(left, top, right, bottom);
+   return;
   }
 
   float lx = left + TemaJoinery.SASH_GAP * sx, rx = right - TemaJoinery.SASH_GAP * sx;
@@ -70,7 +70,7 @@ final class TemaElevation {
   if (rx - lx <= 2 * fx || by - ty <= 2 * fy) {
    paint.setColor(0xff704552);
    canvas.drawRect(left, top, right, bottom, paint);
-   return null;
+   return;
   }
   jamb(canvas, lx, ty, by, fx, fy, fy, false, sashCorner, true);
   jamb(canvas, rx - fx, ty, by, fx, fy, fy, true, sashCorner, true);
@@ -79,7 +79,6 @@ final class TemaElevation {
   float insideLeft = lx + fx, insideRight = rx - fx, insideTop = ty + fy, insideBottom = by - fy;
   glass(canvas, insideLeft, insideTop, insideRight, insideBottom, sx, sy);
   hardware(canvas, bay.door, leftHinge, lx, ty, rx, by, fx);
-  return new RectF(insideLeft, insideTop, insideRight, insideBottom);
  }
 
  private void rail(Canvas c, float left, float right, float y, float face, float leftFace, float rightFace,

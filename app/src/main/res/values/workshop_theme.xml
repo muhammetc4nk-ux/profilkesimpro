@@ -1,0 +1,14 @@
+<resources>
+ <style name="WorkshopTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+  <item name="android:colorAccent">#187574</item>
+  <item name="android:buttonStyle">@style/WorkshopButton</item>
+ </style>
+ <style name="WorkshopButton" parent="android:style/Widget.Material.Light.Button">
+  <item name="android:background">@drawable/workshop_button</item>
+  <item name="android:backgroundTint">@null</item>
+  <item name="android:textColor">#F7FDFF</item>
+  <item name="android:textAllCaps">false</item>
+  <item name="android:fontFamily">sans-serif-medium</item>
+  <item name="android:minHeight">46dp</item>
+ </style>
+</resources>

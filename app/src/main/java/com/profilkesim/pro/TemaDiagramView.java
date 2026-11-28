@@ -12,7 +12,7 @@ final class TemaDiagramView extends View {
                   TemaCatalog.Series series, Set<Integer> leftCells) {
   super(context);
   renderer = new TemaDiagramRenderer(order, plan, series, leftCells, getResources().getDisplayMetrics().density, false);
-  setContentDescription("Profil adları, düşüm payları ve cam ölçüleri olan doğrama çizimi, " + plan.layout.bays.size() + " bölme");
+  setContentDescription("Profil adları, bölme iç ölçüleri ve cam kesimleri olan doğrama çizimi, " + plan.layout.bays.size() + " bölme");
  }
 
  @Override protected void onDraw(Canvas canvas) {
