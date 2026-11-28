@@ -337,6 +337,7 @@ public class MainActivity extends Activity {
  void bad(){Toast.makeText(this,"Ölçü veya adet hatalı",Toast.LENGTH_LONG).show();}
  @Override public void onCreate(Bundle state) {
   super.onCreate(state);
+  if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED) requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 91);
   getWindow().setStatusBarColor(0xff0b1925);
   getWindow().setNavigationBarColor(0xff081620);
   clock = new WorkshopClock(this);
@@ -579,6 +580,7 @@ public class MainActivity extends Activity {
   String safeName = name.replaceAll("[^\\p{L}\\p{N} ._()-]", "_").trim();
   String fileName = "Tema-" + series.label + "-" + (safeName.isEmpty() ? "Poz" : safeName) + ".pdf";
   pdfMessage("PDF hazırlanıyor…");
+  pdfNotification("PDF indiriliyor…", fileName, true, null);
   new Thread(() -> {
    long timestamp = clock.forDocument();
    if (android.os.Build.VERSION.SDK_INT >= 29) {
@@ -612,6 +614,7 @@ public class MainActivity extends Activity {
      pendingTemaPdf = null;
      prepared.delete();
      pdfMessage("PDF kaydetme ekranı açılamadı.");
+     pdfNotification("PDF kaydedilemedi", "", false, null);
     }
    });
   }, "tema-pdf").start();
@@ -638,7 +641,7 @@ public class MainActivity extends Activity {
    if (getContentResolver().update(uri, completed, null, null) != 1) {
     throw new java.io.IOException("PDF kaydedilemedi.");
    }
-   completePdfWrite(true, fileName, true);
+   completePdfWrite(true, fileName, true, uri);
   } catch (java.io.IOException | RuntimeException error) {
    if (uri != null) {
     try { getContentResolver().delete(uri, null, null); } catch (RuntimeException ignored) { }
@@ -652,7 +655,7 @@ public class MainActivity extends Activity {
   pendingTemaPdf = null;
   if (file == null) return;
   Uri uri = result == RESULT_OK && data != null ? data.getData() : null;
-  if (uri == null) { file.delete(); return; }
+  if (uri == null) { file.delete(); ((android.app.NotificationManager)getSystemService(NOTIFICATION_SERVICE)).cancel(48); return; }
   preparingTemaPdf = true;
   new Thread(() -> {
    boolean saved = false;
@@ -668,11 +671,13 @@ public class MainActivity extends Activity {
    } finally {
     file.delete();
    }
-   completePdfWrite(saved, "", false);
+   completePdfWrite(saved, "", false, uri);
   }, "tema-pdf-save").start();
  }
 
- private void completePdfWrite(boolean saved, String fileName, boolean downloads) {
+ private void completePdfWrite(boolean saved, String fileName, boolean downloads) { completePdfWrite(saved, fileName, downloads, null); }
+ private void completePdfWrite(boolean saved, String fileName, boolean downloads, Uri uri) {
+  pdfNotification(saved ? "PDF başarıyla indirildi" : "PDF kaydedilemedi", fileName, false, saved ? uri : null);
   runOnUiThread(() -> {
    preparingTemaPdf = false;
    pdfMessage(saved ? downloads ? "İndirilenler’e kaydedildi · " + fileName : "PDF kaydedildi."
@@ -680,6 +685,19 @@ public class MainActivity extends Activity {
   });
  }
 
+ private void pdfNotification(String title, String fileName, boolean running, Uri uri) {
+  try {
+   android.app.NotificationManager manager = (android.app.NotificationManager)getSystemService(NOTIFICATION_SERVICE);
+   if (android.os.Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(new android.app.NotificationChannel("pdf_downloads", "PDF indirmeleri", android.app.NotificationManager.IMPORTANCE_DEFAULT));
+   android.app.Notification.Builder b = android.os.Build.VERSION.SDK_INT >= 26 ? new android.app.Notification.Builder(this, "pdf_downloads") : new android.app.Notification.Builder(this);
+   b.setSmallIcon(running ? android.R.drawable.stat_sys_download : android.R.drawable.stat_sys_download_done).setContentTitle(title).setContentText(fileName).setOngoing(running).setAutoCancel(!running).setProgress(0, 0, running);
+   if (uri != null) {
+    Intent open = new Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/pdf").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+    b.setContentIntent(android.app.PendingIntent.getActivity(this, 48, open, android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE));
+   }
+   manager.notify(48, b.build());
+  } catch (RuntimeException ignored) { }
+ }
  private void pdfMessage(String text) {
   Toast.makeText(getApplicationContext(), text, Toast.LENGTH_LONG).show();
  }
