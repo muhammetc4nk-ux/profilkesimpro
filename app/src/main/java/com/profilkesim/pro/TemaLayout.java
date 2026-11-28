@@ -93,6 +93,7 @@ final class TemaLayout {
  final Frame frame;
  final List<Opening> bays = new ArrayList<>();
  final List<Span> rails;
+ final List<List<Integer>> widthChains;
  final List<Record> records;
 
  TemaLayout(int width, int height, Frame frame, int scale, List<int[]> cells, List<Record> records,
@@ -143,6 +144,39 @@ final class TemaLayout {
     x(cell[RIGHT]) - wallFace(cell, RIGHT) / 2,
     door ? height : y(cell[BOTTOM]) - wallFace(cell, BOTTOM) / 2, door));
   }
+  widthChains = widthChains(cells);
+ }
+
+ private List<List<Integer>> widthChains(List<int[]> cells) {
+  Set<Integer> levels = new TreeSet<>();
+  for (int[] cell : cells) levels.add(cell[TOP]);
+  List<List<Integer>> chains = new ArrayList<>();
+  for (int level : levels) {
+   List<Opening> row = new ArrayList<>();
+   for (int i = 0; i < cells.size(); i++) {
+    int[] cell = cells.get(i);
+    if (cell[TOP] <= level && level < cell[BOTTOM]) row.add(bays.get(i));
+   }
+   row.sort((a, b) -> Integer.compare(a.left, b.left));
+   List<Integer> chain = new ArrayList<>();
+   int end = 0;
+   for (Opening bay : row) {
+    chain.add(bay.left - end);
+    chain.add(bay.width());
+    end = bay.right;
+   }
+   chain.add(width - end);
+   if (!chains.contains(chain)) chains.add(Collections.unmodifiableList(chain));
+  }
+  return Collections.unmodifiableList(chains);
+ }
+
+ String widthBreakdown(List<Integer> chain) {
+  int openings = 0, profiles = 0;
+  for (int i = 0; i < chain.size(); i += 2) profiles += chain.get(i);
+  for (int i = 1; i < chain.size(); i += 2) openings += chain.get(i);
+  return "Net " + ShopDimensions.mm(openings) + " + profil " + ShopDimensions.mm(profiles)
+   + " = " + ShopDimensions.mm(openings + profiles) + " mm";
  }
 
  static List<Span> bottomRails(int width, List<Span> gaps) {

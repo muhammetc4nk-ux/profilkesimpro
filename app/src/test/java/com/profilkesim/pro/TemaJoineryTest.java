@@ -9,6 +9,32 @@ import java.util.List;
 import org.junit.Test;
 
 public final class TemaJoineryTest {
+ @Test public void regionalWidthIncludesEachProfileFaceOnce() {
+  TemaLayout.Section left = new TemaLayout.Section("left", 402);
+  TemaLayout.Section right = new TemaLayout.Section("right", 598);
+  TemaLayout.Section first = new TemaLayout.Section("first", 591);
+  TemaLayout.Section second = new TemaLayout.Section("second", 470);
+  TemaLayout.Frame frame = new TemaLayout.Frame(left, left, right, right);
+  TemaLayout layout = new TemaLayout(30000, 22000, frame, 1000,
+   Arrays.asList(new int[]{0, 0, 300, 1000}, new int[]{300, 0, 600, 1000}, new int[]{600, 0, 1000, 1000}),
+   Arrays.asList(new TemaLayout.Record(300, 0, 300, 1000, first),
+    new TemaLayout.Record(600, 0, 600, 1000, second)), Collections.emptySet());
+  assertEquals(29000, layout.innerWidth);
+  assertEquals(Collections.singletonList(Arrays.asList(402, 8405, 591, 8169, 470, 11365, 598)), layout.widthChains);
+  TemaJoinery.Order order = new TemaJoinery.Order();
+  order.quantity = 1;
+  order.width = layout.width;
+  order.height = layout.height;
+  order.frameCode = left.code;
+  order.frameFace = left.face;
+  order.corner = TemaJoinery.Corner.VERTICAL_FULL;
+  order.layout = layout;
+  TemaJoinery.Plan plan = TemaJoinery.calculate(order);
+  assertEquals(29000, plan.cuts.get(0).length);
+  assertEquals(30000, plan.layout.widthChains.get(0).stream().mapToInt(Integer::intValue).sum());
+  assertEquals(8405, plan.panes.get(0).insideWidth);
+ }
+
  @Test public void c60FrameAndContinuousRecordsProduceGlassCutSizes() {
   TemaJoinery.Order order = order(20000, 15000, 490);
   order.quantity = 2;

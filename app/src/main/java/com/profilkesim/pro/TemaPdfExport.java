@@ -63,6 +63,8 @@ final class TemaPdfExport {
 
    if (!usedSections.isEmpty()) pages.gallery(usedSections, sections);
    pages.next("Bölme ölçüleri ve profil payları");
+   pages.heading("Dış en hesabı");
+   for (List<Integer> chain : plan.layout.widthChains) pages.line(plan.layout.widthBreakdown(chain), "", true);
    pages.heading("Bölme iç ölçüleri · En × Boy");
    for (int i = 0; i < plan.layout.bays.size(); i++) {
     int number = i + 1;

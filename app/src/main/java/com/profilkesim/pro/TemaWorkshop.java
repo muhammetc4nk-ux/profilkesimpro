@@ -797,7 +797,7 @@ final class TemaWorkshop {
    EditText width = new EditText(app), height = new EditText(app);
    addDimensionFields(inputs, width, height, initialWidth, initialHeight);
    TextView feedback = app.planLabel(inputs, "", 13, 0xffa92843);
-   AlertDialog dialog = new AlertDialog.Builder(app).setTitle("Kasanın toplam iç açıklığı")
+   AlertDialog dialog = new AlertDialog.Builder(app).setTitle("Kasa yan profilleri arasındaki ölçü")
     .setView(inputs).setNegativeButton("Vazgeç", null).setPositiveButton("Uygula", null).create();
    dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button -> {
     try {
@@ -1686,6 +1686,8 @@ final class TemaWorkshop {
  }
 
  private void listBayMeasurements(LinearLayout list, TemaLayout layout, Set<Integer> openings, Set<Integer> empty, int color) {
+  app.planLabel(list, "Dış en hesabı", 14, color);
+  for (List<Integer> chain : layout.widthChains) app.planLabel(list, layout.widthBreakdown(chain), 14, color);
   for (int i = 0; i < layout.bays.size(); i++) {
    int number = i + 1;
    TemaLayout.Opening bay = layout.bays.get(i);
