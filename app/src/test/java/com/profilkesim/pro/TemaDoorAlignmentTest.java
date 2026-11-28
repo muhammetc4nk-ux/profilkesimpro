@@ -65,7 +65,8 @@ public final class TemaDoorAlignmentTest {
 
  @Test public void stockAndDrawingDisplayUseNamesAndCanIdentifyBeadsWithoutACode() {
   assertEquals("Dar kasa · 42 mm", TemaCatalog.Series.ALDOKS.displayOf("T.3001"));
-  assertEquals("Standart kayıt · 42 mm", TemaCatalog.Series.ALDOKS.displayOf("T.3003"));
+  assertEquals("Standart kayıt · 59 mm", TemaCatalog.Series.ALDOKS.displayOf("T.3003"));
+  assertEquals("Geniş kayıt · 42 mm", TemaCatalog.Series.ALDOKS.displayOf("T.3006"));
   assertEquals("Geniş kasa · 58,5 mm", TemaCatalog.Series.ALDOKS.displayOf("T.3004"));
   assertEquals("Özel profil", TemaCatalog.Series.C60.nameOf("M123"));
   assertTrue(TemaCatalog.Series.ALDOKS.isBead("T.3021"));
