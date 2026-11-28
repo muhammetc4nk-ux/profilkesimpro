@@ -4,9 +4,9 @@
 <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 <application
- android:icon="@drawable/kesim_icon"
+ android:icon="@drawable/profilx_launcher"
  android:label="ProfilX"
- android:roundIcon="@drawable/kesim_icon"
+ android:roundIcon="@drawable/profilx_launcher"
  android:theme="@style/WorkshopTheme"
  android:allowBackup="true"
  android:supportsRtl="true">

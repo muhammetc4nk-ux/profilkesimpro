@@ -1785,7 +1785,9 @@ final class TemaWorkshop {
  }
 
  private void exportDrawing(TemaPosition position, TemaJoinery.Order order, TemaJoinery.Plan plan) {
-  app.exportTemaPdf(position.name, series, order, plan, leftHinges());
+  int stock = ShopDimensions.tenths(stockText, "Stok boyu");
+  int kerf = ShopDimensions.tenths(kerfText, "Testere payı");
+  app.exportTemaPdf(position.name, series, order, plan, leftHinges(), stock, kerf);
  }
 
  private static int skirtExtra(TemaLayout.Section sash, TemaLayout.Section skirt) {

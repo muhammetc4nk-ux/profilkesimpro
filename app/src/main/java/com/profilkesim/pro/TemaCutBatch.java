@@ -61,6 +61,15 @@ final class TemaCutBatch {
   long net, remaining;
  }
 
+ static Result packPlan(String name, TemaJoinery.Plan plan, int stock, int kerf) {
+  List<Line> lines = new ArrayList<>();
+  for (TemaJoinery.Cut cut : plan.cuts) {
+   String ends = cut.angle + "°" + (cut.angle == cut.endAngle ? "" : "/" + cut.endAngle + "°");
+   lines.add(new Line(cut.code, cut.code, cut.length, cut.quantity, ends));
+  }
+  return pack(Collections.singletonMap(name, lines), stock, kerf);
+ }
+
  static Result pack(Map<String, List<Line>> positions, int stock, int kerf) {
   if (stock <= 0 || kerf < 0) throw new IllegalArgumentException("Stok boyunu ve testere payını kontrol edin.");
   Result result = new Result();

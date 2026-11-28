@@ -571,7 +571,7 @@ public class MainActivity extends Activity {
  }
 
  void exportTemaPdf(String name, TemaCatalog.Series series, TemaJoinery.Order order,
-                     TemaJoinery.Plan plan, Set<Integer> leftHinges) {
+                     TemaJoinery.Plan plan, Set<Integer> leftHinges, int stock, int kerf) {
   if (preparingTemaPdf || pendingTemaPdf != null) {
    pdfMessage("Önce açık PDF kaydetme işlemini tamamlayın.");
    return;
@@ -584,14 +584,14 @@ public class MainActivity extends Activity {
   new Thread(() -> {
    long timestamp = clock.forDocument();
    if (android.os.Build.VERSION.SDK_INT >= 29) {
-    saveTemaPdfToDownloads(fileName, name, series, order, plan, leftHinges, timestamp);
+    saveTemaPdfToDownloads(fileName, name, series, order, plan, leftHinges, timestamp, stock, kerf);
     return;
    }
    java.io.File file = null;
    try {
     file = java.io.File.createTempFile("tema_pdf_", ".pdf", getCacheDir());
     try (java.io.OutputStream output = new java.io.FileOutputStream(file)) {
-     TemaPdfExport.write(output, getResources(), name, series, order, plan, leftHinges, timestamp);
+     TemaPdfExport.write(output, getResources(), name, series, order, plan, leftHinges, timestamp, stock, kerf);
     }
    } catch (java.io.IOException | RuntimeException error) {
     if (file != null) file.delete();
@@ -622,7 +622,7 @@ public class MainActivity extends Activity {
 
  @android.annotation.TargetApi(29)
  private void saveTemaPdfToDownloads(String fileName, String name, TemaCatalog.Series series, TemaJoinery.Order order,
-                                    TemaJoinery.Plan plan, Set<Integer> leftHinges, long timestamp) {
+                                    TemaJoinery.Plan plan, Set<Integer> leftHinges, long timestamp, int stock, int kerf) {
   android.content.ContentValues metadata = new android.content.ContentValues();
   metadata.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
   metadata.put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf");
@@ -634,7 +634,7 @@ public class MainActivity extends Activity {
    if (uri == null) throw new java.io.IOException("İndirilenler klasörü açılamadı.");
    try (java.io.OutputStream output = getContentResolver().openOutputStream(uri)) {
     if (output == null) throw new java.io.IOException("PDF dosyası açılamadı.");
-    TemaPdfExport.write(output, getResources(), name, series, order, plan, leftHinges, timestamp);
+    TemaPdfExport.write(output, getResources(), name, series, order, plan, leftHinges, timestamp, stock, kerf);
    }
    android.content.ContentValues completed = new android.content.ContentValues();
    completed.put(MediaStore.MediaColumns.IS_PENDING, 0);

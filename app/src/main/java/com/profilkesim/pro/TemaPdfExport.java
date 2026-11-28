@@ -21,11 +21,12 @@ final class TemaPdfExport {
  private static final int INK = 0xff192f3e;
  private static final int MUTED = 0xff4d6372;
  private static final int RULE = 0xffd7e4ea;
+ private static final int CUT = 0xff16864d, WASTE = 0xffc53340, KERF = 0xffd48b08;
 
  private TemaPdfExport() {}
 
  static void write(OutputStream output, Resources resources, String name, TemaCatalog.Series series,
-                   TemaJoinery.Order order, TemaJoinery.Plan plan, Set<Integer> leftHinges, long timestamp) throws IOException {
+                   TemaJoinery.Order order, TemaJoinery.Plan plan, Set<Integer> leftHinges, long timestamp, int stock, int kerf) throws IOException {
   boolean landscape = order.width > order.height;
   int pageWidth = landscape ? 842 : 595, pageHeight = landscape ? 595 : 842;
   PdfDocument pdf = new PdfDocument();
@@ -47,24 +48,26 @@ final class TemaPdfExport {
    pages.y = pageHeight - MARGIN - 15;
    pages.line("Tüm ölçüler mm. Profil payı toplam düşümü gösterir.", "", false);
 
-   pages.next("Profil kesim listesi");
-   pages.cutHeader();
-   List<TemaJoinery.Cut> cuts = new ArrayList<>();
-   for (Map.Entry<String, List<TemaJoinery.Cut>> group : plan.cutsByProfile().entrySet()) {
-    if (!order.aldoksBeads || !series.isBead(group.getKey())) cuts.addAll(group.getValue());
-   }
-   if (order.aldoksBeads) {
-    for (TemaJoinery.Cut cut : plan.cuts) if (series.isBead(cut.code)) cuts.add(cut);
-   }
-   for (TemaJoinery.Cut cut : cuts) {
-    TemaCatalog.Profile profile = series.find(cut.code);
-    Bitmap symbol = null;
-    if (profile != null && profile.image != 0) {
-     if (!sections.containsKey(profile.image)) sections.put(profile.image, BitmapFactory.decodeResource(resources, profile.image));
-     symbol = sections.get(profile.image);
-     if (symbol != null) usedSections.add(profile);
+   writeOptimization(pages, name, series, plan, stock, kerf);
+   String[] titles = {"Kasa kesim ölçüleri", "Kanat kesim ölçüleri", "Çıta kesim ölçüleri", "Orta kayıt ve diğer kesimler"};
+   List<List<TemaJoinery.Cut>> groups = new ArrayList<>();
+   for (String ignored : titles) groups.add(new ArrayList<>());
+   for (TemaJoinery.Cut cut : plan.cuts) groups.get(cutSection(series, cut)).add(cut);
+   for (int group = 0; group < titles.length; group++) {
+    if (groups.get(group).isEmpty()) continue;
+    pages.next(titles[group]);
+    pages.cutHeader();
+    for (TemaJoinery.Cut cut : groups.get(group)) {
+     TemaCatalog.Profile profile = series.find(cut.code);
+     Bitmap symbol = null;
+     if (profile != null && profile.image != 0) {
+      if (!sections.containsKey(profile.image)) sections.put(profile.image, BitmapFactory.decodeResource(resources, profile.image));
+      symbol = sections.get(profile.image);
+      if (symbol != null && !usedSections.contains(profile)) usedSections.add(profile);
+     }
+     String label = profile == null ? cut.code : cut.code + " · " + profile.label();
+     pages.cutRow(label, cut, symbol, titles[group]);
     }
-    pages.cutRow(series.displayOf(cut.code), cut, symbol);
    }
 
    if (!usedSections.isEmpty()) pages.gallery(usedSections, sections);
@@ -108,6 +111,50 @@ final class TemaPdfExport {
     }
    }
   }
+ }
+
+ private static int cutSection(TemaCatalog.Series series, TemaJoinery.Cut cut) {
+  if (series.isBead(cut.code, cut.role)) return 2;
+  if (cut.role.startsWith("Kasa")) return 0;
+  if (cut.role.startsWith("Kanat")) return 1;
+  return 3;
+ }
+
+ private static void writeOptimization(Pages pages, String name, TemaCatalog.Series series,
+                                       TemaJoinery.Plan plan, int stock, int kerf) {
+  pages.next("Profil bazında kesim optimizasyonu");
+  pages.line("Stok boyu " + metres(stock) + " · Testere payı " + mm(kerf) + " mm/ara", "", false);
+  TemaCutBatch.Result result;
+  try {
+   result = TemaCutBatch.packPlan(name, plan, stock, kerf);
+  } catch (IllegalArgumentException error) {
+   pages.line("Optimizasyon oluşturulamadı", "", false);
+   pages.line(error.getMessage(), "", true);
+   return;
+  }
+  pages.line("Toplam " + result.barCount + " boy · " + result.pieceCount + " parça",
+   "Stok " + metres((long) stock * result.barCount) + " · Fire " + metres(result.remaining), true);
+  pages.legend();
+  for (TemaCutBatch.Profile profile : result.profiles.values()) {
+   long net = 0, fire = 0, saw = 0;
+   for (TemaCutBatch.Bar bar : profile.bars) {
+    fire += bar.layout.remaining();
+    saw += (long) kerf * (bar.pieces.size() - 1);
+    net += bar.layout.used - (long) kerf * (bar.pieces.size() - 1);
+   }
+   String title = profile.key + " · " + series.nameOf(profile.key);
+   if (pages.y + 100 > pages.height - MARGIN) pages.next("Kesim optimizasyonu · Devam");
+   pages.heading(title);
+   pages.line(profile.bars.size() + " boy × " + metres(stock) + " = " + metres((long) stock * profile.bars.size()), "", false);
+   pages.line("Net kesim " + metres(net) + " · Testere " + metres(saw) + " · Fire " + metres(fire), "", true);
+   for (int index = 0; index < profile.bars.size(); index++) {
+    pages.stockBar(title, index + 1, profile.bars.get(index), kerf);
+   }
+  }
+ }
+
+ private static String metres(long amount) {
+  return java.math.BigDecimal.valueOf(amount, 4).stripTrailingZeros().toPlainString().replace('.', ',') + " m";
  }
 
  private static String mm(int value) { return ShopDimensions.mm(value); }
@@ -184,10 +231,10 @@ final class TemaPdfExport {
    alternate = false;
   }
 
-  void cutRow(String profile, TemaJoinery.Cut cut, Bitmap symbol) {
+  void cutRow(String profile, TemaJoinery.Cut cut, Bitmap symbol, String heading) {
    float rowHeight = 49;
    if (y + rowHeight > height - MARGIN) {
-    next("Profil kesim listesi · Devam");
+    next(heading + " · Devam");
     cutHeader();
    }
    Canvas canvas = page.getCanvas();
@@ -208,6 +255,71 @@ final class TemaPdfExport {
    paint.setColor(RULE);
    paint.setStrokeWidth(.55f);
    canvas.drawLine(MARGIN, y, width - MARGIN, y, paint);
+  }
+
+  void legend() {
+   String[] labels = {"Kesilen parça", "Kalan fire", "Testere payı"};
+   int[] colors = {CUT, WASTE, KERF};
+   float x = MARGIN;
+   for (int i = 0; i < labels.length; i++) {
+    paint.setColor(colors[i]);
+    page.getCanvas().drawRect(x, y - 9, x + 9, y, paint);
+    text(labels[i], x + 14, y, 10, INK, false, 106);
+    x += 118;
+   }
+   y += 24;
+  }
+
+  void roomForBar(String profile, float space) {
+   if (y + space <= height - MARGIN) return;
+   next("Kesim optimizasyonu · Devam");
+   heading(profile);
+  }
+
+  void stockBar(String profile, int number, TemaCutBatch.Bar bar, int kerf) {
+   roomForBar(profile, 56);
+   String label = "Boy " + number + " · " + mm(bar.layout.stock) + " mm";
+   text(label, MARGIN, y, 10, INK, true, width / 2f);
+   String fire = "Fire " + mm(bar.layout.remaining()) + " mm";
+   paint.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+   paint.setTextSize(10);
+   text(fire, width - MARGIN - paint.measureText(fire), y, 10, WASTE, true, width / 2f);
+   y += 6;
+   float left = MARGIN, scale = (width - 2f * MARGIN) / bar.layout.stock;
+   for (int i = 0; i < bar.pieces.size(); i++) {
+    if (i > 0 && kerf > 0) left = segment(left, kerf * scale, KERF);
+    left = segment(left, bar.pieces.get(i).length * scale, CUT);
+    if (i + 1 < bar.pieces.size()) {
+     paint.setColor(0xffeef8f0);
+     paint.setStrokeWidth(.45f);
+     page.getCanvas().drawLine(left, y, left, y + 9, paint);
+    }
+   }
+   segment(left, bar.layout.remaining() * scale, WASTE);
+   y += 24;
+   StringBuilder row = new StringBuilder();
+   for (TemaCutBatch.Piece piece : bar.pieces) {
+    String entry = mm(piece.length) + " mm (" + piece.ends + ")";
+    paint.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+    paint.setTextSize(9);
+    if (row.length() > 0 && paint.measureText(row + "  ·  " + entry) > width - 2 * MARGIN) {
+     roomForBar(profile + " · Boy " + number, 16);
+     text(row.toString(), MARGIN, y, 9, CUT, false, width - 2 * MARGIN);
+     y += 14;
+     row.setLength(0);
+    }
+    if (row.length() > 0) row.append("  ·  ");
+    row.append(entry);
+   }
+   roomForBar(profile + " · Boy " + number, 16);
+   text(row.toString(), MARGIN, y, 9, CUT, false, width - 2 * MARGIN);
+   y += 25;
+  }
+
+  private float segment(float left, float size, int color) {
+   paint.setColor(color);
+   page.getCanvas().drawRect(left, y, left + size, y + 9, paint);
+   return left + size;
   }
 
   private void drawSection(Bitmap symbol, float rowHeight) {

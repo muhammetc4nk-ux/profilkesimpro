@@ -10,6 +10,21 @@ import java.util.Map;
 import org.junit.Test;
 
 public final class TemaCutBatchTest {
+ @Test public void packsPdfCutsByProfileWithTheChosenStockAndSawAllowance() {
+  TemaJoinery.Plan plan = new TemaJoinery.Plan(Collections.emptyList(), Collections.emptyList(), null);
+  plan.addCut("T.3001", "Kasa yatay", 29980, 45, 90, 2);
+  plan.addCut("T.3020", "Sabit cam çıtası yatay", 12000, 90, 1);
+  TemaCutBatch.Result result = TemaCutBatch.packPlan("P01", plan, 60000, 40);
+  assertEquals(2, result.barCount);
+  assertEquals(3, result.pieceCount);
+  assertEquals(71960, result.net);
+  assertEquals(48000, result.remaining);
+  TemaCutBatch.Bar frame = result.profiles.get("T.3001").bars.get(0);
+  assertEquals(60000, frame.layout.stock);
+  assertEquals(0, frame.layout.remaining());
+  assertEquals("45°/90°", frame.pieces.get(1).ends);
+ }
+
  @Test public void sameProfileSharesBarsAcrossDrawnAndScannedPositions() {
   Map<String, List<TemaCutBatch.Line>> positions = new LinkedHashMap<>();
   positions.put("P01", Arrays.asList(
