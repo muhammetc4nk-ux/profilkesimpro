@@ -113,7 +113,7 @@ final class TemaWorkshop {
 
  private void migrateCatalogueFaces() {
   if (series == TemaCatalog.Series.ALDOKS && !draft.containsKey("catalogueFaces")) {
-   if ("T.3004".equals(value("code0")) && "42".equals(value("face0"))) draft.put("face0", "58,5");
+   if ("T.3004".equals(value("code0")) && "58,5".equals(value("face0"))) draft.put("face0", "42");
    if ("T.3002".equals(value("code2")) && "60".equals(value("face2"))) draft.put("face2", "59");
    draft.put("catalogueFaces", "1");
   }
