@@ -26,7 +26,7 @@ final class TemaCatalog {
     profile(3004, "Geniş kasa", 585, 454, 11, 71, R.drawable.tema_3004),
     profile(3007, "Ekstra geniş kasa", 907, 455, 15, 71, R.drawable.tema_3007)},
    new Profile[]{profile(3003, "Standart kayıt", 590, 455, 11, 73, R.drawable.tema_3003),
-    profile(3006, "Geniş kayıt", 420, 454, 11, 73, R.drawable.tema_3006),
+    profile(3006, "Geniş kayıt", 430, 454, 11, 73, R.drawable.tema_3006),
     profile(3009, "Ekstra geniş kayıt", 1100, 455, 17, 73, R.drawable.tema_3009)},
    new Profile[]{profile(3002, "Standart kanat", 590, 455, 11, 72, R.drawable.tema_3002),
     profile(3005, "Geniş kanat", 765, 454, 11, 72, R.drawable.tema_3005),
