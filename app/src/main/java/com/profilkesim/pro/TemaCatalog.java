@@ -14,6 +14,9 @@ final class TemaCatalog {
  private static final Profile C60_SASH = profile(3105, "Standart kanat", 660, 600, 14, 80, R.drawable.tema_3105);
  static final Profile C60_ADAPTER = profile(3107, "Kanat adaptörü", 220, 559, 0, 80, R.drawable.tema_3107);
 
+ private static final Profile ALDOKS_SKIRT = profile(3010, "Etek profili", 1200, 454, 15, 74, 0);
+ private static final Profile C60_SKIRT = profile(3109, "Etek profili", 1330, 600, 20, 81, 0);
+
  enum Series {
   C60("C60", "C60", 0xff4ff3d2,
    new Profile[]{C60_STANDARD, C60_WIDE, C60_ONE_SIDE},
@@ -68,7 +71,10 @@ final class TemaCatalog {
    return isBead(code) || (" " + CutSheet.identity(name) + " ").matches(".* (CITA|CITASI|CITALAR|CITALARI) .*");
   }
 
+  Profile skirt() { return this == ALDOKS ? ALDOKS_SKIRT : C60_SKIRT; }
+
   Profile find(String code) {
+   if (skirt().code.equals(code)) return skirt();
    if (this == C60 && C60_ADAPTER.code.equals(code)) return C60_ADAPTER;
    for (Profile[] group : new Profile[][]{frames, mullions, sashes, beads}) {
     for (Profile profile : group) if (profile.code.equals(code)) return profile;

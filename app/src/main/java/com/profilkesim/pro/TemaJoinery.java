@@ -23,6 +23,7 @@ final class TemaJoinery {
  static final class Order {
   TemaLayout layout;
   Map<Integer,TemaLayout.Section> sashProfiles = Collections.emptyMap();
+  Map<Integer,TemaLayout.Section> skirtProfiles = Collections.emptyMap();
   boolean removeDoorSills;
   boolean aldoksDrawing, aldoksBeads;
   int width, height, quantity;
@@ -70,16 +71,17 @@ final class TemaJoinery {
 
  static final class Pane {
   final int number, width, height, insideWidth, insideHeight;
-  final TemaLayout.Section sash;
+  final TemaLayout.Section sash, skirt;
   final String adapterCode;
 
-  Pane(int number, int insideWidth, int insideHeight, TemaLayout.Section sash, String adapterCode) {
+  Pane(int number, int insideWidth, int insideHeight, TemaLayout.Section sash, TemaLayout.Section skirt, String adapterCode) {
    this.number = number;
    this.insideWidth = insideWidth;
    this.insideHeight = insideHeight;
    this.width = insideWidth - GLASS_DEDUCTION;
    this.height = insideHeight - GLASS_DEDUCTION;
    this.sash = sash;
+   this.skirt = skirt;
    this.adapterCode = adapterCode;
   }
  }
@@ -340,6 +342,7 @@ final class TemaJoinery {
                                         boolean opening) {
   int width = bay.width(), height = bay.height();
   TemaLayout.Section sash = null;
+  TemaLayout.Section skirt = opening && bay.door ? o.skirtProfiles.get(number) : null;
   Bead bead = opening ? o.sashBead : o.fixedBead;
   int beadWidth = width, beadHeight = height;
   if (opening) {
@@ -355,28 +358,38 @@ final class TemaJoinery {
    int cutHeight = height + (o.aldoksDrawing ? -8 * ShopDimensions.PER_MM : -2 * SASH_GAP);
    width -= 2 * SASH_GAP;
    height -= 2 * SASH_GAP;
-   if (width <= 2 * sash.face || height <= 2 * sash.face) {
+   int bottomFace = skirt == null ? sash.face : skirt.face;
+   if (width <= 2 * sash.face || height <= sash.face + bottomFace) {
     throw new IllegalArgumentException(number + ". hücrede kanat profili cam açıklığına sığmıyor.");
    }
-   addRectangle(plan, sash.code, "Kanat", cutWidth, cutHeight, sash.face, o.sashCorner, o.quantity);
+   if (skirt == null) {
+    addRectangle(plan, sash.code, "Kanat", cutWidth, cutHeight, sash.face, o.sashCorner, o.quantity);
+   } else {
+    int angle = o.sashCorner == Corner.MITER ? 45 : 90;
+    int rail = horizontalLength(cutWidth, sash.face, o.sashCorner);
+    int jamb = cutHeight - (o.sashCorner == Corner.HORIZONTAL_FULL ? sash.face + bottomFace : 0);
+    plan.addCut(sash.code, "Kanat yatay", rail, angle, o.quantity);
+    plan.addCut(sash.code, "Kanat dikey", jamb, angle, 2 * o.quantity);
+    plan.addCut(skirt.code, "Kanat alt etek profili", rail, angle, o.quantity);
+   }
    beadWidth = horizontalLength(cutWidth, sash.face, o.sashCorner) - 2 * ALDOKS_SASH_CHEEK;
-   beadHeight = verticalLength(cutHeight, sash.face, o.sashCorner) - 2 * ALDOKS_SASH_CHEEK;
+   beadHeight = verticalLength(cutHeight, sash.face, o.sashCorner) - 2 * ALDOKS_SASH_CHEEK - (bottomFace - sash.face);
    int left = bay.left + SASH_GAP, top = bay.top + SASH_GAP;
    int halfFace = sash.face / 2;
    int horizontal = horizontalLength(width, sash.face, o.sashCorner);
-   int vertical = verticalLength(height, sash.face, o.sashCorner);
+   int vertical = height - (o.sashCorner == Corner.HORIZONTAL_FULL ? sash.face + bottomFace : 0);
    plan.profileMarks.add(new ProfileMark(sash, horizontal, top + halfFace, left, left + width,
     false, ProfileRole.SASH));
-   plan.profileMarks.add(new ProfileMark(sash, horizontal, top + height - halfFace, left, left + width,
+   plan.profileMarks.add(new ProfileMark(skirt == null ? sash : skirt, horizontal, top + height - bottomFace / 2, left, left + width,
     false, ProfileRole.SASH));
    plan.profileMarks.add(new ProfileMark(sash, vertical, left + halfFace, top, top + height,
     true, ProfileRole.SASH));
    plan.profileMarks.add(new ProfileMark(sash, vertical, left + width - halfFace, top, top + height,
     true, ProfileRole.SASH));
    width -= 2 * sash.face;
-   height -= 2 * sash.face;
+   height -= sash.face + bottomFace;
   }
-  Pane pane = new Pane(number, width, height, sash, opening ? o.adapterCode : null);
+  Pane pane = new Pane(number, width, height, sash, skirt, opening ? o.adapterCode : null);
   if (pane.width <= 0 || pane.height <= 0) {
    throw new IllegalArgumentException(number + ". bölmede cam için iç en ve boydan 10 mm düşülemiyor.");
   }

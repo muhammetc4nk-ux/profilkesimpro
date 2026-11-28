@@ -346,13 +346,17 @@ final class TemaWorkshop {
   java.util.function.Supplier<TemaOpeningResize.Drawing> resizeDrawing = () -> new TemaOpeningResize.Drawing(
    ShopDimensions.tenths(sizes[0].getText().toString(), "Dış en"),
    ShopDimensions.tenths(sizes[1].getText().toString(), "Dış boy"), DRAWING_SCALE, xs, ys, localLines, lineProfiles);
+  java.util.function.IntFunction<TemaLayout.Section> selectedSash = number -> openings.contains(number)
+   ? section(groups[2][lineProfiles.getOrDefault("s" + number, picks[2])]) : null;
+  TemaLayout.Section skirtProfile = section(series.skirt());
+  java.util.function.BiFunction<Integer,TemaLayout.Opening,TemaLayout.Section> selectedSkirt = (number, bay) ->
+   bay.door && lineProfiles.containsKey("e" + number) ? skirtProfile : null;
   java.util.function.IntFunction<int[]> allowances = count -> {
    int[] deductions = new int[count];
    for (int i = 0; i < count; i++) {
     int number = i + 1;
     if (emptyCells.contains(number)) continue;
-    TemaCatalog.Profile sash = openings.contains(number) ? groups[2][lineProfiles.getOrDefault("s" + number, picks[2])] : null;
-    deductions[i] = TemaJoinery.glassAllowance(sash == null ? null : section(sash));
+    deductions[i] = TemaJoinery.glassAllowance(selectedSash.apply(number));
    }
    return deductions;
   };
@@ -419,14 +423,14 @@ final class TemaWorkshop {
      TemaLayout.Opening bay = layout.bays.get(i);
      int number = i + 1;
      boolean empty = emptyCells.contains(number), opening = openings.contains(number);
-     TemaCatalog.Profile sash = opening ? groups[2][lineProfiles.getOrDefault("s" + number, picks[2])] : null;
+     TemaLayout.Section sash = selectedSash.apply(number), skirt = selectedSkirt.apply(number, bay);
      if (!empty) {
-      elevation.opening(c, bay, sash == null ? null : section(sash), leftCells.contains(number),
+      elevation.opening(c, bay, sash, skirt, leftCells.contains(number),
        TemaJoinery.Corner.values()[sashCorner], left, top, sx, sy);
      }
      android.graphics.RectF bounds = new android.graphics.RectF(left + bay.left * sx, top + bay.top * sy,
       left + bay.right * sx, top + bay.bottom * sy);
-     String glass = measured && !empty ? glassSize(bay, TemaJoinery.glassAllowance(sash == null ? null : section(sash))) : null;
+     String glass = measured && !empty ? glassSize(bay, TemaJoinery.glassAllowance(sash), skirtExtra(sash, skirt)) : null;
      bayDimensions.draw(c, bounds, bay, number, TemaBayDimensions.kind(bay, opening, empty), measured, annotation, glass);
     }
     labelStructure(c, layout, members, sx, sy);
@@ -566,6 +570,7 @@ final class TemaWorkshop {
      TemaLayout layout = resizeLayout.layout(current);
      TemaLayout.Opening bay = layout.bays.get(index);
      int[] deductions = allowances.apply(layout.bays.size());
+     int extraHeight = skirtExtra(selectedSash.apply(index + 1), selectedSkirt.apply(index + 1, bay));
      LinearLayout form = new LinearLayout(app);
      form.setOrientation(LinearLayout.VERTICAL);
      form.setPadding(app.dp(18), app.dp(8), app.dp(18), app.dp(8));
@@ -579,15 +584,16 @@ final class TemaWorkshop {
       en.setHint(checked ? "Cam kesim eni (mm)" : "İç en (mm)");
       boy.setHint(checked ? "Cam kesim boyu (mm)" : "İç boy (mm)");
       en.setText(bay.width() > allowance ? mm(bay.width() - allowance) : "");
-      boy.setText(bay.height() > allowance ? mm(bay.height() - allowance) : "");
+      int heightAllowance = allowance + (checked ? extraHeight : 0);
+      boy.setText(bay.height() > heightAllowance ? mm(bay.height() - heightAllowance) : "");
      });
-     showResizeDialog(index, current, deductions, form, en, boy, glass);
+     showResizeDialog(index, current, deductions, extraHeight, form, en, boy, glass);
     } catch (IllegalArgumentException error) {
      toast(error.getMessage());
     }
    }
 
-   private void showResizeDialog(int index, TemaOpeningResize.Drawing current, int[] deductions,
+   private void showResizeDialog(int index, TemaOpeningResize.Drawing current, int[] deductions, int extraHeight,
                                  LinearLayout form, EditText en, EditText boy, CheckBox glass) {
     TextView feedback = app.planLabel(form, "", 13, 0xffa92843);
     AlertDialog dialog = new AlertDialog.Builder(app).setTitle((index + 1) + ". bölme ölçüsü")
@@ -602,8 +608,12 @@ final class TemaWorkshop {
       int width = ShopDimensions.tenths(en.getText().toString(), "En");
       int height = ShopDimensions.tenths(boy.getText().toString(), "Boy");
       if (width <= 0 || height <= 0) throw new IllegalArgumentException("Ölçüler sıfırdan büyük olmalı.");
+      int insideHeight = height + allowance + (glass.isChecked() ? extraHeight : 0);
+      if (insideHeight <= deductions[index] + extraHeight) {
+       throw new IllegalArgumentException("Kapı eteğinden sonra cam açıklığı yetersiz.");
+      }
       TemaOpeningResize.Drawing changed = TemaOpeningResize.resize(current, index, width + allowance,
-       height + allowance, deductions, resizeLayout);
+       insideHeight, deductions, resizeLayout);
       applyDrawing.accept(changed);
       drawingStatus.setText("Ölçüler güncellendi · Dış kasa " + mm(changed.width) + " × " + mm(changed.height) + " mm");
       dialog.dismiss();
@@ -630,6 +640,28 @@ final class TemaWorkshop {
     if (mode[0] == 8) {
      int cell = hit.apply(x, y);
      if (cell != 0) editOpening(cell - 1);
+     return;
+    }
+    if (mode[0] == 9) {
+     int number = hit.apply(x, y);
+     try {
+      if (number == 0 || !openings.contains(number)) throw new IllegalArgumentException("Alt sıradaki kapı kanadına dokunun.");
+      TemaLayout.Opening bay = geometry.get().bays.get(number - 1);
+      if (!bay.door) throw new IllegalArgumentException("Etek profili zemine inen kapı kanadına eklenir.");
+      boolean remove = lineProfiles.containsKey("e" + number);
+      TemaLayout.Section sash = selectedSash.apply(number);
+      if (!remove && glassSize(bay, TemaJoinery.glassAllowance(sash), skirtExtra(sash, skirtProfile)) == null) {
+       throw new IllegalArgumentException("Kapı eteğinden sonra cam açıklığı yetersiz.");
+      }
+      checkpoint.run();
+      if (remove) lineProfiles.remove("e" + number);
+      else lineProfiles.put("e" + number, 0);
+      drawingStatus.setText(remove ? "Etek profili kaldırıldı." : skirtProfile.code + " etek profili eklendi.");
+      persistDrawing.run();
+      invalidate();
+     } catch (IllegalArgumentException error) {
+      toast(error.getMessage());
+     }
      return;
     }
     if(mode[0]==7){
@@ -680,6 +712,7 @@ final class TemaWorkshop {
     if (mode[0] == 4 || mode[0] == 5) {
      openings.remove(cell);
      lineProfiles.remove("s"+cell);
+     lineProfiles.remove("e"+cell);
      leftCells.remove(cell);
      if (mode[0] == 4) emptyCells.add(cell);
      else emptyCells.remove(cell);
@@ -898,7 +931,11 @@ final class TemaWorkshop {
   chooseButton(column(glassAndSashes), "Cam ölçüleri", () -> {
    try {
     TemaLayout layout = geometry.get();
-    showGlassMeasurements(layout, allowances.apply(layout.bays.size()), emptyCells);
+    int[] extraHeights = new int[layout.bays.size()];
+    for (int i = 0; i < extraHeights.length; i++) {
+     extraHeights[i] = skirtExtra(selectedSash.apply(i + 1), selectedSkirt.apply(i + 1, layout.bays.get(i)));
+    }
+    showGlassMeasurements(layout, allowances.apply(layout.bays.size()), extraHeights, emptyCells);
    } catch (IllegalArgumentException error) {
     toast(error.getMessage());
    }
@@ -944,7 +981,16 @@ final class TemaWorkshop {
   LinearLayout ribbon = new LinearLayout(app);
   ribbonScroll.addView(ribbon);
   workspace.addView(ribbonScroll, new LinearLayout.LayoutParams(-1, app.dp(46)));
-  for (Button button : new Button[]{undoButton, redoButton, toolButtons[3], toolButtons[4], toolButtons[5],
+  Button skirtButton = new Button(app);
+  skirtButton.setText("Etek profili");
+  skirtButton.setOnClickListener(view -> {
+   mode[0] = 9;
+   pendingRecord[0] = null;
+   drawingStatus.setText(skirtProfile.code + " · " + mm(skirtProfile.face)
+    + " mm · Eklemek veya kaldırmak için kapı kanadına dokunun.");
+   board.invalidate();
+  });
+  for (Button button : new Button[]{skirtButton, undoButton, redoButton, toolButtons[3], toolButtons[4], toolButtons[5],
    frameButton, sashButton, clear}) {
    if (button.getParent() instanceof android.view.ViewGroup) {
     ((android.view.ViewGroup) button.getParent()).removeView(button);
@@ -1102,6 +1148,7 @@ final class TemaWorkshop {
     if (empty.contains(from)) keptEmpty.add(to);
     Integer profile = overrides.get("s" + from);
     if (profile != null && keptSashes.contains(to)) keptOverrides.put("s" + to, profile);
+    if (keptSashes.contains(to) && overrides.containsKey("e" + from)) keptOverrides.put("e" + to, 0);
     break;
    }
   }
@@ -1111,7 +1158,7 @@ final class TemaWorkshop {
   left.addAll(keptLeft);
   empty.clear();
   empty.addAll(keptEmpty);
-  overrides.keySet().removeIf(key -> key.startsWith("s"));
+  overrides.keySet().removeIf(key -> key.startsWith("s") || key.startsWith("e"));
   overrides.putAll(keptOverrides);
  }
 
@@ -1554,12 +1601,14 @@ final class TemaWorkshop {
   order.layout = new TemaLayout(order.width, order.height,
    frame(new TemaLayout.Section(order.frameCode, order.frameFace), selections),
    "1000000".equals(value("regionalScale")) ? DRAWING_SCALE : 1000, cells, records, order.openingSashes);
-  Map<Integer,TemaLayout.Section> sashes = new LinkedHashMap<>();
+  Map<Integer,TemaLayout.Section> sashes = new LinkedHashMap<>(), skirts = new LinkedHashMap<>();
   for (int bay : order.openingSashes) {
    Integer index = selections.get("s" + bay);
    if (index != null) sashes.put(bay, section(series.sashes[index]));
+   if (selections.containsKey("e" + bay)) skirts.put(bay, section(series.skirt()));
   }
   order.sashProfiles = sashes;
+  order.skirtProfiles = skirts;
  }
 
  private List<int[]> readDrawingCoordinates(String drawing, int size) {
@@ -1723,12 +1772,16 @@ final class TemaWorkshop {
   app.exportTemaPdf(position.name, series, order, plan, leftHinges());
  }
 
- private static String glassSize(TemaLayout.Opening bay, int allowance) {
-  int width = bay.width() - allowance, height = bay.height() - allowance;
+ private static int skirtExtra(TemaLayout.Section sash, TemaLayout.Section skirt) {
+  return skirt == null ? 0 : skirt.face - sash.face;
+ }
+
+ private static String glassSize(TemaLayout.Opening bay, int allowance, int extraHeight) {
+  int width = bay.width() - allowance, height = bay.height() - allowance - extraHeight;
   return width > 0 && height > 0 ? TemaBayDimensions.size(width, height) : null;
  }
 
- private void showGlassMeasurements(TemaLayout layout, int[] deductions, Set<Integer> empty) {
+ private void showGlassMeasurements(TemaLayout layout, int[] deductions, int[] extraHeights, Set<Integer> empty) {
   ScrollView scroll = new ScrollView(app);
   LinearLayout list = new LinearLayout(app);
   list.setOrientation(LinearLayout.VERTICAL);
@@ -1736,7 +1789,7 @@ final class TemaWorkshop {
   scroll.addView(list);
   for (int i = 0; i < layout.bays.size(); i++) {
    if (empty.contains(i + 1)) continue;
-   String size = glassSize(layout.bays.get(i), deductions[i]);
+   String size = glassSize(layout.bays.get(i), deductions[i], extraHeights[i]);
    app.planLabel(list, "Bölme " + (i + 1) + " · " + (size == null ? "Cam açıklığı yetersiz" : size), 14, 0xff1b4154);
   }
   if (list.getChildCount() == 0) app.planLabel(list, "Cam kesilecek bölme yok.", 14, 0xff1b4154);
@@ -1837,7 +1890,7 @@ final class TemaWorkshop {
    if (series == TemaCatalog.Series.ALDOKS && series.isBead(group.getKey())) continue;
    LinearLayout card = app.planCard(parent, 0xff172b3c, 0xff224655, series.accent);
    TemaCatalog.Profile item = series.find(group.getKey());
-   android.graphics.Bitmap bitmap = item == null ? null : BitmapFactory.decodeResource(app.getResources(), item.image);
+   android.graphics.Bitmap bitmap = item == null || item.image == 0 ? null : BitmapFactory.decodeResource(app.getResources(), item.image);
    app.profileHeading(card, series.displayOf(group.getKey()), bitmap);
    for (TemaJoinery.Cut cut : group.getValue()) {
     String angle = cut.angle == cut.endAngle ? (cut.angle == 45 ? "45° gönye · uzun uç" : "90° düz")
@@ -1876,7 +1929,8 @@ final class TemaWorkshop {
   for (TemaCutBatch.Profile profile : result.profiles.values()) {
    LinearLayout group = section(cutTitle(profile.key, profile.label));
    TemaCatalog.Profile item = series.find(profile.key);
-   if (item != null) app.profileHeading(group, item.dimensions(), BitmapFactory.decodeResource(app.getResources(), item.image));
+   if (item != null) app.profileHeading(group, item.dimensions(),
+    item.image == 0 ? null : BitmapFactory.decodeResource(app.getResources(), item.image));
    int number = 0;
    for (TemaCutBatch.Bar bar : profile.bars) {
     app.planBar(group, ++number, bar.layout.pieces, bar.layout.stock, kerf, bar.layout.remaining(),

@@ -86,7 +86,7 @@ final class TemaDiagramRenderer {
   boolean sash = pane != null && pane.sash != null;
   String glass = null;
   if (pane != null) {
-   elevation.opening(canvas, bay, pane.sash, leftCells.contains(number), order.sashCorner, x, y, scale, scale);
+   elevation.opening(canvas, bay, pane.sash, pane.skirt, leftCells.contains(number), order.sashCorner, x, y, scale, scale);
    glass = TemaBayDimensions.size(pane.width, pane.height);
    if (pane.adapterCode != null && bounds.height() >= 115 * density && bounds.width() >= 65 * density) {
     elevation.accessoryLabel(canvas, pane.adapterCode, bounds.centerX(), bounds.top + 14 * density,

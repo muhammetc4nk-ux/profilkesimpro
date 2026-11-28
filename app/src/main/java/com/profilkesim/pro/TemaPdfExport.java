@@ -59,7 +59,7 @@ final class TemaPdfExport {
    for (TemaJoinery.Cut cut : cuts) {
     TemaCatalog.Profile profile = series.find(cut.code);
     Bitmap symbol = null;
-    if (profile != null) {
+    if (profile != null && profile.image != 0) {
      if (!sections.containsKey(profile.image)) sections.put(profile.image, BitmapFactory.decodeResource(resources, profile.image));
      symbol = sections.get(profile.image);
      if (symbol != null) usedSections.add(profile);

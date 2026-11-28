@@ -53,7 +53,7 @@ final class TemaElevation {
   }
  }
 
- void opening(Canvas canvas, TemaLayout.Opening bay, TemaLayout.Section sash, boolean leftHinge,
+ void opening(Canvas canvas, TemaLayout.Opening bay, TemaLayout.Section sash, TemaLayout.Section skirt, boolean leftHinge,
                TemaJoinery.Corner sashCorner, float x, float y, float sx, float sy) {
   float left = x + bay.left * sx, top = y + bay.top * sy;
   float right = x + bay.right * sx, bottom = y + bay.bottom * sy;
@@ -67,16 +67,22 @@ final class TemaElevation {
   float lx = left + TemaJoinery.SASH_GAP * sx, rx = right - TemaJoinery.SASH_GAP * sx;
   float ty = top + TemaJoinery.SASH_GAP * sy, by = bottom - TemaJoinery.SASH_GAP * sy;
   float fx = sash.face * sx, fy = sash.face * sy;
-  if (rx - lx <= 2 * fx || by - ty <= 2 * fy) {
+  float bottomFace = skirt == null ? fy : skirt.face * sy;
+  if (rx - lx <= 2 * fx || by - ty <= fy + bottomFace) {
    paint.setColor(0xff704552);
    canvas.drawRect(left, top, right, bottom, paint);
    return;
   }
-  jamb(canvas, lx, ty, by, fx, fy, fy, false, sashCorner, true);
-  jamb(canvas, rx - fx, ty, by, fx, fy, fy, true, sashCorner, true);
+  jamb(canvas, lx, ty, by, fx, fy, bottomFace, false, sashCorner, true);
+  jamb(canvas, rx - fx, ty, by, fx, fy, bottomFace, true, sashCorner, true);
   rail(canvas, lx, rx, ty, fy, fx, fx, false, sashCorner, true);
-  rail(canvas, lx, rx, by - fy, fy, fx, fx, true, sashCorner, true);
-  float insideLeft = lx + fx, insideRight = rx - fx, insideTop = ty + fy, insideBottom = by - fy;
+  rail(canvas, lx, rx, by - bottomFace, bottomFace, fx, fx, true, sashCorner, true);
+  if (skirt != null) {
+   float center = (lx + rx) / 2;
+   drawProfileText(canvas, skirt.code + " · Etek", skirt.code, "", "", false, center, by - bottomFace / 2,
+    rx - lx - 2 * fx, 0xee284756);
+  }
+  float insideLeft = lx + fx, insideRight = rx - fx, insideTop = ty + fy, insideBottom = by - bottomFace;
   glass(canvas, insideLeft, insideTop, insideRight, insideBottom, sx, sy);
   openingDirection(canvas, leftHinge, insideLeft, insideTop, insideRight, insideBottom);
   hardware(canvas, bay.door, leftHinge, lx, ty, rx, by, fx);
