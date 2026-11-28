@@ -347,14 +347,15 @@ final class TemaJoinery {
    }
    sash = o.sashProfiles.get(number);
    if (sash == null) sash = new TemaLayout.Section(o.sashCode, o.sashFace);
-   width += o.aldoksDrawing ? 14 * ShopDimensions.PER_MM : -2 * SASH_GAP;
-   height += o.aldoksDrawing ? -8 * ShopDimensions.PER_MM : -2 * SASH_GAP;
+   int cutWidth = width + (o.aldoksDrawing ? 14 * ShopDimensions.PER_MM : -2 * SASH_GAP);
+   int cutHeight = height + (o.aldoksDrawing ? -8 * ShopDimensions.PER_MM : -2 * SASH_GAP);
+   width -= 2 * SASH_GAP;
+   height -= 2 * SASH_GAP;
    if (width <= 2 * sash.face || height <= 2 * sash.face) {
     throw new IllegalArgumentException(number + ". hücrede kanat profili cam açıklığına sığmıyor.");
    }
-   addRectangle(plan, sash.code, "Kanat", width, height, sash.face, o.sashCorner, o.quantity);
-   int left = bay.left + (o.aldoksDrawing ? -7 * ShopDimensions.PER_MM : SASH_GAP);
-   int top = bay.top + (o.aldoksDrawing ? -7 * ShopDimensions.PER_MM : SASH_GAP);
+   addRectangle(plan, sash.code, "Kanat", cutWidth, cutHeight, sash.face, o.sashCorner, o.quantity);
+   int left = bay.left + SASH_GAP, top = bay.top + SASH_GAP;
    int halfFace = sash.face / 2;
    int horizontal = horizontalLength(width, sash.face, o.sashCorner);
    int vertical = verticalLength(height, sash.face, o.sashCorner);
