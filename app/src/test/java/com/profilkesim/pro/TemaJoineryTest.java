@@ -66,6 +66,22 @@ public final class TemaJoineryTest {
   assertTrue(withSkirt.layout.rails.isEmpty());
  }
 
+ @Test public void skirtOnUpperSashReducesOnlyItsGlassHeight() {
+  TemaJoinery.Order order = order(18000, 22000, 250);
+  order.horizontal = 1;
+  order.mullionFace = 250;
+  order.sashFace = 595;
+  order.openingSashes = Collections.singleton(1);
+  TemaJoinery.Plan regular = TemaJoinery.calculate(order);
+  order.skirtProfiles = Collections.singletonMap(1, new TemaLayout.Section("T.3010", 1029));
+  TemaJoinery.Plan withSkirt = TemaJoinery.calculate(order);
+  assertFalse(withSkirt.layout.bays.get(0).door);
+  assertEquals(regular.layout.bays.get(0).height(), withSkirt.layout.bays.get(0).height());
+  assertEquals(regular.panes.get(0).height - 434, withSkirt.panes.get(0).height);
+  assertEquals(regular.panes.get(1).height, withSkirt.panes.get(1).height);
+  assertCut(withSkirt, "T.3010", "Kanat alt etek profili", 17400, 45, 1);
+ }
+
  @Test public void aldoksBeadsUseNetFixedOpeningsAndActualSashCuts() {
   TemaJoinery.Order order = order(22000, 19000, 250);
   order.quantity = 2;

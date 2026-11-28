@@ -352,8 +352,20 @@ final class TemaWorkshop {
   java.util.function.IntFunction<TemaLayout.Section> selectedSash = number -> openings.contains(number)
    ? section(groups[2][lineProfiles.getOrDefault("s" + number, picks[2])]) : null;
   TemaLayout.Section skirtProfile = section(series.skirt());
-  java.util.function.BiFunction<Integer,TemaLayout.Opening,TemaLayout.Section> selectedSkirt = (number, bay) ->
-   bay.door && lineProfiles.containsKey("e" + number) ? skirtProfile : null;
+  int skirtOption = groups[2].length;
+  TemaCatalog.Profile[] sashOptions = java.util.Arrays.copyOf(groups[2], skirtOption + 1);
+  sashOptions[skirtOption] = series.skirt();
+  java.util.function.BiConsumer<Integer,Integer> applySashProfile = (number, index) -> {
+   if (index == skirtOption) {
+    lineProfiles.putIfAbsent("s" + number, picks[2]);
+    lineProfiles.put("e" + number, 0);
+   } else {
+    lineProfiles.put("s" + number, index);
+    lineProfiles.remove("e" + number);
+   }
+  };
+  java.util.function.IntFunction<TemaLayout.Section> selectedSkirt = number ->
+   openings.contains(number) && lineProfiles.containsKey("e" + number) ? skirtProfile : null;
   java.util.function.IntFunction<int[]> allowances = count -> {
    int[] deductions = new int[count];
    for (int i = 0; i < count; i++) {
@@ -426,7 +438,7 @@ final class TemaWorkshop {
      TemaLayout.Opening bay = layout.bays.get(i);
      int number = i + 1;
      boolean empty = emptyCells.contains(number), opening = openings.contains(number);
-     TemaLayout.Section sash = selectedSash.apply(number), skirt = selectedSkirt.apply(number, bay);
+     TemaLayout.Section sash = selectedSash.apply(number), skirt = selectedSkirt.apply(number);
      if (!empty) {
       elevation.opening(c, bay, sash, skirt, leftCells.contains(number),
        TemaJoinery.Corner.values()[sashCorner], left, top, sx, sy);
@@ -573,7 +585,7 @@ final class TemaWorkshop {
      TemaLayout layout = resizeLayout.layout(current);
      TemaLayout.Opening bay = layout.bays.get(index);
      int[] deductions = allowances.apply(layout.bays.size());
-     int extraHeight = skirtExtra(selectedSash.apply(index + 1), selectedSkirt.apply(index + 1, bay));
+     int extraHeight = skirtExtra(selectedSash.apply(index + 1), selectedSkirt.apply(index + 1));
      LinearLayout form = new LinearLayout(app);
      form.setOrientation(LinearLayout.VERTICAL);
      form.setPadding(app.dp(18), app.dp(8), app.dp(18), app.dp(8));
@@ -648,9 +660,8 @@ final class TemaWorkshop {
     if (mode[0] == 9) {
      int number = hit.apply(x, y);
      try {
-      if (number == 0 || !openings.contains(number)) throw new IllegalArgumentException("Alt sıradaki kapı kanadına dokunun.");
+      if (number == 0 || !openings.contains(number)) throw new IllegalArgumentException("Bir kanada dokunun.");
       TemaLayout.Opening bay = geometry.get().bays.get(number - 1);
-      if (!bay.door) throw new IllegalArgumentException("Etek profili zemine inen kapı kanadına eklenir.");
       boolean remove = lineProfiles.containsKey("e" + number);
       TemaLayout.Section sash = selectedSash.apply(number);
       if (!remove && glassSize(bay, TemaJoinery.glassAllowance(sash), skirtExtra(sash, skirtProfile)) == null) {
@@ -690,11 +701,22 @@ final class TemaWorkshop {
      if(key==null){toast("Bir profil çizgisine dokunun.");return;}
      final String selectedKey=key;final int selectedRole=role;
      int initial=lineProfiles.getOrDefault(key,role==0?lineProfiles.getOrDefault("frame",picks[0]):picks[role]);
-     chooseProfile("Profil değiştir",groups[selectedRole],initial,index->{
+     int sashNumber = selectedRole == 2 ? Integer.parseInt(selectedKey.substring(1)) : 0;
+     if (sashNumber > 0 && lineProfiles.containsKey("e" + sashNumber)) initial = skirtOption;
+     chooseProfile("Profil değiştir", selectedRole == 2 ? sashOptions : groups[selectedRole], initial, index -> {
       Runnable restore=snapshot.get();
       try {
        TemaLayout prior=geometry.get();
-       lineProfiles.put(selectedKey,index);
+       if (selectedRole == 2) {
+        applySashProfile.accept(sashNumber, index);
+        TemaLayout.Opening bay = prior.bays.get(sashNumber - 1);
+        TemaLayout.Section sash = selectedSash.apply(sashNumber);
+        if (glassSize(bay, TemaJoinery.glassAllowance(sash), skirtExtra(sash, selectedSkirt.apply(sashNumber))) == null) {
+         throw new IllegalArgumentException("Seçilen profil cam açıklığına sığmıyor.");
+        }
+       } else {
+        lineProfiles.put(selectedKey, index);
+       }
        if (selectedRole == 0) {
         TemaLayout updated = geometry.get();
         for (int i = 0; i < updated.bays.size(); i++) {
@@ -702,7 +724,7 @@ final class TemaWorkshop {
          if (emptyCells.contains(number)) continue;
          TemaLayout.Opening bay = updated.bays.get(i);
          TemaLayout.Section sash = selectedSash.apply(number);
-         if (glassSize(bay, TemaJoinery.glassAllowance(sash), skirtExtra(sash, selectedSkirt.apply(number, bay))) == null) {
+         if (glassSize(bay, TemaJoinery.glassAllowance(sash), skirtExtra(sash, selectedSkirt.apply(number))) == null) {
           throw new IllegalArgumentException(number + ". bölmede cam açıklığı yetersiz.");
          }
         }
@@ -720,9 +742,9 @@ final class TemaWorkshop {
      });return;
     }
     if(x<=0||x>=1000000||y<=0||y>=1000000)return;
-    checkpoint.run();
     int cell = hit.apply(x, y);
-    if (cell == 0) { undo.pop(); return; }
+    if (cell == 0) return;
+    Runnable restore = snapshot.get();
     if (mode[0] == 4 || mode[0] == 5) {
      openings.remove(cell);
      lineProfiles.remove("s"+cell);
@@ -733,10 +755,23 @@ final class TemaWorkshop {
     } else {
      emptyCells.remove(cell);
      openings.add(cell);
-     lineProfiles.put("s"+cell, placementProfile[0]);
+     applySashProfile.accept(cell, placementProfile[0]);
+     try {
+      TemaLayout.Opening bay = geometry.get().bays.get(cell - 1);
+      TemaLayout.Section sash = selectedSash.apply(cell);
+      if (glassSize(bay, TemaJoinery.glassAllowance(sash), skirtExtra(sash, selectedSkirt.apply(cell))) == null) {
+       throw new IllegalArgumentException("Seçilen profil cam açıklığına sığmıyor.");
+      }
+     } catch (IllegalArgumentException error) {
+      restore.run();
+      toast(error.getMessage());
+      return;
+     }
      if (mode[0] == 2) leftCells.add(cell);
      else leftCells.remove(cell);
     }
+    undo.push(restore);
+    redo.clear();
     drawingStatus.setText("Kasa: 1 | Dikey: "+xs.size()+" | Yatay: "+ys.size()+" | Kanat: "+openings.size());persistDrawing.run();invalidate();return;
    }
   };
@@ -747,7 +782,7 @@ final class TemaWorkshop {
   redoButton.setOnClickListener(v->{pendingRecord[0]=null;board.invalidate();if(redo.isEmpty()){toast("İleri alınacak işlem yok.");return;}undo.push(snapshot.get());redo.pop().run();persistDrawing.run();board.invalidate();});
   undoButton.setOnClickListener(v->{pendingRecord[0]=null;board.invalidate();if(undo.isEmpty()){toast("Geri alınacak işlem yok.");return;}redo.push(snapshot.get());undo.pop().run();persistDrawing.run();drawingStatus.setText("Son işlem geri alındı.");board.invalidate();});
   Button frameButton=new Button(app);frameButton.setText("+ Kasa ekle");panel.addView(frameButton);frameButton.setOnClickListener(v->{try { if(ShopDimensions.tenths(sizes[0].getText().toString(),"Dış en")<=0 || ShopDimensions.tenths(sizes[1].getText().toString(),"Dış boy")<=0) throw new IllegalArgumentException("Önce dış ölçüleri girin."); } catch(IllegalArgumentException ex){toast(ex.getMessage());return;} chooseProfile("Kasa",groups[0],picks[0],index->{checkpoint.run();frameAdded[0]=true;picks[0]=index;lineProfiles.put("frame",index);profileButtons[0].setText(names[0]+" · "+groups[0][index].label());drawingStatus.setText("Kasa eklendi: "+groups[0][index].label());persistDrawing.run();board.invalidate();});});
-  Button sashButton=new Button(app);sashButton.setText("+ Kanat ekle");panel.addView(sashButton);sashButton.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}chooseProfile("Kanat",groups[2],picks[2],index->{placementProfile[0]=index;mode[0]=2;pendingRecord[0]=null;drawingStatus.setText(groups[2][index].label()+" · Kanat için bölmeye dokunun.");board.invalidate();});});
+  Button sashButton=new Button(app);sashButton.setText("+ Kanat ekle");panel.addView(sashButton);sashButton.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}chooseProfile("Kanat",sashOptions,picks[2],index->{placementProfile[0]=index;mode[0]=2;pendingRecord[0]=null;drawingStatus.setText(sashOptions[index].label()+" · Kanat için bölmeye dokunun.");board.invalidate();});});
   String[] modes = {"↕ Dikey kayıt", "↔ Yatay kayıt", "Sol kanat", "Kaydı sil", "Boş kasa",
    "Sabit cam", "Sağ kanat", "Profil seç", "Net ölçü"};
   Button[] toolButtons = new Button[modes.length];
@@ -768,7 +803,8 @@ final class TemaWorkshop {
     if(tool<2 || tool==2 || tool==6){
      if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}
      int role=tool<2?1:2;
-     chooseProfile(names[role],groups[role],picks[role],index->{placementProfile[0]=index;activate.run();});
+     chooseProfile(names[role], role == 2 ? sashOptions : groups[role], picks[role],
+      index -> {placementProfile[0]=index;activate.run();});
     }else activate.run();
    });
   }
@@ -947,7 +983,7 @@ final class TemaWorkshop {
     TemaLayout layout = geometry.get();
     int[] extraHeights = new int[layout.bays.size()];
     for (int i = 0; i < extraHeights.length; i++) {
-     extraHeights[i] = skirtExtra(selectedSash.apply(i + 1), selectedSkirt.apply(i + 1, layout.bays.get(i)));
+     extraHeights[i] = skirtExtra(selectedSash.apply(i + 1), selectedSkirt.apply(i + 1));
     }
     showGlassMeasurements(layout, allowances.apply(layout.bays.size()), extraHeights, emptyCells);
    } catch (IllegalArgumentException error) {
@@ -1001,7 +1037,7 @@ final class TemaWorkshop {
    mode[0] = 9;
    pendingRecord[0] = null;
    drawingStatus.setText(skirtProfile.code + " · " + mm(skirtProfile.face)
-    + " mm · Eklemek veya kaldırmak için kapı kanadına dokunun.");
+    + " mm · Eklemek veya kaldırmak için kanada dokunun.");
    board.invalidate();
   });
   for (Button button : new Button[]{skirtButton, undoButton, redoButton, toolButtons[3], toolButtons[4], toolButtons[5],

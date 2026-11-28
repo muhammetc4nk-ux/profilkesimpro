@@ -338,7 +338,7 @@ final class TemaJoinery {
                                         boolean opening) {
   int width = bay.width(), height = bay.height();
   TemaLayout.Section sash = null;
-  TemaLayout.Section skirt = opening && bay.door ? o.skirtProfiles.get(number) : null;
+  TemaLayout.Section skirt = opening ? o.skirtProfiles.get(number) : null;
   Bead bead = opening ? o.sashBead : o.fixedBead;
   int beadWidth = width - ShopDimensions.PER_MM, beadHeight = height;
   if (opening) {
