@@ -1355,7 +1355,7 @@ final class TemaWorkshop {
      row.addView(section, new LinearLayout.LayoutParams(app.dp(97), app.dp(72)));
     }
     LinearLayout identity = column(row);
-    app.planLabel(identity, item.label() + (index == selected ? " ✓" : ""), 16, Color.BLACK)
+    app.planLabel(identity, item.code + " · " + item.label() + (index == selected ? " ✓" : ""), 16, Color.BLACK)
      .setTypeface(null, android.graphics.Typeface.BOLD);
     app.planLabel(identity, item.dimensions() + " · s. " + item.page, 13, Color.DKGRAY);
     return row;

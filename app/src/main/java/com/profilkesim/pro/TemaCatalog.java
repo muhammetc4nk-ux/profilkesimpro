@@ -14,9 +14,9 @@ final class TemaCatalog {
  private static final Profile C60_SASH = profile(3105, "Standart kanat", 660, 600, 14, 80, R.drawable.tema_3105);
  static final Profile C60_ADAPTER = profile(3107, "Kanat adaptörü", 220, 559, 0, 80, R.drawable.tema_3107);
 
- private static final Profile ALDOKS_SKIRT = profile(3010, "Etek profili", 1029, 454, 15, 74, 0);
- private static final Profile ALDOKS_ANGLE = profile(3011, "45° köşe profili", 656, 655, 0, 75, 0);
- private static final Profile C60_SKIRT = profile(3109, "Etek profili", 1330, 600, 20, 81, 0);
+ private static final Profile ALDOKS_SKIRT = profile(3010, "Etek profili", 1029, 454, 15, 74, R.drawable.tema_3010);
+ private static final Profile ALDOKS_ANGLE = profile(3011, "45° köşe profili", 656, 655, 0, 75, R.drawable.tema_3011);
+ private static final Profile C60_SKIRT = profile(3109, "Etek profili", 1330, 600, 20, 81, R.drawable.tema_3109);
 
  enum Series {
   C60("C60", "C60", 0xff4ff3d2,
