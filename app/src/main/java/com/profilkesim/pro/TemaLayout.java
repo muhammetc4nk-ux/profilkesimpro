@@ -83,6 +83,7 @@ final class TemaLayout {
    this.floorEnd = floorEnd;
   }
   int cutLength(int frameJoint, int mullionJoint) {
+   if (floorEnd && frameStart) return end - start;
    return end - start + (frameStart ? frameJoint : mullionJoint)
     + (floorEnd ? 0 : frameEnd ? frameJoint : mullionJoint);
   }
@@ -186,7 +187,8 @@ final class TemaLayout {
 
  private boolean hasSillAt(int x, int face) {
   int left = x - face / 2, right = x + afterCentre(face);
-  for (Span rail : rails) if (right >= rail.start && left <= rail.end) return true;
+  // A sill meeting the side of a mullion is a butt joint, not a support below it.
+  for (Span rail : rails) if (right > rail.start && left < rail.end) return true;
   return false;
  }
 
