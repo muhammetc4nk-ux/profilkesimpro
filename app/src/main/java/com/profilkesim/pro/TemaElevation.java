@@ -77,10 +77,11 @@ final class TemaElevation {
    canvas.drawRect(left, top, right, bottom, paint);
    return;
   }
+  TemaJoinery.Corner topJoint = skirt == null ? sashCorner : TemaJoinery.Corner.MITER;
   TemaJoinery.Corner bottomJoint = skirt == null ? sashCorner : TemaJoinery.Corner.VERTICAL_FULL;
-  jamb(canvas, lx, ty, by, fx, fy, bottomFace, false, sashCorner, bottomJoint, true);
-  jamb(canvas, rx - fx, ty, by, fx, fy, bottomFace, true, sashCorner, bottomJoint, true);
-  rail(canvas, lx, rx, ty, fy, fx, fx, false, sashCorner, true);
+  jamb(canvas, lx, ty, by, fx, fy, bottomFace, false, topJoint, bottomJoint, true);
+  jamb(canvas, rx - fx, ty, by, fx, fy, bottomFace, true, topJoint, bottomJoint, true);
+  rail(canvas, lx, rx, ty, fy, fx, fx, false, topJoint, true);
   rail(canvas, lx, rx, by - bottomFace, bottomFace, fx, fx, true, bottomJoint, true);
   if (skirt != null) {
    float center = (lx + rx) / 2;

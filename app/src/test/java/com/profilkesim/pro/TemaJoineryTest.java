@@ -128,12 +128,14 @@ public final class TemaJoineryTest {
   order.sashBead = new TemaJoinery.Bead("T.3021", 170, 0, TemaJoinery.Corner.HORIZONTAL_FULL);
   TemaJoinery.Plan regular = TemaJoinery.calculate(order);
   order.skirtProfiles = Collections.singletonMap(1, new TemaLayout.Section("T.3010", 1029));
+  order.sashCorner = TemaJoinery.Corner.HORIZONTAL_FULL;
   TemaJoinery.Plan withSkirt = TemaJoinery.calculate(order);
   assertCut(withSkirt, order.sashCode, "Kanat yatay", 9640, 45, 1);
-  assertCut(withSkirt, "T.3010", "Kanat alt etek profili", 8210, 90, 1);
+  assertCut(withSkirt, order.sashCode, "Kanat dikey", 21670, 45, 90, 2);
+  assertCut(withSkirt, "T.3010", "Kanat alt etek profili", 8450, 90, 1);
   assertCut(withSkirt, "T.3021", "Kanat cam çıtası dikey", 19686, 90, 2);
-  assertCut(withSkirt, "T.3021", "Kanat cam çıtası yatay", 8210, 90, 2);
-  assertEquals(8110, withSkirt.panes.get(0).width);
+  assertCut(withSkirt, "T.3021", "Kanat cam çıtası yatay", 8450, 90, 2);
+  assertEquals(8350, withSkirt.panes.get(0).width);
   assertEquals(19586, withSkirt.panes.get(0).height);
   assertEquals(regular.layout.bays.get(0).width(), withSkirt.layout.bays.get(0).width());
   assertTrue(withSkirt.layout.rails.isEmpty());
