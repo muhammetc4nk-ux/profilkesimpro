@@ -808,7 +808,44 @@ final class TemaWorkshop {
     }else activate.run();
    });
   }
+  java.util.function.Consumer<Boolean> equalizeHorizontal = protect -> {
+   try {
+    if (!frameAdded[0]) throw new IllegalArgumentException("Önce kasa ekleyin.");
+    TemaOpeningResize.Drawing original = resizeDrawing.get();
+    TemaLayout layout = resizeLayout.layout(original);
+    Set<Integer> protectedBays = new LinkedHashSet<>();
+    if (protect) { protectedBays.addAll(openings); protectedBays.addAll(emptyCells); }
+    TemaOpeningResize.Drawing result = TemaHorizontalEqualize.apply(original, layout, protectedBays, picks[1]);
+    if (result == original) {
+     drawingStatus.setText("Taşınacak yatay kayıt yok veya boşluklar zaten eşit.");
+     return;
+    }
+    TemaLayout updated = resizeLayout.layout(result);
+    for (int i = 0; i < updated.bays.size(); i++) {
+     int number = i + 1;
+     TemaLayout.Opening bay = updated.bays.get(i);
+     TemaLayout.Section sash = selectedSash.apply(number);
+     if (!emptyCells.contains(number)
+      && glassSize(bay, TemaJoinery.glassAllowance(sash), skirtExtra(sash, selectedSkirt.apply(number))) == null) {
+      throw new IllegalArgumentException(number + ". bölmede cam açıklığı yetersiz.");
+     }
+     if (protectedBays.contains(number)) {
+      TemaLayout.Opening before = layout.bays.get(i);
+      if (before.top != bay.top || before.bottom != bay.bottom) {
+       throw new IllegalArgumentException("Seçili kapı veya kanadın ölçüsü korunamadı.");
+      }
+     }
+    }
+    applyDrawing.accept(result);
+    pendingRecord[0] = null;
+    drawingStatus.setText("Yatay kayıtlar arasındaki net boşluklar eşitlendi.");
+    board.invalidate();
+   } catch (IllegalArgumentException error) {
+    toast(error.getMessage());
+   }
+  };
   java.util.function.IntConsumer equalize = option -> {
+   if (option >= 2) { equalizeHorizontal.accept(option % 2 == 1); return; }
    final int axis=option/2;
    final boolean protectDoors=option%2==1;
     if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}

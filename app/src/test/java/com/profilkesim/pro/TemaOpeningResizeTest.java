@@ -54,6 +54,28 @@ public final class TemaOpeningResizeTest {
   assertEquals(Integer.valueOf(2), result.profiles.get("v" + result.columns.first()));
  }
 
+ @Test public void balancesLocalHorizontalRecordsInIndependentColumns() {
+  int middle = SCALE / 2;
+  List<int[]> local = java.util.Arrays.asList(
+   new int[]{0, 200000, middle, 200000, 2},
+   new int[]{middle, 700000, SCALE, 700000, 2});
+  TemaOpeningResize.Drawing original = new TemaOpeningResize.Drawing(20500, 17000, SCALE,
+   Collections.singleton(middle), Collections.emptySet(), local, Collections.emptyMap());
+  TemaLayout before = layout(original, Collections.emptySet());
+  TemaOpeningResize.Drawing result = TemaHorizontalEqualize.apply(original, before, Collections.emptySet(), 2);
+  TemaLayout after = layout(result, Collections.emptySet());
+  assertNotSame(original, result);
+  assertEquals(original.height, result.height);
+  assertEquals(200000, original.local.get(0)[1]);
+  assertEquals(700000, original.local.get(1)[1]);
+  for (TemaLayout.Opening bay : after.bays) {
+   assertTrue(Math.abs(after.bays.get(0).height() - bay.height()) <= 1);
+  }
+  TemaOpeningResize.Drawing protectedResult = TemaHorizontalEqualize.apply(original, before, Collections.singleton(1), 2);
+  assertEquals(200000, protectedResult.local.get(0)[1]);
+  assertNotEquals(700000, protectedResult.local.get(1)[1]);
+ }
+
  @Test public void equalizesSelectedNetOpeningsWithoutResizingTheFrame() {
   TemaOpeningResize.Drawing before = drawing(Collections.singleton(SCALE / 3));
   Set<Integer> doors = new java.util.LinkedHashSet<>(java.util.Arrays.asList(1, 2));

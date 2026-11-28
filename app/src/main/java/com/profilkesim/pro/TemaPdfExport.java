@@ -33,7 +33,6 @@ final class TemaPdfExport {
   Pages pages = new Pages(pdf, pageWidth, pageHeight, series.label + " · " + name,
    WorkshopClock.format(timestamp, "dd.MM.yyyy  HH:mm:ss"));
   Map<Integer, Bitmap> sections = new LinkedHashMap<>();
-  List<TemaCatalog.Profile> usedSections = new ArrayList<>();
   try {
    pages.next("İmalat çizimi");
    pages.line("Dış kasa  " + size(order.width, order.height) + "   ·   " + order.quantity + " doğrama", "", false);
@@ -48,29 +47,25 @@ final class TemaPdfExport {
    pages.y = pageHeight - MARGIN - 15;
    pages.line("Tüm ölçüler mm. Profil payı toplam düşümü gösterir.", "", false);
 
-   writeOptimization(pages, name, series, plan, stock, kerf);
+   writeOptimization(pages, resources, sections, name, series, plan, stock, kerf);
+   pages.next("Profil kesim listesi");
    String[] titles = {"Kasa kesim ölçüleri", "Kanat kesim ölçüleri", "Çıta kesim ölçüleri", "Orta kayıt ve diğer kesimler"};
    List<List<TemaJoinery.Cut>> groups = new ArrayList<>();
    for (String ignored : titles) groups.add(new ArrayList<>());
    for (TemaJoinery.Cut cut : plan.cuts) groups.get(cutSection(series, cut)).add(cut);
    for (int group = 0; group < titles.length; group++) {
     if (groups.get(group).isEmpty()) continue;
-    pages.next(titles[group]);
+    if (pages.y + 104 > pages.height - MARGIN) pages.next("Profil kesim listesi · Devam");
+    pages.heading(titles[group]);
     pages.cutHeader();
     for (TemaJoinery.Cut cut : groups.get(group)) {
      TemaCatalog.Profile profile = series.find(cut.code);
-     Bitmap symbol = null;
-     if (profile != null && profile.image != 0) {
-      if (!sections.containsKey(profile.image)) sections.put(profile.image, BitmapFactory.decodeResource(resources, profile.image));
-      symbol = sections.get(profile.image);
-      if (symbol != null && !usedSections.contains(profile)) usedSections.add(profile);
-     }
+     Bitmap symbol = profileImage(resources, sections, profile);
      String label = profile == null ? cut.code : cut.code + " · " + profile.label();
      pages.cutRow(label, cut, symbol, titles[group]);
     }
    }
 
-   if (!usedSections.isEmpty()) pages.gallery(usedSections, sections);
    pages.next("Bölme ölçüleri ve profil payları");
    pages.heading("Dış en hesabı");
    for (List<Integer> chain : plan.layout.widthChains) pages.line(plan.layout.widthBreakdown(chain), "", true);
@@ -92,11 +87,10 @@ final class TemaPdfExport {
     pages.line(series.nameOf(mark.code) + " · " + role, mark.allowanceText(), true);
    }
    if (!plan.panes.isEmpty()) {
-    pages.heading("Cam kesim ölçüleri · En × Boy");
-    for (TemaJoinery.Pane pane : plan.panes) {
-     pages.line("Bölme " + pane.number + " · İç " + size(pane.insideWidth, pane.insideHeight),
-      size(pane.width, pane.height) + " × " + order.quantity + " adet", true);
-    }
+    pages.next("Cam kesim ölçüleri");
+    pages.heading("Cam kesim listesi");
+    pages.glassHeader();
+    for (TemaJoinery.Pane pane : plan.panes) pages.glassRow(pane, order.quantity);
    }
    pages.finish();
    pdf.writeTo(output);
@@ -120,7 +114,14 @@ final class TemaPdfExport {
   return 3;
  }
 
- private static void writeOptimization(Pages pages, String name, TemaCatalog.Series series,
+ private static Bitmap profileImage(Resources resources, Map<Integer, Bitmap> sections, TemaCatalog.Profile profile) {
+  if (profile == null || profile.image == 0) return null;
+  if (!sections.containsKey(profile.image)) sections.put(profile.image, BitmapFactory.decodeResource(resources, profile.image));
+  return sections.get(profile.image);
+ }
+
+ private static void writeOptimization(Pages pages, Resources resources, Map<Integer, Bitmap> sections,
+                                       String name, TemaCatalog.Series series,
                                        TemaJoinery.Plan plan, int stock, int kerf) {
   pages.next("Profil bazında kesim optimizasyonu");
   pages.line("Stok boyu " + metres(stock) + " · Testere payı " + mm(kerf) + " mm/ara", "", false);
@@ -143,12 +144,12 @@ final class TemaPdfExport {
     net += bar.layout.used - (long) kerf * (bar.pieces.size() - 1);
    }
    String title = profile.key + " · " + series.nameOf(profile.key);
-   if (pages.y + 100 > pages.height - MARGIN) pages.next("Kesim optimizasyonu · Devam");
-   pages.heading(title);
+   Bitmap section = profileImage(resources, sections, series.find(profile.key));
+   pages.optimizationProfile(title, section);
    pages.line(profile.bars.size() + " boy × " + metres(stock) + " = " + metres((long) stock * profile.bars.size()), "", false);
    pages.line("Net kesim " + metres(net) + " · Testere " + metres(saw) + " · Fire " + metres(fire), "", true);
    for (int index = 0; index < profile.bars.size(); index++) {
-    pages.stockBar(title, index + 1, profile.bars.get(index), kerf);
+    pages.stockBar(title, section, index + 1, profile.bars.get(index), kerf);
    }
   }
  }
@@ -234,7 +235,8 @@ final class TemaPdfExport {
   void cutRow(String profile, TemaJoinery.Cut cut, Bitmap symbol, String heading) {
    float rowHeight = 49;
    if (y + rowHeight > height - MARGIN) {
-    next(heading + " · Devam");
+    next("Profil kesim listesi · Devam");
+    heading(heading);
     cutHeader();
    }
    Canvas canvas = page.getCanvas();
@@ -270,14 +272,25 @@ final class TemaPdfExport {
    y += 24;
   }
 
-  void roomForBar(String profile, float space) {
-   if (y + space <= height - MARGIN) return;
-   next("Kesim optimizasyonu · Devam");
-   heading(profile);
+  void optimizationProfile(String title, Bitmap section) {
+   if (y + 132 > height - MARGIN) next("Kesim optimizasyonu · Devam");
+   if (section == null) {
+    heading(title);
+    return;
+   }
+   drawPicture(section, MARGIN + 36, y + 10, 68, 44);
+   text(title, MARGIN + 82, y + 13, 13, INK, true, width - 2 * MARGIN - 82);
+   y += 38;
   }
 
-  void stockBar(String profile, int number, TemaCutBatch.Bar bar, int kerf) {
-   roomForBar(profile, 56);
+  void roomForBar(String profile, Bitmap section, float space) {
+   if (y + space <= height - MARGIN) return;
+   next("Kesim optimizasyonu · Devam");
+   optimizationProfile(profile, section);
+  }
+
+  void stockBar(String profile, Bitmap section, int number, TemaCutBatch.Bar bar, int kerf) {
+   roomForBar(profile, section, 56);
    String label = "Boy " + number + " · " + mm(bar.layout.stock) + " mm";
    text(label, MARGIN, y, 10, INK, true, width / 2f);
    String fire = "Fire " + mm(bar.layout.remaining()) + " mm";
@@ -303,7 +316,7 @@ final class TemaPdfExport {
     paint.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
     paint.setTextSize(9);
     if (row.length() > 0 && paint.measureText(row + "  ·  " + entry) > width - 2 * MARGIN) {
-     roomForBar(profile + " · Boy " + number, 16);
+     roomForBar(profile + " · Boy " + number, section, 16);
      text(row.toString(), MARGIN, y, 9, CUT, false, width - 2 * MARGIN);
      y += 14;
      row.setLength(0);
@@ -311,7 +324,7 @@ final class TemaPdfExport {
     if (row.length() > 0) row.append("  ·  ");
     row.append(entry);
    }
-   roomForBar(profile + " · Boy " + number, 16);
+   roomForBar(profile + " · Boy " + number, section, 16);
    text(row.toString(), MARGIN, y, 9, CUT, false, width - 2 * MARGIN);
    y += 25;
   }
@@ -330,23 +343,40 @@ final class TemaPdfExport {
    drawPicture(symbol, MARGIN + 32, y + rowHeight / 2, 56, rowHeight - 10);
   }
 
-  void gallery(List<TemaCatalog.Profile> profiles, Map<Integer, Bitmap> images) {
-   next("Kesim tablosu · Katalog kesitleri");
-   heading("Kullanılan profillerin katalog çizimleri");
-   int columns = width > height ? 3 : 2;
-   float gap = 14, cardHeight = 164;
-   float cardWidth = (width - 2 * MARGIN - (columns - 1) * gap) / columns;
-   for (int i = 0; i < profiles.size(); i++) {
-    int column = i % columns;
-    if (column == 0 && y + cardHeight > height - MARGIN) next("Katalog kesitleri · Devam");
-    TemaCatalog.Profile profile = profiles.get(i);
-    float left = MARGIN + column * (cardWidth + gap);
-    paint.setColor(0xffeef5f8);
-    page.getCanvas().drawRoundRect(left, y, left + cardWidth, y + cardHeight, 7, 7, paint);
-    text(profile.name, left + 12, y + 19, 11, INK, true, cardWidth - 24);
-    text(profile.dimensions(), left + 12, y + cardHeight - 12, 9, MUTED, false, cardWidth - 24);
-    drawPicture(images.get(profile.image), left + cardWidth / 2, y + 83, cardWidth - 32, 110);
-    if (column == columns - 1) y += cardHeight + gap;
+  void glassHeader() {
+   Canvas canvas = page.getCanvas();
+   paint.setColor(0xffdcecf4);
+   canvas.drawRect(MARGIN, y, width - MARGIN, y + 27, paint);
+   glassColumns("Bölme", "Tip", "En (mm)", "Boy (mm)", "Adet", y + 17, true);
+   y += 27;
+   alternate = false;
+  }
+
+  void glassRow(TemaJoinery.Pane pane, int quantity) {
+   if (y + 30 > height - MARGIN) {
+    next("Cam kesim ölçüleri · Devam");
+    glassHeader();
+   }
+   Canvas canvas = page.getCanvas();
+   if (alternate) {
+    paint.setColor(0xfff1f7fa);
+    canvas.drawRect(MARGIN, y, width - MARGIN, y + 30, paint);
+   }
+   alternate = !alternate;
+   glassColumns(String.valueOf(pane.number), pane.sash == null ? "Sabit" : "Kanat", mm(pane.width),
+    mm(pane.height), String.valueOf(quantity), y + 19, false);
+   y += 30;
+   paint.setColor(RULE);
+   paint.setStrokeWidth(.55f);
+   canvas.drawLine(MARGIN, y, width - MARGIN, y, paint);
+  }
+
+  private void glassColumns(String bay, String kind, String paneWidth, String paneHeight, String qty,
+                            float baseline, boolean header) {
+   String[] values = {bay, kind, paneWidth, paneHeight, qty};
+   float column = (width - 2f * MARGIN) / values.length;
+   for (int i = 0; i < values.length; i++) {
+    text(values[i], MARGIN + i * column + 10, baseline, 11, INK, header, column - 20);
    }
   }
 

@@ -190,8 +190,8 @@ final class TemaElevation {
 
  private void openingDirection(Canvas canvas, boolean leftHinge, float left, float top, float right, float bottom) {
   float inset = Math.min(right - left, bottom - top) * .08f;
-  float tip = leftHinge ? left + inset : right - inset;
-  float base = leftHinge ? right - inset : left + inset;
+  float tip = leftHinge ? right - inset : left + inset;
+  float base = leftHinge ? left + inset : right - inset;
   paint.setColor(0xeef0faff);
   paint.setStrokeWidth(annotationDensity);
   canvas.drawLine(base, top + inset, tip, (top + bottom) / 2, paint);
