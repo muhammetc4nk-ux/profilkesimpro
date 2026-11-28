@@ -596,7 +596,11 @@ final class TemaWorkshop {
     TextView feedback = app.planLabel(form, "", 13, 0xffa92843);
     AlertDialog dialog = new AlertDialog.Builder(app).setTitle((index + 1) + ". bölme ölçüsü")
      .setView(form).setNegativeButton("Vazgeç", null).setPositiveButton("Uygula", null).create();
-    dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+    dialog.setOnShowListener(d -> {
+   dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(0xFFFFFFFF);
+   dialog.getButton(AlertDialog.BUTTON_POSITIVE).setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFF087F5B));
+   dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(0xFFB91C1C);
+   dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
      try {
       int allowance = glass.isChecked() ? deductions[index] : 0;
       int width = ShopDimensions.tenths(en.getText().toString(), "En");
@@ -1239,7 +1243,8 @@ final class TemaWorkshop {
     dialog.dismiss();
     accept.accept(value);
    }
-  }));
+  });
+  });
   dialog.show();
  }
 
