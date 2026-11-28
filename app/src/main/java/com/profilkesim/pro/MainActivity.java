@@ -165,13 +165,19 @@ public class MainActivity extends Activity {
   identity.addView(brand);
 
   TextView tagline = new InterfaceMotion.Tagline(this, this::rgbRunning);
-  tagline.setText("Cannuryapı Cam Sistemleri");
+  tagline.setText("CANNUR YAPI CAM SİSTEMLERİ");
   tagline.setTextSize(13);
   tagline.setTypeface(null, Typeface.BOLD);
   tagline.setTextColor(0xffc7f9ef);
   tagline.setShadowLayer(dp(3), 0, 0, 0x8a995dff);
   tagline.setPadding(0, dp(2), 0, 0);
   identity.addView(tagline);
+  TextView website = text("https://cannuryapii.cloud.run/", 12);
+  website.setPadding(0, dp(3), 0, 0);
+  website.setTextColor(0xff8cdedb);
+  website.setPaintFlags(website.getPaintFlags() | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
+  website.setOnClickListener(v -> { try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://cannuryapii.cloud.run/"))); } catch (android.content.ActivityNotFoundException e) { pdfMessage("Tarayıcı bulunamadı."); } });
+  identity.addView(website);
 
   View light = new View(this);
   GradientDrawable lightColor = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
