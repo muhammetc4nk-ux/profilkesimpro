@@ -117,6 +117,9 @@ final class TemaWorkshop {
    if ("T.3002".equals(value("code2")) && "60".equals(value("face2"))) draft.put("face2", "59");
    draft.put("catalogueFaces", "1");
   }
+  if (series == TemaCatalog.Series.ALDOKS && "T.3005".equals(value("code2"))) {
+   draft.put("face2", mm(series.find("T.3005").face));
+  }
  }
 
  private String preference(int role) { return "tema.profile." + series.name() + "." + role; }
@@ -692,7 +695,18 @@ final class TemaWorkshop {
       try {
        TemaLayout prior=geometry.get();
        lineProfiles.put(selectedKey,index);
-       if(selectedRole!=2){
+       if (selectedRole == 0) {
+        TemaLayout updated = geometry.get();
+        for (int i = 0; i < updated.bays.size(); i++) {
+         int number = i + 1;
+         if (emptyCells.contains(number)) continue;
+         TemaLayout.Opening bay = updated.bays.get(i);
+         TemaLayout.Section sash = selectedSash.apply(number);
+         if (glassSize(bay, TemaJoinery.glassAllowance(sash), skirtExtra(sash, selectedSkirt.apply(number, bay))) == null) {
+          throw new IllegalArgumentException(number + ". bölmede cam açıklığı yetersiz.");
+         }
+        }
+       } else if (selectedRole == 1) {
         TemaOpeningResize.Drawing model=resizeDrawing.get();
         for(int i=0;i<prior.bays.size();i++)if(openings.contains(i+1)){
          TemaLayout.Opening target=prior.bays.get(i);
@@ -1253,10 +1267,12 @@ final class TemaWorkshop {
     LinearLayout row = new LinearLayout(app);
     row.setGravity(android.view.Gravity.CENTER_VERTICAL);
     row.setPadding(app.dp(14), app.dp(7), app.dp(14), app.dp(7));
-    ImageView section = new ImageView(app);
-    section.setImageResource(item.image);
-    section.setScaleType(ImageView.ScaleType.FIT_CENTER);
-    row.addView(section, new LinearLayout.LayoutParams(app.dp(97), app.dp(72)));
+    if (item.image != 0) {
+     ImageView section = new ImageView(app);
+     section.setImageResource(item.image);
+     section.setScaleType(ImageView.ScaleType.FIT_CENTER);
+     row.addView(section, new LinearLayout.LayoutParams(app.dp(97), app.dp(72)));
+    }
     LinearLayout identity = column(row);
     app.planLabel(identity, item.label() + (index == selected ? " ✓" : ""), 16, Color.BLACK)
      .setTypeface(null, android.graphics.Typeface.BOLD);
@@ -1827,7 +1843,7 @@ final class TemaWorkshop {
   Set<Integer> leftHinges = leftHinges();
   drawingCard.addView(new TemaDiagramView(app, order, plan, series, leftHinges),
    new LinearLayout.LayoutParams(-1, app.dp(344)));
-  app.planLabel(drawingCard, "Pay, profilin açıklıktan aldığı ölçüdür. Orta kayıtta iki komşu bölmenin payı ayrı yazılır.", 13, 0xffc9dbe3);
+  app.planLabel(drawingCard, "Pay, profilin net açıklıktan aldığı toplam ölçüdür.", 13, 0xffc9dbe3);
   Button expand = new Button(app);
   expand.setText("Çizimi büyüt");
   WorkshopActions.style(app, expand, WorkshopActions.Tone.EDIT);

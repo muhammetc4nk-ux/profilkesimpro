@@ -14,12 +14,13 @@ final class TemaCatalog {
  private static final Profile C60_SASH = profile(3105, "Standart kanat", 660, 600, 14, 80, R.drawable.tema_3105);
  static final Profile C60_ADAPTER = profile(3107, "Kanat adaptörü", 220, 559, 0, 80, R.drawable.tema_3107);
 
- private static final Profile ALDOKS_SKIRT = profile(3010, "Etek profili", 1200, 454, 15, 74, 0);
+ private static final Profile ALDOKS_SKIRT = profile(3010, "Etek profili", 1029, 454, 15, 74, 0);
+ private static final Profile ALDOKS_ANGLE = profile(3011, "45° köşe profili", 656, 655, 0, 75, 0);
  private static final Profile C60_SKIRT = profile(3109, "Etek profili", 1330, 600, 20, 81, 0);
 
  enum Series {
   C60("C60", "C60", 0xff4ff3d2,
-   new Profile[]{C60_STANDARD, C60_WIDE, C60_ONE_SIDE},
+   new Profile[]{C60_STANDARD, C60_WIDE, C60_ONE_SIDE, C60_SKIRT},
    new Profile[]{C60_STANDARD, C60_WIDE, C60_SLIM},
    new Profile[]{C60_SASH},
    new Profile[]{profile(3112, "Cam çıtası · eğimli", 220, 165, 0, 82, R.drawable.tema_3112),
@@ -27,12 +28,12 @@ final class TemaCatalog {
   ALDOKS("Aldoks", "ALDOKS", 0xffffb86d,
    new Profile[]{profile(3001, "Dar kasa", 250, 455, 11, 71, R.drawable.tema_3001),
     profile(3004, "Geniş kasa", 420, 454, 11, 71, R.drawable.tema_3004),
-    profile(3007, "Ekstra geniş kasa", 907, 455, 15, 71, R.drawable.tema_3007)},
+    profile(3007, "Ekstra geniş kasa", 907, 455, 15, 71, R.drawable.tema_3007), ALDOKS_SKIRT, ALDOKS_ANGLE},
    new Profile[]{profile(3003, "Standart kayıt", 250, 455, 11, 73, R.drawable.tema_3003),
     profile(3006, "Geniş kayıt", 430, 454, 11, 73, R.drawable.tema_3006),
     profile(3009, "Ekstra geniş kayıt", 1100, 455, 17, 73, R.drawable.tema_3009)},
    new Profile[]{profile(3002, "Standart kanat", 590, 455, 11, 72, R.drawable.tema_3002),
-    profile(3005, "Geniş kanat", 765, 454, 11, 72, R.drawable.tema_3005),
+    profile(3005, "Geniş kanat", 595, 454, 11, 72, R.drawable.tema_3005),
     profile(3008, "Ekstra geniş kanat", 1100, 454, 14, 72, R.drawable.tema_3008)},
    new Profile[]{profile(3020, "Cam çıtası · geniş", 170, 291, 0, 74, R.drawable.tema_3020),
     profile(3021, "Cam çıtası · dar", 170, 140, 0, 74, R.drawable.tema_3021)});

@@ -45,7 +45,7 @@ final class TemaPdfExport {
    new TemaDiagramRenderer(order, plan, series, leftHinges, .86f, true).draw(canvas, width, height);
    canvas.restore();
    pages.y = pageHeight - MARGIN - 15;
-   pages.line("Tüm ölçüler mm. Orta kayıt payları iki komşu bölme için sırayla gösterilir.", "", false);
+   pages.line("Tüm ölçüler mm. Profil payı toplam düşümü gösterir.", "", false);
 
    pages.next("Profil kesim listesi");
    pages.cutHeader();

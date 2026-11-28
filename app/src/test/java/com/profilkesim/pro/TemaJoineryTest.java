@@ -35,23 +35,34 @@ public final class TemaJoineryTest {
   assertEquals(8405, plan.panes.get(0).insideWidth);
  }
 
+ @Test public void casingSkirtAndAngleDeductTheirOwnFacesAtTheSelectedEdges() {
+  TemaLayout.Section regular = new TemaLayout.Section("T.3001", 250);
+  TemaLayout.Section skirt = new TemaLayout.Section("T.3010", 1029);
+  TemaLayout.Section angle = new TemaLayout.Section("T.3011", 656);
+  TemaLayout layout = new TemaLayout(30000, 22000, new TemaLayout.Frame(angle, regular, regular, skirt), 1000,
+   Collections.singletonList(new int[]{0, 0, 1000, 1000}), Collections.emptyList(), Collections.emptySet());
+  assertEquals(30000 - 656 - 250, layout.bays.get(0).width());
+  assertEquals(22000 - 250 - 1029, layout.bays.get(0).height());
+  assertEquals(Collections.singletonList(Arrays.asList(656, 29094, 250)), layout.widthChains);
+ }
+
  @Test public void skirtReplacesOnlyTheBottomDoorRailAndReducesGlassHeight() {
   TemaJoinery.Order order = order(10000, 22000, 250);
   order.openingSashes = Collections.singleton(1);
   order.removeDoorSills = true;
   order.sashCode = "T.3005";
-  order.sashFace = 765;
+  order.sashFace = 595;
   order.aldoksDrawing = true;
   order.aldoksBeads = true;
   order.sashBead = new TemaJoinery.Bead("T.3021", 170, 0, TemaJoinery.Corner.HORIZONTAL_FULL);
   TemaJoinery.Plan regular = TemaJoinery.calculate(order);
-  order.skirtProfiles = Collections.singletonMap(1, new TemaLayout.Section("T.3010", 1200));
+  order.skirtProfiles = Collections.singletonMap(1, new TemaLayout.Section("T.3010", 1029));
   TemaJoinery.Plan withSkirt = TemaJoinery.calculate(order);
   assertCut(withSkirt, order.sashCode, "Kanat yatay", 9640, 45, 1);
   assertCut(withSkirt, "T.3010", "Kanat alt etek profili", 9640, 45, 1);
-  assertCut(withSkirt, "T.3021", "Kanat cam çıtası dikey", 19703, 90, 2);
+  assertCut(withSkirt, "T.3021", "Kanat cam çıtası dikey", 19706, 90, 2);
   assertEquals(regular.panes.get(0).width, withSkirt.panes.get(0).width);
-  assertEquals(regular.panes.get(0).height - 435, withSkirt.panes.get(0).height);
+  assertEquals(regular.panes.get(0).height - 434, withSkirt.panes.get(0).height);
   assertTrue(withSkirt.layout.rails.isEmpty());
  }
 
@@ -62,7 +73,7 @@ public final class TemaJoineryTest {
   order.mullionCode = "T.3006";
   order.mullionFace = 430;
   order.sashCode = "T.3005";
-  order.sashFace = 765;
+  order.sashFace = 595;
   order.sashCorner = TemaJoinery.Corner.HORIZONTAL_FULL;
   order.openingSashes = Collections.singleton(2);
   order.aldoksDrawing = true;
@@ -72,15 +83,15 @@ public final class TemaJoineryTest {
 
   TemaJoinery.Plan plan = TemaJoinery.calculate(order);
   TemaLayout.Opening fixed = plan.layout.bays.get(0);
-  assertCut(plan, "T.3020", "Sabit cam çıtası yatay", fixed.width(), 90, 4);
+  assertCut(plan, "T.3020", "Sabit cam çıtası yatay", fixed.width() - 10, 90, 4);
   assertCut(plan, "T.3020", "Sabit cam çıtası dikey", fixed.height() - 340, 90, 4);
   TemaLayout.Opening opening = plan.layout.bays.get(1);
   int sashWidth = opening.width() + 140;
-  int sashHeight = opening.height() - 80 - 1530;
+  int sashHeight = opening.height() - 80 - 1190;
   assertCut(plan, "T.3005", "Kanat yatay", sashWidth, 90, 4);
   assertCut(plan, "T.3005", "Kanat dikey", sashHeight, 90, 4);
-  assertCut(plan, "T.3021", "Kanat cam çıtası yatay", sashWidth - 1191, 90, 4);
-  assertCut(plan, "T.3021", "Kanat cam çıtası dikey", sashHeight - 1532, 90, 4);
+  assertCut(plan, "T.3021", "Kanat cam çıtası yatay", sashWidth - 1190, 90, 4);
+  assertCut(plan, "T.3021", "Kanat cam çıtası dikey", sashHeight - 1530, 90, 4);
   assertEquals("Sabit cam çıtası yatay", plan.cuts.get(plan.cuts.size() - 4).role);
   assertEquals("Kanat cam çıtası yatay", plan.cuts.get(plan.cuts.size() - 3).role);
  }
@@ -89,7 +100,7 @@ public final class TemaJoineryTest {
   TemaJoinery.Order order = order(22000, 19000, 250);
   order.vertical = 1;
   order.mullionFace = 430;
-  order.sashFace = 765;
+  order.sashFace = 595;
   order.sashCode = "T.3005";
   order.openingSashes = new java.util.LinkedHashSet<>(Arrays.asList(1, 2));
   order.sashProfiles = new java.util.LinkedHashMap<>();

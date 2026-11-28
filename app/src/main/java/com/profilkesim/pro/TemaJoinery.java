@@ -103,9 +103,6 @@ final class TemaJoinery {
   }
 
   String allowanceText() {
-   if (role == ProfileRole.MULLION) {
-    return "Pay " + ShopDimensions.mm(face / 2) + " + " + ShopDimensions.mm(face - face / 2) + " mm";
-   }
    return "Pay " + ShopDimensions.mm(face) + " mm";
   }
 
@@ -343,7 +340,7 @@ final class TemaJoinery {
   TemaLayout.Section sash = null;
   TemaLayout.Section skirt = opening && bay.door ? o.skirtProfiles.get(number) : null;
   Bead bead = opening ? o.sashBead : o.fixedBead;
-  int beadWidth = width, beadHeight = height;
+  int beadWidth = width - ShopDimensions.PER_MM, beadHeight = height;
   if (opening) {
    if (o.adapterCode != null) {
     if (bay.door) {
@@ -373,9 +370,7 @@ final class TemaJoinery {
    }
    if (o.aldoksBeads) {
     int cheek = aldoksBeadCheek(sash);
-    // T.3005 uses 59.5 mm on one horizontal end and 59.6 mm on the other.
-    int horizontalCheeks = 2 * cheek - ("T.3005".equals(sash.code) ? 1 : 0);
-    beadWidth = horizontalLength(cutWidth, sash.face, o.sashCorner) - horizontalCheeks;
+    beadWidth = horizontalLength(cutWidth, sash.face, o.sashCorner) - 2 * cheek;
     beadHeight = verticalLength(cutHeight, sash.face, o.sashCorner) - 2 * cheek - (bottomFace - sash.face);
    }
    int left = bay.left + SASH_GAP, top = bay.top + SASH_GAP;
@@ -407,7 +402,7 @@ final class TemaJoinery {
  private static int aldoksBeadCheek(TemaLayout.Section sash) {
   switch (sash.code) {
    case "T.3002": return 420;
-   case "T.3005": return 596;
+   case "T.3005": return 595;
    case "T.3008": return 930;
    default: return Math.max(0, sash.face - ALDOKS_BEAD_END);
   }

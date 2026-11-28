@@ -79,7 +79,8 @@ final class TemaElevation {
   rail(canvas, lx, rx, by - bottomFace, bottomFace, fx, fx, true, sashCorner, true);
   if (skirt != null) {
    float center = (lx + rx) / 2;
-   drawProfileText(canvas, skirt.code + " · Etek", skirt.code, "", "", false, center, by - bottomFace / 2,
+   String pay = "Pay " + ShopDimensions.mm(skirt.face) + " mm";
+   drawProfileText(canvas, skirt.code + " · Etek", skirt.code, pay, pay, false, center, by - bottomFace / 2,
     rx - lx - 2 * fx, 0xee284756);
   }
   float insideLeft = lx + fx, insideRight = rx - fx, insideTop = ty + fy, insideBottom = by - bottomFace;
@@ -189,8 +190,8 @@ final class TemaElevation {
 
  private void openingDirection(Canvas canvas, boolean leftHinge, float left, float top, float right, float bottom) {
   float inset = Math.min(right - left, bottom - top) * .08f;
-  float tip = leftHinge ? left + inset : right - inset;
-  float base = leftHinge ? right - inset : left + inset;
+  float tip = leftHinge ? right - inset : left + inset;
+  float base = leftHinge ? left + inset : right - inset;
   paint.setColor(0xeef0faff);
   paint.setStrokeWidth(annotationDensity);
   canvas.drawLine(base, top + inset, tip, (top + bottom) / 2, paint);
