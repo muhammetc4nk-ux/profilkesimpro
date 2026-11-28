@@ -22,7 +22,14 @@
   <item name="android:buttonBarNeutralButtonStyle">@style/WorkshopDialogButton</item>
  </style>
  <style name="WorkshopDialogButton" parent="android:style/Widget.Material.Light.Button.Borderless">
-  <item name="android:textColor">#075E54</item>
+  <item name="android:background">#075E54</item>
+  <item name="android:backgroundTint">@null</item>
+  <item name="android:textColor">#FFFFFF</item>
+  <item name="android:textAppearance">@android:style/TextAppearance.Material.Button</item>
+  <item name="android:paddingLeft">16dp</item>
+  <item name="android:paddingRight">16dp</item>
+  <item name="android:minWidth">80dp</item>
+  <item name="android:alpha">1</item>
   <item name="android:textAllCaps">false</item>
   <item name="android:textSize">14sp</item>
   <item name="android:minHeight">48dp</item>
