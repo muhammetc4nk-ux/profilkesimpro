@@ -304,34 +304,69 @@ final class TemaJoinery {
   return corner == Corner.HORIZONTAL_FULL ? height - 2 * face : height;
  }
 
+ static Corner frameCorner(TemaLayout.Frame frame, Corner configured, boolean top, boolean left) {
+  if (top && isSkirt(frame.top)) return Corner.VERTICAL_FULL;
+  if (isSkirt(left ? frame.left : frame.right)) return Corner.HORIZONTAL_FULL;
+  return configured;
+ }
+
+ private static boolean isSkirt(TemaLayout.Section section) {
+  return "T.3010".equals(section.code) || "T.3109".equals(section.code);
+ }
+
+ private static int angle(Corner corner) { return corner == Corner.MITER ? 45 : 90; }
+
  private static void addFrame(Order o, Plan plan) {
   TemaLayout.Frame f = plan.layout.frame;
-  int angle = o.corner == Corner.MITER ? 45 : 90;
-  boolean verticalFull = o.corner == Corner.VERTICAL_FULL, horizontalFull = o.corner == Corner.HORIZONTAL_FULL;
-  int width = o.width - (verticalFull ? f.left.face + f.right.face : 0);
-  plan.addCut(f.top.code, "Kasa yatay", width, angle, o.quantity);
+  Corner topLeft = frameCorner(f, o.corner, true, true), topRight = frameCorner(f, o.corner, true, false);
+  Corner bottomLeft = frameCorner(f, o.corner, false, true), bottomRight = frameCorner(f, o.corner, false, false);
+  int width = o.width - (topLeft == Corner.VERTICAL_FULL ? f.left.face : 0)
+   - (topRight == Corner.VERTICAL_FULL ? f.right.face : 0);
+  plan.addCut(f.top.code, "Kasa yatay", width, angle(topLeft), angle(topRight), o.quantity);
   plan.profileMarks.add(new ProfileMark(f.top, width, f.top.face / 2, 0, o.width, false, ProfileRole.FRAME));
   boolean leftSill = false, rightSill = false;
   for (TemaLayout.Span span : plan.layout.rails) {
    boolean left = span.start == 0, right = span.end == o.width;
    leftSill |= left;
    rightSill |= right;
-   int length = span.end - span.start - (verticalFull && left ? f.left.face : 0)
-    - (verticalFull && right ? f.right.face : 0);
+   int length = span.end - span.start - (left && bottomLeft == Corner.VERTICAL_FULL ? f.left.face : 0)
+    - (right && bottomRight == Corner.VERTICAL_FULL ? f.right.face : 0);
    plan.addCut(f.bottom.code, left && right ? "Kasa yatay" : "Kasa alt yatay", length,
-    left ? angle : 90, right ? angle : 90, o.quantity);
+    left ? angle(bottomLeft) : 90, right ? angle(bottomRight) : 90, o.quantity);
    plan.profileMarks.add(new ProfileMark(f.bottom, length, o.height - f.bottom.face / 2,
     span.start, span.end, false, ProfileRole.FRAME));
   }
-  int jamb = o.height - (horizontalFull ? f.top.face : 0);
   plan.frameCorners = (2 + (leftSill ? 1 : 0) + (rightSill ? 1 : 0)) * o.quantity;
-  int leftLength = jamb - (horizontalFull && leftSill ? f.bottom.face : 0);
-  int rightLength = jamb - (horizontalFull && rightSill ? f.bottom.face : 0);
-  plan.addCut(f.left.code, "Kasa dikey", leftLength, angle, leftSill ? angle : 90, o.quantity);
-  plan.addCut(f.right.code, "Kasa dikey", rightLength, angle, rightSill ? angle : 90, o.quantity);
+  int leftLength = o.height - (topLeft == Corner.HORIZONTAL_FULL ? f.top.face : 0)
+   - (leftSill && bottomLeft == Corner.HORIZONTAL_FULL ? f.bottom.face : 0);
+  int rightLength = o.height - (topRight == Corner.HORIZONTAL_FULL ? f.top.face : 0)
+   - (rightSill && bottomRight == Corner.HORIZONTAL_FULL ? f.bottom.face : 0);
+  plan.addCut(f.left.code, "Kasa dikey", leftLength, angle(topLeft), leftSill ? angle(bottomLeft) : 90, o.quantity);
+  plan.addCut(f.right.code, "Kasa dikey", rightLength, angle(topRight), rightSill ? angle(bottomRight) : 90, o.quantity);
   plan.profileMarks.add(new ProfileMark(f.left, leftLength, f.left.face / 2, 0, o.height, true, ProfileRole.FRAME));
   plan.profileMarks.add(new ProfileMark(f.right, rightLength, o.width - f.right.face / 2, 0, o.height,
    true, ProfileRole.FRAME));
+ }
+
+ static int[] glassDeductions(TemaLayout.Section sash, TemaLayout.Section skirt, Corner corner,
+                              boolean aldoksBeads, boolean aldoksDrawing) {
+  if (!aldoksBeads) {
+   int allowance = glassAllowance(sash);
+   return new int[]{allowance, allowance + (skirt == null ? 0 : skirt.face - sash.face)};
+  }
+  int[] beads = aldoksBeadDimensions(0, 0, sash, skirt, corner, aldoksDrawing);
+  return new int[]{GLASS_DEDUCTION - beads[0], GLASS_DEDUCTION - beads[1]};
+ }
+
+ private static int[] aldoksBeadDimensions(int width, int height, TemaLayout.Section sash, TemaLayout.Section skirt,
+                                           Corner corner, boolean drawing) {
+  if (sash == null) return new int[]{width - ShopDimensions.PER_MM, height - 2 * ALDOKS_BEAD_END};
+  int cutWidth = width + (drawing ? 14 * ShopDimensions.PER_MM : -2 * SASH_GAP);
+  int cutHeight = height + (drawing ? -8 * ShopDimensions.PER_MM : -2 * SASH_GAP);
+  int cheeks = 2 * aldoksBeadCheek(sash);
+  int bottomExtra = skirt == null ? 0 : skirt.face - sash.face;
+  return new int[]{horizontalLength(cutWidth, sash.face, corner) - cheeks,
+   verticalLength(cutHeight, sash.face, corner) - cheeks - bottomExtra - 2 * ALDOKS_BEAD_END};
  }
 
  private static void addPaneDimensions(Order o, Plan plan, int number, TemaLayout.Opening bay,
@@ -340,7 +375,6 @@ final class TemaJoinery {
   TemaLayout.Section sash = null;
   TemaLayout.Section skirt = opening ? o.skirtProfiles.get(number) : null;
   Bead bead = opening ? o.sashBead : o.fixedBead;
-  int beadWidth = width - ShopDimensions.PER_MM, beadHeight = height;
   if (opening) {
    if (o.adapterCode != null) {
     if (bay.door) {
@@ -368,11 +402,6 @@ final class TemaJoinery {
     plan.addCut(sash.code, "Kanat dikey", jamb, angle, 2 * o.quantity);
     plan.addCut(skirt.code, "Kanat alt etek profili", rail, angle, o.quantity);
    }
-   if (o.aldoksBeads) {
-    int cheek = aldoksBeadCheek(sash);
-    beadWidth = horizontalLength(cutWidth, sash.face, o.sashCorner) - 2 * cheek;
-    beadHeight = verticalLength(cutHeight, sash.face, o.sashCorner) - 2 * cheek - (bottomFace - sash.face);
-   }
    int left = bay.left + SASH_GAP, top = bay.top + SASH_GAP;
    int halfFace = sash.face / 2;
    int horizontal = horizontalLength(width, sash.face, o.sashCorner);
@@ -388,12 +417,14 @@ final class TemaJoinery {
    width -= 2 * sash.face;
    height -= sash.face + bottomFace;
   }
-  Pane pane = new Pane(number, width, height, sash, skirt, opening ? o.adapterCode : null);
+  int[] beads = o.aldoksBeads ? aldoksBeadDimensions(bay.width(), bay.height(), sash, skirt, o.sashCorner, o.aldoksDrawing) : null;
+  Pane pane = new Pane(number, beads == null ? width : beads[0], beads == null ? height : beads[1],
+   sash, skirt, opening ? o.adapterCode : null);
   if (pane.width <= 0 || pane.height <= 0) {
    throw new IllegalArgumentException(number + ". bölmede cam için iç en ve boydan 10 mm düşülemiyor.");
   }
   String beadRole = opening ? "Kanat cam çıtası" : "Sabit cam çıtası";
-  if (o.aldoksBeads) addAldoksBead(plan, bead, beadRole, beadWidth, beadHeight, o.quantity);
+  if (beads != null) addAldoksBead(plan, bead, beadRole, beads[0], beads[1], o.quantity);
   else addBead(plan, bead, beadRole, width, height, o.quantity);
   plan.panes.add(pane);
   plan.glassArea = plan.glassArea.add(ShopDimensions.area(pane.width, pane.height, o.quantity));
@@ -416,12 +447,11 @@ final class TemaJoinery {
 
  private static void addAldoksBead(Plan plan, Bead bead, String role, int width, int height, int quantity) {
   if (bead == null) return;
-  int side = height - 2 * ALDOKS_BEAD_END;
-  if (width <= 0 || side <= 0) {
+  if (width <= 0 || height <= 0) {
    throw new IllegalArgumentException(role + " seçilen açıklığa sığmıyor.");
   }
   plan.addCut(bead.code, role + " yatay", width, 90, 2 * quantity);
-  plan.addCut(bead.code, role + " dikey", side, 90, 2 * quantity);
+  plan.addCut(bead.code, role + " dikey", height, 90, 2 * quantity);
  }
 
  private static void addBead(Plan plan, Bead bead, String role, int width, int height, int quantity) {

@@ -46,6 +46,31 @@ public final class TemaJoineryTest {
   assertEquals(Collections.singletonList(Arrays.asList(656, 29094, 250)), layout.widthChains);
  }
 
+ @Test public void upperAndSideSkirtsUseSquareCutsAtTheirOwnFrameJoints() {
+  TemaLayout.Section left = new TemaLayout.Section("L", 250);
+  TemaLayout.Section right = new TemaLayout.Section("R", 420);
+  TemaLayout.Section top = new TemaLayout.Section("U", 250);
+  TemaLayout.Section bottom = new TemaLayout.Section("A", 420);
+  TemaLayout.Section skirt = new TemaLayout.Section("T.3010", 1029);
+  TemaJoinery.Order order = order(30000, 22000, 250);
+  List<int[]> cells = Collections.singletonList(new int[]{0, 0, 1000, 1000});
+  order.layout = new TemaLayout(order.width, order.height, new TemaLayout.Frame(left, skirt, right, bottom),
+   1000, cells, Collections.emptyList(), Collections.emptySet());
+  TemaJoinery.Plan upper = TemaJoinery.calculate(order);
+  assertCut(upper, "T.3010", "Kasa yatay", 29330, 90, 1);
+  assertCut(upper, "L", "Kasa dikey", 22000, 90, 45, 1);
+  assertCut(upper, "R", "Kasa dikey", 22000, 90, 45, 1);
+  for (boolean atLeft : new boolean[]{true, false}) {
+   order.layout = new TemaLayout(order.width, order.height,
+    new TemaLayout.Frame(atLeft ? skirt : left, top, atLeft ? right : skirt, bottom),
+    1000, cells, Collections.emptyList(), Collections.emptySet());
+   TemaJoinery.Plan side = TemaJoinery.calculate(order);
+   assertCut(side, "T.3010", "Kasa dikey", 21330, 90, 1);
+   assertCut(side, "U", "Kasa yatay", 30000, atLeft ? 90 : 45, atLeft ? 45 : 90, 1);
+   assertCut(side, "A", "Kasa yatay", 30000, atLeft ? 90 : 45, atLeft ? 45 : 90, 1);
+  }
+ }
+
  @Test public void skirtReplacesOnlyTheBottomDoorRailAndReducesGlassHeight() {
   TemaJoinery.Order order = order(10000, 22000, 250);
   order.openingSashes = Collections.singleton(1);
@@ -108,6 +133,10 @@ public final class TemaJoineryTest {
   assertCut(plan, "T.3005", "Kanat dikey", sashHeight, 90, 4);
   assertCut(plan, "T.3021", "Kanat cam çıtası yatay", sashWidth - 1190, 90, 4);
   assertCut(plan, "T.3021", "Kanat cam çıtası dikey", sashHeight - 1530, 90, 4);
+  assertEquals(fixed.width() - 110, plan.panes.get(0).width);
+  assertEquals(fixed.height() - 440, plan.panes.get(0).height);
+  assertEquals(sashWidth - 1290, plan.panes.get(1).width);
+  assertEquals(sashHeight - 1630, plan.panes.get(1).height);
   assertEquals("Sabit cam çıtası yatay", plan.cuts.get(plan.cuts.size() - 4).role);
   assertEquals("Kanat cam çıtası yatay", plan.cuts.get(plan.cuts.size() - 3).role);
  }

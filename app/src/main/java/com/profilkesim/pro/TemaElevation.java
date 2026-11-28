@@ -32,12 +32,16 @@ final class TemaElevation {
   float rightFace = layout.frame.right.face * sx, bottomFace = layout.bottomFace * sy;
   boolean leftSill = !layout.rails.isEmpty() && layout.rails.get(0).start == 0;
   boolean rightSill = !layout.rails.isEmpty() && layout.rails.get(layout.rails.size() - 1).end == layout.width;
-  jamb(canvas, x, y, bottom, leftFace, topFace, leftSill ? bottomFace : 0, false, corner, false);
-  jamb(canvas, right - rightFace, y, bottom, rightFace, topFace, rightSill ? bottomFace : 0, true, corner, false);
-  rail(canvas, x, right, y, topFace, leftFace, rightFace, false, corner, false);
+  TemaJoinery.Corner tl = TemaJoinery.frameCorner(layout.frame, corner, true, true);
+  TemaJoinery.Corner tr = TemaJoinery.frameCorner(layout.frame, corner, true, false);
+  TemaJoinery.Corner bl = TemaJoinery.frameCorner(layout.frame, corner, false, true);
+  TemaJoinery.Corner br = TemaJoinery.frameCorner(layout.frame, corner, false, false);
+  jamb(canvas, x, y, bottom, leftFace, topFace, leftSill ? bottomFace : 0, false, tl, bl, false);
+  jamb(canvas, right - rightFace, y, bottom, rightFace, topFace, rightSill ? bottomFace : 0, true, tr, br, false);
+  rail(canvas, x, right, y, topFace, leftFace, rightFace, false, tl, tr, false);
   for (TemaLayout.Span span : layout.rails) {
    rail(canvas, x + span.start * sx, x + span.end * sx, bottom - bottomFace, bottomFace,
-    span.start == 0 ? leftFace : 0, span.end == layout.width ? rightFace : 0, true, corner, false);
+    span.start == 0 ? leftFace : 0, span.end == layout.width ? rightFace : 0, true, bl, br, false);
   }
   for (TemaLayout.Member member : members) {
    int low = member.axis - member.section.face / 2;
@@ -91,30 +95,30 @@ final class TemaElevation {
 
  private void rail(Canvas c, float left, float right, float y, float face, float leftFace, float rightFace,
                    boolean bottom, TemaJoinery.Corner corner, boolean leaf) {
-  float outsideLeft = left, outsideRight = right, insideLeft = left, insideRight = right;
-  if (corner == TemaJoinery.Corner.VERTICAL_FULL) {
-   outsideLeft += leftFace;
-   outsideRight -= rightFace;
-  }
-  if (corner != TemaJoinery.Corner.HORIZONTAL_FULL) {
-   insideLeft += leftFace;
-   insideRight -= rightFace;
-  }
+  rail(c, left, right, y, face, leftFace, rightFace, bottom, corner, corner, leaf);
+ }
+
+ private void rail(Canvas c, float left, float right, float y, float face, float leftFace, float rightFace,
+                   boolean bottom, TemaJoinery.Corner leftJoint, TemaJoinery.Corner rightJoint, boolean leaf) {
+  float outsideLeft = left + (leftJoint == TemaJoinery.Corner.VERTICAL_FULL ? leftFace : 0);
+  float outsideRight = right - (rightJoint == TemaJoinery.Corner.VERTICAL_FULL ? rightFace : 0);
+  float insideLeft = left + (leftJoint == TemaJoinery.Corner.HORIZONTAL_FULL ? 0 : leftFace);
+  float insideRight = right - (rightJoint == TemaJoinery.Corner.HORIZONTAL_FULL ? 0 : rightFace);
   if (bottom) band(c, false, insideLeft, insideRight, outsideRight, outsideLeft, y, y + face, leaf);
   else band(c, false, outsideLeft, outsideRight, insideRight, insideLeft, y, y + face, leaf);
  }
 
  private void jamb(Canvas c, float x, float top, float bottom, float face, float topFace, float bottomFace,
                    boolean right, TemaJoinery.Corner corner, boolean leaf) {
-  float outsideTop = top, outsideBottom = bottom, insideTop = top, insideBottom = bottom;
-  if (corner == TemaJoinery.Corner.HORIZONTAL_FULL) {
-   outsideTop += topFace;
-   outsideBottom -= bottomFace;
-  }
-  if (corner != TemaJoinery.Corner.VERTICAL_FULL) {
-   insideTop += topFace;
-   insideBottom -= bottomFace;
-  }
+  jamb(c, x, top, bottom, face, topFace, bottomFace, right, corner, corner, leaf);
+ }
+
+ private void jamb(Canvas c, float x, float top, float bottom, float face, float topFace, float bottomFace,
+                   boolean right, TemaJoinery.Corner topJoint, TemaJoinery.Corner bottomJoint, boolean leaf) {
+  float outsideTop = top + (topJoint == TemaJoinery.Corner.HORIZONTAL_FULL ? topFace : 0);
+  float outsideBottom = bottom - (bottomJoint == TemaJoinery.Corner.HORIZONTAL_FULL ? bottomFace : 0);
+  float insideTop = top + (topJoint == TemaJoinery.Corner.VERTICAL_FULL ? 0 : topFace);
+  float insideBottom = bottom - (bottomJoint == TemaJoinery.Corner.VERTICAL_FULL ? 0 : bottomFace);
   if (right) band(c, true, insideTop, insideBottom, outsideBottom, outsideTop, x, x + face, leaf);
   else band(c, true, outsideTop, outsideBottom, insideBottom, insideTop, x, x + face, leaf);
  }
