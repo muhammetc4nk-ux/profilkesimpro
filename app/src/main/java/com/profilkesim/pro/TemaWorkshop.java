@@ -615,7 +615,8 @@ final class TemaWorkshop {
      } catch (IllegalArgumentException error) {
       feedback.setText(error.getMessage());
      }
-    }));
+     });
+     });
     dialog.show();
    }
 
@@ -1243,8 +1244,7 @@ final class TemaWorkshop {
     dialog.dismiss();
     accept.accept(value);
    }
-  });
-  });
+   }));
   dialog.show();
  }
 
