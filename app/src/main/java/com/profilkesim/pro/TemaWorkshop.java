@@ -259,7 +259,7 @@ final class TemaWorkshop {
   int[] mode={8};
   int[] placementProfile={0};
   TemaRecordPlacement.Start[] pendingRecord = {null};
-  boolean[] frameAdded={true};
+  boolean[] frameAdded={editingPosition.drawing != null};
   try {
    org.json.JSONObject saved=new org.json.JSONObject(value("editorDrawing"));
    frameAdded[0]=saved.optBoolean("frame");
@@ -704,7 +704,7 @@ final class TemaWorkshop {
   Button redoButton=new Button(app);redoButton.setText("↷ İleri al");historyTools.addView(redoButton,new LinearLayout.LayoutParams(0,app.dp(52),1));
   redoButton.setOnClickListener(v->{pendingRecord[0]=null;board.invalidate();if(redo.isEmpty()){toast("İleri alınacak işlem yok.");return;}undo.push(snapshot.get());redo.pop().run();persistDrawing.run();board.invalidate();});
   undoButton.setOnClickListener(v->{pendingRecord[0]=null;board.invalidate();if(undo.isEmpty()){toast("Geri alınacak işlem yok.");return;}redo.push(snapshot.get());undo.pop().run();persistDrawing.run();drawingStatus.setText("Son işlem geri alındı.");board.invalidate();});
-  Button frameButton=new Button(app);frameButton.setText("+ Kasa ekle");panel.addView(frameButton);frameButton.setOnClickListener(v->chooseProfile("Kasa",groups[0],picks[0],index->{checkpoint.run();frameAdded[0]=true;picks[0]=index;lineProfiles.put("frame",index);profileButtons[0].setText(names[0]+" · "+groups[0][index].label());drawingStatus.setText("Kasa eklendi: "+groups[0][index].label());persistDrawing.run();board.invalidate();}));
+  Button frameButton=new Button(app);frameButton.setText("+ Kasa ekle");panel.addView(frameButton);frameButton.setOnClickListener(v->{try { if(ShopDimensions.tenths(sizes[0].getText().toString(),"Dış en")<=0 || ShopDimensions.tenths(sizes[1].getText().toString(),"Dış boy")<=0) throw new IllegalArgumentException("Önce dış ölçüleri girin."); } catch(IllegalArgumentException ex){toast(ex.getMessage());return;} chooseProfile("Kasa",groups[0],picks[0],index->{checkpoint.run();frameAdded[0]=true;picks[0]=index;lineProfiles.put("frame",index);profileButtons[0].setText(names[0]+" · "+groups[0][index].label());drawingStatus.setText("Kasa eklendi: "+groups[0][index].label());persistDrawing.run();board.invalidate();});});
   Button sashButton=new Button(app);sashButton.setText("+ Kanat ekle");panel.addView(sashButton);sashButton.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}chooseProfile("Kanat",groups[2],picks[2],index->{placementProfile[0]=index;mode[0]=2;pendingRecord[0]=null;drawingStatus.setText(groups[2][index].label()+" · Kanat için bölmeye dokunun.");board.invalidate();});});
   String[] modes = {"↕ Dikey kayıt", "↔ Yatay kayıt", "Sol kanat", "Kaydı sil", "Boş kasa",
    "Sabit cam", "Sağ kanat", "Profil seç", "Net ölçü"};
@@ -771,9 +771,17 @@ final class TemaWorkshop {
     }catch(RuntimeException ex){restore.run();board.invalidate();toast(ex.getMessage());}
    });
   }
+  boolean[] framePickerPending={false};
+  Runnable promptFrame=()->{
+   if(frameAdded[0] || framePickerPending[0])return;
+   try { if(ShopDimensions.tenths(sizes[0].getText().toString(),"Dış en")<=0 || ShopDimensions.tenths(sizes[1].getText().toString(),"Dış boy")<=0)return; }catch(IllegalArgumentException ex){return;}
+   frameButton.performClick();
+  };
+  Runnable delayedFrame=()->{framePickerPending[0]=false;promptFrame.run();};
   for (EditText size : sizes) size.addTextChangedListener(watcher(() -> {
    pendingRecord[0] = null;
    board.invalidate();
+   if(!frameAdded[0]){board.removeCallbacks(delayedFrame);framePickerPending[0]=true;board.postDelayed(delayedFrame,1000);}
   }));
   Button netSizes = new Button(app);
   netSizes.setText("Kasa içi net en ve boy gir");
@@ -1031,6 +1039,7 @@ final class TemaWorkshop {
   }));
   saveOpenEditor = saveDraft;
   dialog.show();
+  if(!frameAdded[0]) board.post(()->{if(dialog.isShowing())promptFrame.run();});
   if (dialog.getWindow() != null) {
    dialog.getWindow().setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT);
    dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
