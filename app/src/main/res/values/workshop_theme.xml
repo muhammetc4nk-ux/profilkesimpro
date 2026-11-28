@@ -2,6 +2,10 @@
  <style name="WorkshopTheme" parent="android:style/Theme.Material.Light.NoActionBar">
   <item name="android:colorAccent">#187574</item>
   <item name="android:buttonStyle">@style/WorkshopButton</item>
+  <item name="android:buttonBarPositiveButtonStyle">@style/WorkshopDialogButton</item>
+  <item name="android:buttonBarNegativeButtonStyle">@style/WorkshopDialogButton</item>
+  <item name="android:buttonBarNeutralButtonStyle">@style/WorkshopDialogButton</item>
+  <item name="android:alertDialogTheme">@style/WorkshopDialogTheme</item>
  </style>
  <style name="WorkshopButton" parent="android:style/Widget.Material.Light.Button">
   <item name="android:background">@drawable/workshop_button</item>
@@ -10,5 +14,17 @@
   <item name="android:textAllCaps">false</item>
   <item name="android:fontFamily">sans-serif-medium</item>
   <item name="android:minHeight">46dp</item>
+ </style>
+ <style name="WorkshopDialogTheme" parent="android:style/Theme.Material.Light.Dialog.Alert">
+  <item name="android:colorAccent">#075E54</item>
+  <item name="android:buttonBarPositiveButtonStyle">@style/WorkshopDialogButton</item>
+  <item name="android:buttonBarNegativeButtonStyle">@style/WorkshopDialogButton</item>
+  <item name="android:buttonBarNeutralButtonStyle">@style/WorkshopDialogButton</item>
+ </style>
+ <style name="WorkshopDialogButton" parent="android:style/Widget.Material.Light.Button.Borderless">
+  <item name="android:textColor">#075E54</item>
+  <item name="android:textAllCaps">false</item>
+  <item name="android:textSize">14sp</item>
+  <item name="android:minHeight">48dp</item>
  </style>
 </resources>
