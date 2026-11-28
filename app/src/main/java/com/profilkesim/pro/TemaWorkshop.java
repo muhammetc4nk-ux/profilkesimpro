@@ -257,6 +257,7 @@ final class TemaWorkshop {
    retainBays(before, bays.get(), openings, leftCells, emptyCells, lineProfiles);
   java.util.function.BiFunction<Integer,Integer,Integer> hit=(x,y)->{java.util.ArrayList<int[]> cells=bays.get();for(int i=0;i<cells.size();i++){int[] z=cells.get(i);if(x>=z[0]&&x<=z[2]&&y>=z[1]&&y<=z[3])return i+1;}return 0;};
   int[] mode={8};
+  int[] placementProfile={0};
   TemaRecordPlacement.Start[] pendingRecord = {null};
   boolean[] frameAdded={true};
   try {
@@ -499,7 +500,7 @@ final class TemaWorkshop {
      invalidate();
      return;
     }
-    int[] segment = TemaRecordPlacement.finish(before, start, snappedX, snappedY, across, along, picks[1]);
+    int[] segment = TemaRecordPlacement.finish(before, start, snappedX, snappedY, across, along, placementProfile[0]);
     if (segment == null) {
      drawingStatus.setText("Aynı bölmede işaretli karşı ucu seçin.");
      return;
@@ -509,7 +510,7 @@ final class TemaWorkshop {
     int alongIndex = vertical ? 1 : 0;
     if (segment[alongIndex] == 0 && segment[alongIndex + 2] == DRAWING_SCALE && (vertical ? xs : ys).size() < 12) {
      (vertical ? xs : ys).add(axis);
-     lineProfiles.put((vertical ? "v" : "h") + axis, picks[1]);
+     lineProfiles.put((vertical ? "v" : "h") + axis, placementProfile[0]);
     } else {
      localLines.add(segment);
     }
@@ -683,12 +684,14 @@ final class TemaWorkshop {
     if (cell == 0) { undo.pop(); return; }
     if (mode[0] == 4 || mode[0] == 5) {
      openings.remove(cell);
+     lineProfiles.remove("s"+cell);
      leftCells.remove(cell);
      if (mode[0] == 4) emptyCells.add(cell);
      else emptyCells.remove(cell);
     } else {
      emptyCells.remove(cell);
      openings.add(cell);
+     lineProfiles.put("s"+cell, placementProfile[0]);
      if (mode[0] == 2) leftCells.add(cell);
      else leftCells.remove(cell);
     }
@@ -701,8 +704,8 @@ final class TemaWorkshop {
   Button redoButton=new Button(app);redoButton.setText("↷ İleri al");historyTools.addView(redoButton,new LinearLayout.LayoutParams(0,app.dp(52),1));
   redoButton.setOnClickListener(v->{pendingRecord[0]=null;board.invalidate();if(redo.isEmpty()){toast("İleri alınacak işlem yok.");return;}undo.push(snapshot.get());redo.pop().run();persistDrawing.run();board.invalidate();});
   undoButton.setOnClickListener(v->{pendingRecord[0]=null;board.invalidate();if(undo.isEmpty()){toast("Geri alınacak işlem yok.");return;}redo.push(snapshot.get());undo.pop().run();persistDrawing.run();drawingStatus.setText("Son işlem geri alındı.");board.invalidate();});
-  Button frameButton=new Button(app);frameButton.setText("+ Kasa ekle");panel.addView(frameButton);frameButton.setOnClickListener(v->{checkpoint.run();frameAdded[0]=true;drawingStatus.setText("Kasa eklendi: "+groups[0][picks[0]].label());board.invalidate();});
-  Button sashButton=new Button(app);sashButton.setText("+ Kanat ekle (ilk boş bölme)");panel.addView(sashButton);sashButton.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}int count=bays.get().size();for(int i=1;i<=count;i++)if(!openings.contains(i)){checkpoint.run();openings.add(i);drawingStatus.setText("Kanat: "+openings.size()+" / "+count);board.invalidate();return;}toast("Tüm bölmelerde kanat var.");});
+  Button frameButton=new Button(app);frameButton.setText("+ Kasa ekle");panel.addView(frameButton);frameButton.setOnClickListener(v->chooseProfile("Kasa",groups[0],picks[0],index->{checkpoint.run();frameAdded[0]=true;picks[0]=index;lineProfiles.put("frame",index);profileButtons[0].setText(names[0]+" · "+groups[0][index].label());drawingStatus.setText("Kasa eklendi: "+groups[0][index].label());persistDrawing.run();board.invalidate();}));
+  Button sashButton=new Button(app);sashButton.setText("+ Kanat ekle");panel.addView(sashButton);sashButton.setOnClickListener(v->{if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}chooseProfile("Kanat",groups[2],picks[2],index->{placementProfile[0]=index;mode[0]=2;pendingRecord[0]=null;drawingStatus.setText(groups[2][index].label()+" · Kanat için bölmeye dokunun.");board.invalidate();});});
   String[] modes = {"↕ Dikey kayıt", "↔ Yatay kayıt", "Sol kanat", "Kaydı sil", "Boş kasa",
    "Sabit cam", "Sağ kanat", "Profil seç", "Net ölçü"};
   Button[] toolButtons = new Button[modes.length];
@@ -712,12 +715,19 @@ final class TemaWorkshop {
    toolButtons[i] = button;
    button.setText(modes[i]);
    button.setOnClickListener(v -> {
-    mode[0] = tool;
-    pendingRecord[0] = null;
-    for (int j = 0; j < toolButtons.length; j++) styleTool(toolButtons[j], j == tool);
-    drawingStatus.setText(tool < 2 ? modes[tool] + " · Önce başlangıç kenarına dokunun."
-     : modes[tool] + " · çizime dokunun.");
-    board.invalidate();
+    Runnable activate = () -> {
+     mode[0] = tool;
+     pendingRecord[0] = null;
+     for (int j = 0; j < toolButtons.length; j++) if(toolButtons[j]!=null) styleTool(toolButtons[j], j == tool);
+     drawingStatus.setText(tool < 2 ? modes[tool] + " · Önce başlangıç kenarına dokunun."
+      : modes[tool] + " · çizime dokunun.");
+     board.invalidate();
+    };
+    if(tool<2 || tool==2 || tool==6){
+     if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}
+     int role=tool<2?1:2;
+     chooseProfile(names[role],groups[role],picks[role],index->{placementProfile[0]=index;activate.run();});
+    }else activate.run();
    });
   }
   for(int axisIndex=0;axisIndex<2;axisIndex++){
