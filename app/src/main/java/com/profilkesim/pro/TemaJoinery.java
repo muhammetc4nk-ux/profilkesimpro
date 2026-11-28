@@ -309,7 +309,7 @@ final class TemaJoinery {
   TemaLayout.Section jamb = left ? frame.left : frame.right;
   if (isAngleProfile(rail)) return Corner.HORIZONTAL_FULL;
   if (isAngleProfile(jamb)) return Corner.VERTICAL_FULL;
-  if (top && isSkirt(rail)) return Corner.VERTICAL_FULL;
+  if (isSkirt(rail)) return Corner.VERTICAL_FULL;
   if (isSkirt(jamb)) return Corner.HORIZONTAL_FULL;
   return configured;
  }
@@ -369,12 +369,17 @@ final class TemaJoinery {
  private static int[] aldoksBeadDimensions(int width, int height, TemaLayout.Section sash, TemaLayout.Section skirt,
                                            Corner corner, boolean drawing) {
   if (sash == null) return new int[]{width - ShopDimensions.PER_MM, height - 2 * ALDOKS_BEAD_END};
+  if (skirt != null) return new int[]{sashInsideWidth(width, sash),
+   height - 2 * SASH_GAP - sash.face - skirt.face - 2 * ALDOKS_BEAD_END};
   int cutWidth = width + (drawing ? 14 * ShopDimensions.PER_MM : -2 * SASH_GAP);
   int cutHeight = height + (drawing ? -8 * ShopDimensions.PER_MM : -2 * SASH_GAP);
   int cheeks = 2 * aldoksBeadCheek(sash);
-  int bottomExtra = skirt == null ? 0 : skirt.face - sash.face;
   return new int[]{horizontalLength(cutWidth, sash.face, corner) - cheeks,
-   verticalLength(cutHeight, sash.face, corner) - cheeks - bottomExtra - 2 * ALDOKS_BEAD_END};
+   verticalLength(cutHeight, sash.face, corner) - cheeks - 2 * ALDOKS_BEAD_END};
+ }
+
+ private static int sashInsideWidth(int openingWidth, TemaLayout.Section sash) {
+  return openingWidth - 2 * SASH_GAP - 2 * sash.face;
  }
 
  private static void addPaneDimensions(Order o, Plan plan, int number, TemaLayout.Opening bay,
@@ -405,18 +410,18 @@ final class TemaJoinery {
    } else {
     int angle = o.sashCorner == Corner.MITER ? 45 : 90;
     int rail = horizontalLength(cutWidth, sash.face, o.sashCorner);
-    int jamb = cutHeight - (o.sashCorner == Corner.HORIZONTAL_FULL ? sash.face + bottomFace : 0);
+    int jamb = cutHeight - (o.sashCorner == Corner.HORIZONTAL_FULL ? sash.face : 0);
     plan.addCut(sash.code, "Kanat yatay", rail, angle, o.quantity);
-    plan.addCut(sash.code, "Kanat dikey", jamb, angle, 2 * o.quantity);
-    plan.addCut(skirt.code, "Kanat alt etek profili", rail, angle, o.quantity);
+    plan.addCut(sash.code, "Kanat dikey", jamb, angle, 90, 2 * o.quantity);
+    plan.addCut(skirt.code, "Kanat alt etek profili", sashInsideWidth(bay.width(), sash), 90, o.quantity);
    }
    int left = bay.left + SASH_GAP, top = bay.top + SASH_GAP;
    int halfFace = sash.face / 2;
    int horizontal = horizontalLength(width, sash.face, o.sashCorner);
-   int vertical = height - (o.sashCorner == Corner.HORIZONTAL_FULL ? sash.face + bottomFace : 0);
+   int vertical = height - (o.sashCorner == Corner.HORIZONTAL_FULL ? sash.face + (skirt == null ? bottomFace : 0) : 0);
    plan.profileMarks.add(new ProfileMark(sash, horizontal, top + halfFace, left, left + width,
     false, ProfileRole.SASH));
-   plan.profileMarks.add(new ProfileMark(skirt == null ? sash : skirt, horizontal, top + height - bottomFace / 2, left, left + width,
+   plan.profileMarks.add(new ProfileMark(skirt == null ? sash : skirt, skirt == null ? horizontal : sashInsideWidth(bay.width(), sash), top + height - bottomFace / 2, left, left + width,
     false, ProfileRole.SASH));
    plan.profileMarks.add(new ProfileMark(sash, vertical, left + halfFace, top, top + height,
     true, ProfileRole.SASH));

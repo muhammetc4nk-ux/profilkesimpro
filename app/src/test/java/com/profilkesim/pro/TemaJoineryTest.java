@@ -74,6 +74,24 @@ public final class TemaJoineryTest {
   }
  }
 
+ @Test public void bottomCasingSkirtFitsBetweenJambsAndGlassUsesTheNewOpening() {
+  TemaLayout.Section left = new TemaLayout.Section("L", 250);
+  TemaLayout.Section right = new TemaLayout.Section("R", 420);
+  TemaLayout.Section bottom = new TemaLayout.Section("T.3010", 1029);
+  TemaJoinery.Order order = order(30000, 22000, 250);
+  order.aldoksBeads = true;
+  order.fixedBead = new TemaJoinery.Bead("T.3020", 170, 0, TemaJoinery.Corner.HORIZONTAL_FULL);
+  order.layout = new TemaLayout(order.width, order.height, new TemaLayout.Frame(left, left, right, bottom),
+   1000, Collections.singletonList(new int[]{0, 0, 1000, 1000}), Collections.emptyList(), Collections.emptySet());
+  TemaJoinery.Plan plan = TemaJoinery.calculate(order);
+  assertCut(plan, "T.3010", "Kasa yatay", 29330, 90, 1);
+  assertCut(plan, "L", "Kasa dikey", 22000, 45, 90, 1);
+  assertCut(plan, "T.3020", "Sabit cam çıtası yatay", 29320, 90, 2);
+  assertCut(plan, "T.3020", "Sabit cam çıtası dikey", 20381, 90, 2);
+  assertEquals(29220, plan.panes.get(0).width);
+  assertEquals(20281, plan.panes.get(0).height);
+ }
+
  @Test public void upperAndSideSkirtsUseSquareCutsAtTheirOwnFrameJoints() {
   TemaLayout.Section left = new TemaLayout.Section("L", 250);
   TemaLayout.Section right = new TemaLayout.Section("R", 420);
@@ -112,10 +130,12 @@ public final class TemaJoineryTest {
   order.skirtProfiles = Collections.singletonMap(1, new TemaLayout.Section("T.3010", 1029));
   TemaJoinery.Plan withSkirt = TemaJoinery.calculate(order);
   assertCut(withSkirt, order.sashCode, "Kanat yatay", 9640, 45, 1);
-  assertCut(withSkirt, "T.3010", "Kanat alt etek profili", 9640, 45, 1);
-  assertCut(withSkirt, "T.3021", "Kanat cam çıtası dikey", 19706, 90, 2);
-  assertEquals(regular.panes.get(0).width, withSkirt.panes.get(0).width);
-  assertEquals(regular.panes.get(0).height - 434, withSkirt.panes.get(0).height);
+  assertCut(withSkirt, "T.3010", "Kanat alt etek profili", 8210, 90, 1);
+  assertCut(withSkirt, "T.3021", "Kanat cam çıtası dikey", 19686, 90, 2);
+  assertCut(withSkirt, "T.3021", "Kanat cam çıtası yatay", 8210, 90, 2);
+  assertEquals(8110, withSkirt.panes.get(0).width);
+  assertEquals(19586, withSkirt.panes.get(0).height);
+  assertEquals(regular.layout.bays.get(0).width(), withSkirt.layout.bays.get(0).width());
   assertTrue(withSkirt.layout.rails.isEmpty());
  }
 
@@ -132,7 +152,7 @@ public final class TemaJoineryTest {
   assertEquals(regular.layout.bays.get(0).height(), withSkirt.layout.bays.get(0).height());
   assertEquals(regular.panes.get(0).height - 434, withSkirt.panes.get(0).height);
   assertEquals(regular.panes.get(1).height, withSkirt.panes.get(1).height);
-  assertCut(withSkirt, "T.3010", "Kanat alt etek profili", 17400, 45, 1);
+  assertCut(withSkirt, "T.3010", "Kanat alt etek profili", 16210, 90, 1);
  }
 
  @Test public void aldoksBeadsUseNetFixedOpeningsAndActualSashCuts() {

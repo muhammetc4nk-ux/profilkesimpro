@@ -77,10 +77,11 @@ final class TemaElevation {
    canvas.drawRect(left, top, right, bottom, paint);
    return;
   }
-  jamb(canvas, lx, ty, by, fx, fy, bottomFace, false, sashCorner, true);
-  jamb(canvas, rx - fx, ty, by, fx, fy, bottomFace, true, sashCorner, true);
+  TemaJoinery.Corner bottomJoint = skirt == null ? sashCorner : TemaJoinery.Corner.VERTICAL_FULL;
+  jamb(canvas, lx, ty, by, fx, fy, bottomFace, false, sashCorner, bottomJoint, true);
+  jamb(canvas, rx - fx, ty, by, fx, fy, bottomFace, true, sashCorner, bottomJoint, true);
   rail(canvas, lx, rx, ty, fy, fx, fx, false, sashCorner, true);
-  rail(canvas, lx, rx, by - bottomFace, bottomFace, fx, fx, true, sashCorner, true);
+  rail(canvas, lx, rx, by - bottomFace, bottomFace, fx, fx, true, bottomJoint, true);
   if (skirt != null) {
    float center = (lx + rx) / 2;
    String pay = "Pay " + ShopDimensions.mm(skirt.face) + " mm";
