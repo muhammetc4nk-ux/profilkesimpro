@@ -13,7 +13,6 @@ import java.util.Set;
 final class TemaJoinery {
  static final int SASH_GAP = 5 * ShopDimensions.PER_MM;
  static final int GLASS_DEDUCTION = 10 * ShopDimensions.PER_MM;
- private static final int ALDOKS_SASH_CHEEK = 595;
  private static final int ALDOKS_BEAD_END = 17 * ShopDimensions.PER_MM;
 
  enum Corner { MITER, VERTICAL_FULL, HORIZONTAL_FULL }
@@ -372,8 +371,13 @@ final class TemaJoinery {
     plan.addCut(sash.code, "Kanat dikey", jamb, angle, 2 * o.quantity);
     plan.addCut(skirt.code, "Kanat alt etek profili", rail, angle, o.quantity);
    }
-   beadWidth = horizontalLength(cutWidth, sash.face, o.sashCorner) - 2 * ALDOKS_SASH_CHEEK;
-   beadHeight = verticalLength(cutHeight, sash.face, o.sashCorner) - 2 * ALDOKS_SASH_CHEEK - (bottomFace - sash.face);
+   if (o.aldoksBeads) {
+    int cheek = aldoksBeadCheek(sash);
+    // T.3005 uses 59.5 mm on one horizontal end and 59.6 mm on the other.
+    int horizontalCheeks = 2 * cheek - ("T.3005".equals(sash.code) ? 1 : 0);
+    beadWidth = horizontalLength(cutWidth, sash.face, o.sashCorner) - horizontalCheeks;
+    beadHeight = verticalLength(cutHeight, sash.face, o.sashCorner) - 2 * cheek - (bottomFace - sash.face);
+   }
    int left = bay.left + SASH_GAP, top = bay.top + SASH_GAP;
    int halfFace = sash.face / 2;
    int horizontal = horizontalLength(width, sash.face, o.sashCorner);
@@ -398,6 +402,15 @@ final class TemaJoinery {
   else addBead(plan, bead, beadRole, width, height, o.quantity);
   plan.panes.add(pane);
   plan.glassArea = plan.glassArea.add(ShopDimensions.area(pane.width, pane.height, o.quantity));
+ }
+
+ private static int aldoksBeadCheek(TemaLayout.Section sash) {
+  switch (sash.code) {
+   case "T.3002": return 420;
+   case "T.3005": return 596;
+   case "T.3008": return 930;
+   default: return Math.max(0, sash.face - ALDOKS_BEAD_END);
+  }
  }
 
  private static int beadCutSequence(Cut cut) {
