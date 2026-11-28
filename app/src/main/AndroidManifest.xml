@@ -4,7 +4,7 @@
 <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 <application
  android:icon="@drawable/kesim_icon"
- android:label="Kesim Listesi Optimizasyon"
+ android:label="ProfilX"
  android:roundIcon="@drawable/kesim_icon"
  android:theme="@style/WorkshopTheme"
  android:allowBackup="true"
