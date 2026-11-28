@@ -46,6 +46,34 @@ public final class TemaJoineryTest {
   assertEquals(Collections.singletonList(Arrays.asList(656, 29094, 250)), layout.widthChains);
  }
 
+ @Test public void angleProfileRunsFullLengthAndButtsTheConnectingFrameParts() {
+  TemaLayout.Section ordinary = new TemaLayout.Section("K", 250);
+  TemaLayout.Section angle = new TemaLayout.Section("T.3011", 656);
+  TemaJoinery.Order order = order(30000, 22000, 250);
+  List<int[]> cells = Collections.singletonList(new int[]{0, 0, 1000, 1000});
+  for (int side = 0; side < 4; side++) {
+   TemaLayout.Section[] edges = {ordinary, ordinary, ordinary, ordinary};
+   edges[side] = angle;
+   order.layout = new TemaLayout(order.width, order.height,
+    new TemaLayout.Frame(edges[0], edges[1], edges[2], edges[3]), 1000,
+    cells, Collections.emptyList(), Collections.emptySet());
+   TemaJoinery.Plan plan = TemaJoinery.calculate(order);
+   boolean vertical = side == TemaLayout.LEFT || side == TemaLayout.RIGHT;
+   TemaLayout.Opening opening = plan.layout.bays.get(0);
+   assertEquals(order.width - 250 - (vertical ? 656 : 250), opening.width());
+   assertEquals(order.height - 250 - (vertical ? 250 : 656), opening.height());
+   if (vertical) {
+    assertCut(plan, "T.3011", "Kasa dikey", 22000, 90, 1);
+    assertCut(plan, "K", "Kasa yatay", 29344, side == TemaLayout.LEFT ? 90 : 45,
+     side == TemaLayout.RIGHT ? 90 : 45, 2);
+   } else {
+    assertCut(plan, "T.3011", "Kasa yatay", 30000, 90, 1);
+    assertCut(plan, "K", "Kasa dikey", 21344, side == TemaLayout.TOP ? 90 : 45,
+     side == TemaLayout.BOTTOM ? 90 : 45, 2);
+   }
+  }
+ }
+
  @Test public void upperAndSideSkirtsUseSquareCutsAtTheirOwnFrameJoints() {
   TemaLayout.Section left = new TemaLayout.Section("L", 250);
   TemaLayout.Section right = new TemaLayout.Section("R", 420);

@@ -305,9 +305,17 @@ final class TemaJoinery {
  }
 
  static Corner frameCorner(TemaLayout.Frame frame, Corner configured, boolean top, boolean left) {
-  if (top && isSkirt(frame.top)) return Corner.VERTICAL_FULL;
-  if (isSkirt(left ? frame.left : frame.right)) return Corner.HORIZONTAL_FULL;
+  TemaLayout.Section rail = top ? frame.top : frame.bottom;
+  TemaLayout.Section jamb = left ? frame.left : frame.right;
+  if (isAngleProfile(rail)) return Corner.HORIZONTAL_FULL;
+  if (isAngleProfile(jamb)) return Corner.VERTICAL_FULL;
+  if (top && isSkirt(rail)) return Corner.VERTICAL_FULL;
+  if (isSkirt(jamb)) return Corner.HORIZONTAL_FULL;
   return configured;
+ }
+
+ private static boolean isAngleProfile(TemaLayout.Section section) {
+  return "T.3011".equals(section.code);
  }
 
  private static boolean isSkirt(TemaLayout.Section section) {
