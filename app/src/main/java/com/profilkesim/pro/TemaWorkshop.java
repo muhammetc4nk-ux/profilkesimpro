@@ -653,6 +653,47 @@ final class TemaWorkshop {
     dialog.show();
    }
 
+   private int sashBottomAt(float touchX, float touchY) {
+    TemaLayout layout;
+    try { layout = geometry.get(); }
+    catch (IllegalArgumentException error) { return 0; }
+    float sx = (right - left) / layout.width, sy = (bottom - top) / layout.height;
+    float tolerance = drawingPixels(app.dp(5));
+    for (int number : openings) {
+     TemaLayout.Opening bay = layout.bays.get(number - 1);
+     TemaLayout.Section sash = selectedSash.apply(number), skirt = selectedSkirt.apply(number);
+     float lowest = top + (bay.bottom - TemaJoinery.SASH_GAP) * sy;
+     float face = (skirt == null ? sash.face : skirt.face) * sy;
+     float inset = (TemaJoinery.SASH_GAP + sash.face) * sx;
+     if (touchX >= left + bay.left * sx + inset && touchX <= left + bay.right * sx - inset
+      && touchY >= lowest - Math.max(face, tolerance) && touchY <= lowest) return number;
+    }
+    return 0;
+   }
+
+   private void chooseBottomProfile(int number) {
+    TemaLayout.Opening bay;
+    try { bay = geometry.get().bays.get(number - 1); }
+    catch (IllegalArgumentException error) { toast(error.getMessage()); return; }
+    TemaLayout.Section sash = selectedSash.apply(number);
+    String key = "e" + number;
+    int current = lineProfiles.containsKey(key) ? 1 : 0;
+    String[] choices = {"Kanatla aynı profil", series.skirt().code + " · " + series.skirt().label()};
+    choose("Kanat alt profili", choices, current, index -> {
+     if (index == current) return;
+     if (glassSize(bay, sash, index == 1 ? skirtProfile : null) == null) {
+      toast("Seçilen alt profil cam açıklığına sığmıyor.");
+      return;
+     }
+     checkpoint.run();
+     if (index == 1) lineProfiles.put(key, 0);
+     else lineProfiles.remove(key);
+     drawingStatus.setText(index == 1 ? "Kanat altına etek profili eklendi." : "Kanat alt profili değiştirildi.");
+     persistDrawing.run();
+     invalidate();
+    });
+   }
+
    @Override protected void tap(float touchX, float touchY){
     if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}
     if (innerRight <= innerLeft || innerBottom <= innerTop
@@ -671,26 +712,13 @@ final class TemaWorkshop {
     }
     if (mode[0] == 9) {
      int number = hit.apply(x, y);
-     try {
-      if (number == 0 || !openings.contains(number)) throw new IllegalArgumentException("Bir kanada dokunun.");
-      TemaLayout.Opening bay = geometry.get().bays.get(number - 1);
-      boolean remove = lineProfiles.containsKey("e" + number);
-      TemaLayout.Section sash = selectedSash.apply(number);
-      if (!remove && glassSize(bay, sash, skirtProfile) == null) {
-       throw new IllegalArgumentException("Kapı eteğinden sonra cam açıklığı yetersiz.");
-      }
-      checkpoint.run();
-      if (remove) lineProfiles.remove("e" + number);
-      else lineProfiles.put("e" + number, 0);
-      drawingStatus.setText(remove ? "Etek profili kaldırıldı." : skirtProfile.code + " etek profili eklendi.");
-      persistDrawing.run();
-      invalidate();
-     } catch (IllegalArgumentException error) {
-      toast(error.getMessage());
-     }
+     if (openings.contains(number)) chooseBottomProfile(number);
+     else toast("Alt profili değiştirilecek kanada dokunun.");
      return;
     }
     if(mode[0]==7){
+     int bottomSash = sashBottomAt(touchX, touchY);
+     if (bottomSash != 0) { chooseBottomProfile(bottomSash); return; }
      String key=null;int role=1;int best=65000;
      for(int q:xs)if(Math.abs(q-x)<best){best=Math.abs(q-x);key="v"+q;}
      for(int q:ys)if(Math.abs(q-y)<best){best=Math.abs(q-y);key="h"+q;}
@@ -1077,12 +1105,12 @@ final class TemaWorkshop {
   ribbonScroll.addView(ribbon);
   workspace.addView(ribbonScroll, new LinearLayout.LayoutParams(-1, app.dp(46)));
   Button skirtButton = new Button(app);
-  skirtButton.setText("Etek profili");
+  skirtButton.setText("Kanat alt profili");
   skirtButton.setOnClickListener(view -> {
    mode[0] = 9;
    pendingRecord[0] = null;
    drawingStatus.setText(skirtProfile.code + " · " + mm(skirtProfile.face)
-    + " mm · Eklemek veya kaldırmak için kanada dokunun.");
+    + " mm · Alt profili değiştirmek için kanada dokunun.");
    board.invalidate();
   });
   for (Button button : new Button[]{skirtButton, undoButton, redoButton, toolButtons[3], toolButtons[4], toolButtons[5],

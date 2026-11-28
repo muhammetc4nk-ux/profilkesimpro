@@ -412,8 +412,7 @@ final class TemaJoinery {
    if (skirt == null) {
     addRectangle(plan, sash.code, "Kanat", cutWidth, cutHeight, sash.face, o.sashCorner, o.quantity);
    } else {
-    skirtCut = o.aldoksBeads ? aldoksHorizontalBead(bay.width(), sash, Corner.MITER, o.aldoksDrawing)
-     : sashInsideWidth(bay.width(), sash);
+    skirtCut = sashInsideWidth(bay.width(), sash);
     plan.addCut(sash.code, "Kanat yatay", cutWidth, 45, o.quantity);
     plan.addCut(sash.code, "Kanat dikey", cutHeight, 45, 90, 2 * o.quantity);
     plan.addCut(skirt.code, "Kanat alt etek profili", skirtCut, 90, o.quantity);

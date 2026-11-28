@@ -132,7 +132,7 @@ public final class TemaJoineryTest {
   TemaJoinery.Plan withSkirt = TemaJoinery.calculate(order);
   assertCut(withSkirt, order.sashCode, "Kanat yatay", 9640, 45, 1);
   assertCut(withSkirt, order.sashCode, "Kanat dikey", 21670, 45, 90, 2);
-  assertCut(withSkirt, "T.3010", "Kanat alt etek profili", 8450, 90, 1);
+  assertCut(withSkirt, "T.3010", "Kanat alt etek profili", 8210, 90, 1);
   assertCut(withSkirt, "T.3021", "Kanat cam çıtası dikey", 19686, 90, 2);
   assertCut(withSkirt, "T.3021", "Kanat cam çıtası yatay", 8450, 90, 2);
   assertEquals(8350, withSkirt.panes.get(0).width);
