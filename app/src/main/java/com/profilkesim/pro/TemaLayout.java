@@ -174,7 +174,7 @@ final class TemaLayout {
    int start = record.start;
    int fixed = record.vertical ? x(record.axis) : y(record.axis);
    for (int end : ends) {
-    boolean floor = record.vertical && end == scale && !hasSillAt(fixed);
+    boolean floor = record.vertical && end == scale && !hasSillAt(fixed, record.section.face);
     int first = coordinate(record, start) + afterCentre(contactFace(record, start));
     int last = floor ? height : coordinate(record, end) - contactFace(record, end) / 2;
     members.add(new Member(record.section, record.vertical, fixed, first, last, start == 0, end == scale, floor));
@@ -184,8 +184,9 @@ final class TemaLayout {
   return members;
  }
 
- private boolean hasSillAt(int x) {
-  for (Span rail : rails) if (x >= rail.start && x <= rail.end) return true;
+ private boolean hasSillAt(int x, int face) {
+  int left = x - face / 2, right = x + afterCentre(face);
+  for (Span rail : rails) if (right >= rail.start && left <= rail.end) return true;
   return false;
  }
 
