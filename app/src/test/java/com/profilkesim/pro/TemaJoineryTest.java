@@ -185,8 +185,8 @@ public final class TemaJoineryTest {
   assertEquals(1,plan.layout.rails.size());
   assertCut(plan,"T.3001","Kasa alt yatay",14366,45,90,1);
   assertCut(plan,"T.3007","Kasa dikey",23000,45,90,1);
-  // The adjacent fixed-bay sill touches the mullion face.
-  assertCut(plan,"T.3006","Dikey orta kayıt",22033,90,1);
+  // The sill butts against the floor-reaching mullion.
+  assertCut(plan,"T.3006","Dikey orta kayıt",22415,90,1);
   assertCut(plan,"T.3003","Yatay orta kayıt",13992,90,1);
   assertCut(plan,"T.3008","Kanat dikey",13215,45,2);
   records.set(0,new TemaLayout.Record(500,0,500,1000,new TemaLayout.Section("T.3003",590)));
@@ -213,8 +213,8 @@ public final class TemaJoineryTest {
   assertEquals(490,plan.layout.bays.get(3).height()-plan.layout.bays.get(2).height());
   assertEquals(1,plan.layout.rails.size());
   assertCut(plan,"T.3101","Kasa alt yatay",9550,45,90,1);
-  // Deduct both frame faces where the fixed-bay sill meets the mullion.
-  assertCut(plan,"T.3102","Dikey orta kayıt",21020,90,1);
+  // The sill joins the side of the mullion, which reaches the floor.
+  assertCut(plan,"T.3102","Dikey orta kayıt",21510,90,1);
   assertCut(plan,"T.3102","Yatay orta kayıt",9060,90,2);
  }
 
