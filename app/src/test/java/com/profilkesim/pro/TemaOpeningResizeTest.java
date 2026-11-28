@@ -54,6 +54,20 @@ public final class TemaOpeningResizeTest {
   assertEquals(Integer.valueOf(2), result.profiles.get("v" + result.columns.first()));
  }
 
+ @Test public void equalizesSelectedNetOpeningsWithoutResizingTheFrame() {
+  TemaOpeningResize.Drawing before = drawing(Collections.singleton(SCALE / 3));
+  Set<Integer> doors = new java.util.LinkedHashSet<>(java.util.Arrays.asList(1, 2));
+  TemaOpeningResize.Drawing after = TemaOpeningResize.equalize(before, java.util.Arrays.asList(0, 1),
+   new int[]{1380, 1730}, model -> layout(model, doors));
+  TemaLayout equal = layout(after, doors);
+  assertEquals(before.width, after.width);
+  assertEquals(before.height, after.height);
+  assertEquals(equal.bays.get(0).width(), equal.bays.get(1).width());
+  assertEquals(equal.bays.get(0).height(), equal.bays.get(1).height());
+  assertTrue(equal.rails.isEmpty());
+  assertEquals(Collections.singleton(SCALE / 3), before.columns);
+ }
+
  @Test public void extendsTheFrameWhenTheAdjacentBayWouldOtherwiseBeTooNarrow() {
   TemaOpeningResize.Drawing before = drawing(Collections.singleton(SCALE / 2));
   TemaLayout original = layout(before, Collections.emptySet());

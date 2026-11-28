@@ -53,7 +53,9 @@ final class TemaDiagramRenderer {
   for (int i = 0; i < panes.length; i++) {
    drawBay(canvas, i + 1, plan.layout.bays.get(i), panes[i], left, top, scale);
   }
-  for (TemaJoinery.ProfileMark mark : plan.profileMarks) drawProfileMark(canvas, mark, left, top, scale);
+  for (TemaJoinery.ProfileMark mark : plan.profileMarks) {
+   if (mark.role != TemaJoinery.ProfileRole.SASH) drawProfileMark(canvas, mark, left, top, scale);
+  }
   paint.setColor(print ? 0xff526775 : 0xffecc78f);
   paint.setStrokeWidth(density);
   float dimensionY = top - 29f * density;
@@ -61,7 +63,7 @@ final class TemaDiagramRenderer {
   canvas.drawLine(left, dimensionY - 2f * density, left, dimensionY + 2f * density, paint);
   canvas.drawLine(left + width, dimensionY - 2f * density, left + width, dimensionY + 2f * density, paint);
   drawLabel(canvas, "Dış en " + ShopDimensions.mm(order.width) + " mm", viewWidth / 2f,
-   dimensionY - 3f * density, 11f * density, print ? 0xff243645 : 0xffe8f8f8);
+   dimensionY - 3f * density, 9f * density, print ? 0xff243645 : 0xffe8f8f8);
   paint.setColor(print ? 0xff526775 : 0xffecc78f);
   float dimensionX = left + width + 29 * density;
   canvas.drawLine(dimensionX, top, dimensionX, top + height, paint);
@@ -71,7 +73,7 @@ final class TemaDiagramRenderer {
   canvas.save();
   canvas.rotate(90, dimensionX, middle);
   drawLabel(canvas, "Dış boy " + ShopDimensions.mm(order.height) + " mm", dimensionX,
-   middle - 3 * density, 11f * density, print ? 0xff243645 : 0xffe8f8f8);
+   middle - 3 * density, 9f * density, print ? 0xff243645 : 0xffe8f8f8);
   canvas.restore();
  }
 
@@ -106,7 +108,6 @@ final class TemaDiagramRenderer {
     else y = mark.axis < order.height / 2 ? top - 8 * density : top + order.height * scale + 8 * density;
     elevation.profileLeader(canvas, x, y, profileX, profileY);
     break;
-   case SASH: color = 0xff49376f; break;
    default: color = 0xff184f55;
   }
   elevation.fabricationLabel(canvas, mark, x, y, (mark.end - mark.start) * scale, color);

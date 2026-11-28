@@ -36,6 +36,15 @@ abstract class TemaDrawingViewport extends View {
  }
 
  float drawingPixels(float screenPixels) { return screenPixels / zoom; }
+ void zoomBy(float factor) {
+  float next = Math.max(1, Math.min(6, zoom * factor));
+  panX *= next / zoom;
+  panY *= next / zoom;
+  zoom = next;
+  clampPan();
+  invalidate();
+ }
+
  void fit() {
   zoom = 1;
   panX = panY = 0;

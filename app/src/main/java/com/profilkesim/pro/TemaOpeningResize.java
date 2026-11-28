@@ -52,29 +52,60 @@ final class TemaOpeningResize {
   return fitAxis(wider, index, 1, height, deductions, resolver);
  }
 
+ static Drawing equalize(Drawing drawing, List<Integer> selected, int[] deductions, Resolver resolver) {
+  if (selected.size() < 2) throw new IllegalArgumentException("En az iki kanat seçin.");
+  TemaLayout initial = resolver.layout(drawing);
+  long width = 0, height = 0;
+  for (int index : selected) {
+   TemaLayout.Opening bay = initial.bays.get(index);
+   width += bay.width();
+   height += bay.height();
+  }
+  int targetWidth = (int)Math.round((double)width / selected.size());
+  int targetHeight = (int)Math.round((double)height / selected.size());
+  for (int index : selected) {
+   if (targetWidth <= deductions[index] || targetHeight <= deductions[index]) {
+    throw new IllegalArgumentException("Ortak net ölçü seçili kanat profillerine sığmıyor.");
+   }
+  }
+  Drawing result = equalizeAxis(drawing, selected, 0, targetWidth, deductions, resolver);
+  return equalizeAxis(result, selected, 1, targetHeight, deductions, resolver);
+ }
+
+ private static Drawing equalizeAxis(Drawing drawing, List<Integer> selected, int axis, int target,
+                                      int[] deductions, Resolver resolver) {
+  for (int pass = 0; pass < selected.size(); pass++) {
+   Drawing previous = drawing;
+   for (int position = 0; position < selected.size(); position++) {
+    int index = selected.get(pass % 2 == 0 ? position : selected.size() - 1 - position);
+    TemaLayout layout = resolver.layout(drawing);
+    int delta = target - size(layout.bays.get(index), axis);
+    if (delta == 0) continue;
+    Drawing moved = moveOpeningEdge(drawing, index, axis, target, delta, deductions, resolver, layout);
+    if (moved != null) drawing = moved;
+   }
+   TemaLayout layout = resolver.layout(drawing);
+   boolean equal = true;
+   for (int index : selected) {
+    if (size(layout.bays.get(index), axis) != target) equal = false;
+   }
+   if (equal) return drawing;
+   if (drawing == previous) break;
+  }
+  throw new IllegalArgumentException((axis == 0 ? "En" : "Boy")
+   + " eşitlenemedi. Dış kasa ölçüsü ve kayıt bağlantıları ortak ölçüye izin vermiyor.");
+ }
+
  private static Drawing fitAxis(Drawing drawing, int index, int axis, int desired, int[] deductions, Resolver resolver) {
   TemaLayout layout = resolver.layout(drawing);
   int delta = desired - size(layout.bays.get(index), axis);
   if (delta == 0) return drawing;
 
-  List<int[]> cells = drawing.cells();
-  int[] cell = cells.get(index);
-  int inner = axis == 0 ? layout.innerWidth : layout.innerHeight;
-  for (int edge = axis + 2; edge >= axis; edge -= 2) {
-   int old = cell[edge];
-   if (old == 0 || old == drawing.scale) continue;
-   int position = physical(old, inner, drawing.scale) + (edge == axis ? -delta : delta);
-   if (position <= 0 || position >= inner) continue;
-   int next = (int)Math.round((double)position * drawing.scale / inner);
-   Drawing attempt = drawing.copy();
-   try {
-    moveBoundary(attempt, axis, old, next, cell);
-    if (fits(attempt, index, axis, desired, deductions, resolver)) return attempt;
-   } catch (IllegalArgumentException ignored) {
-    // Try the other side or move the outside frame.
-   }
-  }
+  Drawing moved = moveOpeningEdge(drawing, index, axis, desired, delta, deductions, resolver, layout);
+  if (moved != null) return moved;
 
+  int[] cell = drawing.cells().get(index);
+  int inner = axis == 0 ? layout.innerWidth : layout.innerHeight;
   Drawing attempt = drawing.copy();
   int start = physical(cell[axis], inner, drawing.scale);
   int end = physical(cell[axis + 2], inner, drawing.scale);
@@ -96,6 +127,27 @@ final class TemaOpeningResize {
   }
   throw new IllegalArgumentException((axis == 0 ? "En" : "Boy")
    + " bu değere ayarlanamıyor. İstenen ölçüde komşu bölme veya profil bağlantısı sığmıyor.");
+ }
+
+ private static Drawing moveOpeningEdge(Drawing drawing, int index, int axis, int desired, int delta,
+                                        int[] deductions, Resolver resolver, TemaLayout layout) {
+  int[] cell = drawing.cells().get(index);
+  int inner = axis == 0 ? layout.innerWidth : layout.innerHeight;
+  for (int edge = axis + 2; edge >= axis; edge -= 2) {
+   int old = cell[edge];
+   if (old == 0 || old == drawing.scale) continue;
+   int position = physical(old, inner, drawing.scale) + (edge == axis ? -delta : delta);
+   if (position <= 0 || position >= inner) continue;
+   int next = (int)Math.round((double)position * drawing.scale / inner);
+   Drawing attempt = drawing.copy();
+   try {
+    moveBoundary(attempt, axis, old, next, cell);
+    if (fits(attempt, index, axis, desired, deductions, resolver)) return attempt;
+   } catch (IllegalArgumentException ignored) {
+    // Try the other side or move the outside frame.
+   }
+  }
+  return null;
  }
 
  private static boolean fits(Drawing attempt, int index, int axis, int desired, int[] deductions, Resolver resolver) {

@@ -75,15 +75,15 @@ final class TemaPdfExport {
    pages.heading("Çizimdeki profil payları");
    Map<String, TemaJoinery.ProfileMark> marks = new LinkedHashMap<>();
    for (TemaJoinery.ProfileMark mark : plan.profileMarks) {
+    if (mark.role == TemaJoinery.ProfileRole.SASH) continue;
     marks.putIfAbsent(mark.code + ":" + mark.face + ":" + mark.role, mark);
    }
    for (TemaJoinery.ProfileMark mark : marks.values()) {
-    String role = mark.role == TemaJoinery.ProfileRole.FRAME ? "Kasa"
-     : mark.role == TemaJoinery.ProfileRole.MULLION ? "Orta kayıt" : "Kanat";
+    String role = mark.role == TemaJoinery.ProfileRole.FRAME ? "Kasa" : "Orta kayıt";
     pages.line(series.nameOf(mark.code) + " · " + role, mark.allowanceText(), true);
    }
    if (!plan.panes.isEmpty()) {
-    pages.heading("Cam kesimleri");
+    pages.heading("Cam kesim ölçüleri · En × Boy");
     for (TemaJoinery.Pane pane : plan.panes) {
      pages.line("Bölme " + pane.number + " · İç " + size(pane.insideWidth, pane.insideHeight),
       size(pane.width, pane.height) + " × " + order.quantity + " adet", true);

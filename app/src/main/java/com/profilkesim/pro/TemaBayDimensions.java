@@ -30,8 +30,7 @@ final class TemaBayDimensions {
   float x = bounds.centerX(), y = bounds.centerY();
   String badge = String.valueOf(number);
   String first = caption(number, kind);
-  String inside = "İç " + size(bay.width(), bay.height());
-  paint.setTextSize(10 * unit);
+  paint.setTextSize(8 * unit);
   if (!measured) {
    chip(canvas, width, height, x, y, unit, paint.measureText(first) + 6 * unit <= width ? first : badge);
    return;
@@ -39,15 +38,14 @@ final class TemaBayDimensions {
   if (width >= 70 * unit && height >= 55 * unit) guidelines(canvas, bounds, unit);
   String en = "En " + ShopDimensions.mm(bay.width()) + " mm";
   String boy = "Boy " + ShopDimensions.mm(bay.height()) + " mm";
-  paint.setTextSize(9 * unit);
-  if (height >= 38 * unit && width >= 48 * unit) {
+  if (height >= 48 * unit && width >= 60 * unit && glassSize != null) {
+   chip(canvas, width, height, x, y, unit, "B" + badge + " · " + kind, en, boy, "Cam " + glassSize);
+  } else if (height >= 32 * unit && width >= 45 * unit) {
    chip(canvas, width, height, x, y, unit, "B" + badge + " · " + kind, en, boy);
   } else {
    chip(canvas, width, height, x, y, unit, ShopDimensions.mm(bay.width()) + " × " + ShopDimensions.mm(bay.height()));
   }
  }
-
- private boolean fits(String text, float width, float unit) { return paint.measureText(text) * .8f + 6 * unit <= width; }
 
  private void chip(Canvas canvas, float width, float height, float x, float y, float unit, String... lines) {
   float max = 0;

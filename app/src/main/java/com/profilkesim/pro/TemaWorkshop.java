@@ -376,7 +376,7 @@ final class TemaWorkshop {
     dim.setColor(0xffc5eaff);dim.setStrokeWidth(app.dp(1));dim.setStyle(android.graphics.Paint.Style.STROKE);c.drawLine(x,y,X,Y,dim);
     float dx=X-x,dy=Y-y,len=(float)Math.hypot(dx,dy);if(len<1)return;dx/=len;dy/=len;float k=app.dp(5);
     for(int i=0;i<2;i++){float px=i==0?x:X,py=i==0?y:Y,sign=i==0?1:-1;c.drawLine(px-dy*k,py+dx*k,px+dy*k,py-dx*k,dim);c.drawLine(px,py,px+sign*dx*k-dy*k/2,py+sign*dy*k+dx*k/2,dim);c.drawLine(px,py,px+sign*dx*k+dy*k/2,py+sign*dy*k-dx*k/2,dim);}
-    c.save();c.translate((x+X)/2,(y+Y)/2);if(Math.abs(dy)>Math.abs(dx))c.rotate(-90);dim.setStyle(android.graphics.Paint.Style.FILL);dim.setTextSize(app.dp(10));dim.setTextAlign(android.graphics.Paint.Align.CENTER);float w=dim.measureText(label)/2+app.dp(3);dim.setColor(0xfff8fafc);c.drawRoundRect(-w,-app.dp(8),w,app.dp(8),4,4,dim);dim.setColor(0xff075985);c.drawText(label,0,app.dp(3),dim);c.restore();
+    c.save();c.translate((x+X)/2,(y+Y)/2);if(Math.abs(dy)>Math.abs(dx))c.rotate(-90);dim.setStyle(android.graphics.Paint.Style.FILL);dim.setTextSize(app.dp(8));dim.setTextAlign(android.graphics.Paint.Align.CENTER);float w=dim.measureText(label)/2+app.dp(3);dim.setColor(0xfff8fafc);c.drawRoundRect(-w,-app.dp(8),w,app.dp(8),4,4,dim);dim.setColor(0xff075985);c.drawText(label,0,app.dp(3),dim);c.restore();
    }
    @Override protected void drawBoard(android.graphics.Canvas c){ if(getWidth()<=app.dp(54)||getHeight()<=app.dp(70))return; left=app.dp(42);top=app.dp(52);right=getWidth()-app.dp(42);bottom=getHeight()-app.dp(42);if(right<=left||bottom<=top)return;try{float ratio=Float.parseFloat(sizes[0].getText().toString().replace(',','.'))/Float.parseFloat(sizes[1].getText().toString().replace(',','.'));if(ratio>0&&Float.isFinite(ratio)){float w=right-left,h=bottom-top;if(w/h>ratio){float d=(w-h*ratio)/2;left+=d;right-=d;}else{float d=(h-w/ratio)/2;top+=d;bottom-=d;}}}catch(RuntimeException ignored){} paint.setStyle(android.graphics.Paint.Style.FILL);
     c.drawColor(0xff061426);paint.setShader(new android.graphics.LinearGradient(0,0,getWidth(),getHeight(),0xff07192e,0xff020b18,android.graphics.Shader.TileMode.CLAMP));c.drawRect(0,0,getWidth(),getHeight(),paint);paint.setShader(null); paint.setColor(0xff18334d);paint.setStrokeWidth(1);for(int x=0;x<getWidth();x+=app.dp(20))c.drawLine(x,0,x,getHeight(),paint);for(int y=0;y<getHeight();y+=app.dp(20))c.drawLine(0,y,getWidth(),y,paint); paint.setColor(0xff34495e); paint.setStrokeWidth(7);paint.setStyle(android.graphics.Paint.Style.STROKE);
@@ -413,11 +413,11 @@ final class TemaWorkshop {
      if (!empty) {
       elevation.opening(c, bay, sash == null ? null : section(sash), leftCells.contains(number),
        TemaJoinery.Corner.values()[sashCorner], left, top, sx, sy);
-      if (sash != null) labelSash(c, bay, sash, sx, sy);
      }
      android.graphics.RectF bounds = new android.graphics.RectF(left + bay.left * sx, top + bay.top * sy,
       left + bay.right * sx, top + bay.bottom * sy);
-     bayDimensions.draw(c, bounds, bay, number, TemaBayDimensions.kind(bay, opening, empty), measured, annotation, null);
+     String glass = measured && !empty ? glassSize(bay, TemaJoinery.glassAllowance(sash == null ? null : section(sash))) : null;
+     bayDimensions.draw(c, bounds, bay, number, TemaBayDimensions.kind(bay, opening, empty), measured, annotation, glass);
     }
     labelStructure(c, layout, members, sx, sy);
     drawRecordGuide(c);
@@ -445,21 +445,6 @@ final class TemaWorkshop {
      labelProfile(c, record.section, record.vertical, rx, ry,
       (record.end - record.start) * (record.vertical ? sy : sx), recordColor);
     }
-   }
-
-   private void labelSash(android.graphics.Canvas c, TemaLayout.Opening bay, TemaCatalog.Profile profile, float sx, float sy) {
-    TemaLayout.Section section = section(profile);
-    float midpointX = left + (bay.left + bay.right) * sx / 2;
-    float midpointY = top + (bay.top + bay.bottom) * sy / 2;
-    float gap = TemaJoinery.SASH_GAP;
-    float face = gap + profile.face / 2f;
-    float width = (bay.width() - 2 * gap - profile.face) * sx;
-    float height = (bay.height() - 2 * gap - profile.face) * sy;
-    int color = 0xee413c60;
-    labelProfile(c, section, false, midpointX, top + (bay.top + face) * sy, width, color);
-    labelProfile(c, section, false, midpointX, top + (bay.bottom - face) * sy, width, color);
-    labelProfile(c, section, true, left + (bay.left + face) * sx, midpointY, height, color);
-    labelProfile(c, section, true, left + (bay.right - face) * sx, midpointY, height, color);
    }
 
    private void labelProfile(android.graphics.Canvas c, TemaLayout.Section section, boolean vertical,
@@ -899,6 +884,52 @@ final class TemaWorkshop {
    }
   });
   openingsButton.setTextSize(13);
+  LinearLayout glassAndSashes = horizontal(workspace);
+  chooseButton(column(glassAndSashes), "Cam ölçüleri", () -> {
+   try {
+    TemaLayout layout = geometry.get();
+    showGlassMeasurements(layout, allowances.apply(layout.bays.size()), emptyCells);
+   } catch (IllegalArgumentException error) {
+    toast(error.getMessage());
+   }
+  }).setTextSize(13);
+  chooseButton(column(glassAndSashes), "Kanat boşluklarını eşitle", () -> {
+   try {
+    if (openings.size() < 2) throw new IllegalArgumentException("Çizime en az iki kanat ekleyin.");
+    TemaOpeningResize.Drawing drawing = resizeDrawing.get();
+    TemaLayout layout = resizeLayout.layout(drawing);
+    List<Integer> sashNumbers = new ArrayList<>(new java.util.TreeSet<>(openings));
+    String[] options = new String[sashNumbers.size()];
+    boolean[] selected = new boolean[sashNumbers.size()];
+    for (int i = 0; i < options.length; i++) {
+     int number = sashNumbers.get(i);
+     TemaLayout.Opening bay = layout.bays.get(number - 1);
+     options[i] = "Bölme " + number + " · " + TemaBayDimensions.size(bay.width(), bay.height());
+     selected[i] = true;
+    }
+    AlertDialog selection = new AlertDialog.Builder(app).setTitle("Eşitlenecek kanatları seç")
+     .setMultiChoiceItems(options, selected, (dialog, index, checked) -> selected[index] = checked)
+     .setNegativeButton("Vazgeç", null).setPositiveButton("Eşitle", null).create();
+    selection.setOnShowListener(dialog -> selection.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button -> {
+     try {
+      List<Integer> indices = new ArrayList<>();
+      for (int i = 0; i < selected.length; i++) if (selected[i]) indices.add(sashNumbers.get(i) - 1);
+      TemaOpeningResize.Drawing result = TemaOpeningResize.equalize(drawing, indices,
+       allowances.apply(layout.bays.size()), resizeLayout);
+      if (result != drawing) applyDrawing.accept(result);
+      pendingRecord[0] = null;
+      drawingStatus.setText("Seçili kanatların net eni ve boyu eşit.");
+      board.invalidate();
+      selection.dismiss();
+     } catch (IllegalArgumentException error) {
+      toast(error.getMessage());
+     }
+    }));
+    selection.show();
+   } catch (IllegalArgumentException error) {
+    toast(error.getMessage());
+   }
+  }).setTextSize(13);
   HorizontalScrollView ribbonScroll = new HorizontalScrollView(app);
   LinearLayout ribbon = new LinearLayout(app);
   ribbonScroll.addView(ribbon);
@@ -1675,6 +1706,27 @@ final class TemaWorkshop {
   app.exportTemaPdf(position.name, series, order, plan, leftHinges());
  }
 
+ private static String glassSize(TemaLayout.Opening bay, int allowance) {
+  int width = bay.width() - allowance, height = bay.height() - allowance;
+  return width > 0 && height > 0 ? TemaBayDimensions.size(width, height) : null;
+ }
+
+ private void showGlassMeasurements(TemaLayout layout, int[] deductions, Set<Integer> empty) {
+  ScrollView scroll = new ScrollView(app);
+  LinearLayout list = new LinearLayout(app);
+  list.setOrientation(LinearLayout.VERTICAL);
+  list.setPadding(app.dp(16), app.dp(8), app.dp(16), app.dp(8));
+  scroll.addView(list);
+  for (int i = 0; i < layout.bays.size(); i++) {
+   if (empty.contains(i + 1)) continue;
+   String size = glassSize(layout.bays.get(i), deductions[i]);
+   app.planLabel(list, "Bölme " + (i + 1) + " · " + (size == null ? "Cam açıklığı yetersiz" : size), 14, 0xff1b4154);
+  }
+  if (list.getChildCount() == 0) app.planLabel(list, "Cam kesilecek bölme yok.", 14, 0xff1b4154);
+  new AlertDialog.Builder(app).setTitle("Cam kesim ölçüleri · En × Boy")
+   .setView(scroll).setPositiveButton("Kapat", null).show();
+ }
+
  private void showBayMeasurements(TemaLayout layout, Set<Integer> openings, Set<Integer> empty) {
   ScrollView scroll = new ScrollView(app);
   LinearLayout list = new LinearLayout(app);
@@ -1727,7 +1779,7 @@ final class TemaWorkshop {
   app.planLabel(profiles, "Kasa köşesi " + plan.frameCorners + " · Kayıt bağlantı ucu "
    + plan.mullionEnds + " · Kanat köşesi " + open * order.quantity * 4, 14, 0xffa7e9e3);
   LinearLayout panes = section("Cam kesim ölçüleri");
-  app.planLabel(panes, "Cam için net iç enden ve net iç boydan 10’ar mm düşüldü.", 13, 0xffc9dbe3);
+
   for (TemaJoinery.Pane pane : plan.panes) {
    app.planLabel(panes, "Bölme " + pane.number + (pane.sash != null ? " · Kanat" : " · Sabit") + "  ·  "
     + mm(pane.width) + " × " + mm(pane.height) + " mm  ·  " + order.quantity + " adet", 15, Color.WHITE);
@@ -1740,17 +1792,25 @@ final class TemaWorkshop {
  }
 
  private void showDetailedDrawing(TemaJoinery.Order order, TemaJoinery.Plan plan, Set<Integer> leftHinges) {
-  TemaDiagramView diagram = new TemaDiagramView(app, order, plan, series, leftHinges);
-  diagram.setBackgroundColor(0xff101a29);
-  float scale = Math.min(2800f / Math.max(order.width, order.height),
-   Math.max(720f / Math.min(order.width, order.height), 1600f / Math.max(order.width, order.height)));
-  int width = app.dp(Math.max(320, Math.round(order.width * scale) + 100));
-  int height = app.dp(Math.max(320, Math.round(order.height * scale) + 100));
-  HorizontalScrollView horizontal = new HorizontalScrollView(app);
-  horizontal.addView(diagram, new HorizontalScrollView.LayoutParams(width, height));
-  ScrollView vertical = new ScrollView(app);
-  vertical.addView(horizontal, new ScrollView.LayoutParams(-1, -2));
-  new AlertDialog.Builder(app).setTitle("İmalat çizimi · mm").setView(vertical)
+  TemaDiagramRenderer renderer = new TemaDiagramRenderer(order, plan, series, leftHinges,
+   app.getResources().getDisplayMetrics().density, false);
+  TemaDrawingViewport viewport = new TemaDrawingViewport(app) {
+   @Override protected void drawBoard(android.graphics.Canvas canvas) {
+    renderer.draw(canvas, getWidth(), getHeight());
+   }
+   @Override protected void tap(float x, float y) { }
+  };
+  viewport.setContentDescription("İmalat çizimi. İki parmakla yakınlaştırın veya yakınlaştırma düğmelerini kullanın.");
+  LinearLayout content = new LinearLayout(app);
+  content.setOrientation(LinearLayout.VERTICAL);
+  LinearLayout controls = horizontal(content);
+  chooseButton(column(controls), "Uzaklaştır", () -> viewport.zoomBy(1 / 1.4f));
+  chooseButton(column(controls), "Sığdır", viewport::fit);
+  chooseButton(column(controls), "Yakınlaştır", () -> viewport.zoomBy(1.4f));
+  int screenHeight = app.getResources().getDisplayMetrics().heightPixels;
+  content.addView(viewport, new LinearLayout.LayoutParams(-1, screenHeight / 2));
+  viewport.zoomBy(1.6f);
+  new AlertDialog.Builder(app).setTitle("İmalat çizimi · mm").setView(content)
    .setPositiveButton("Kapat", null).show();
  }
 

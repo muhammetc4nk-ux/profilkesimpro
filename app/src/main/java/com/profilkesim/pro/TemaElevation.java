@@ -78,6 +78,7 @@ final class TemaElevation {
   rail(canvas, lx, rx, by - fy, fy, fx, fx, true, sashCorner, true);
   float insideLeft = lx + fx, insideRight = rx - fx, insideTop = ty + fy, insideBottom = by - fy;
   glass(canvas, insideLeft, insideTop, insideRight, insideBottom, sx, sy);
+  openingDirection(canvas, leftHinge, insideLeft, insideTop, insideRight, insideBottom);
   hardware(canvas, bay.door, leftHinge, lx, ty, rx, by, fx);
  }
 
@@ -180,6 +181,16 @@ final class TemaElevation {
   paint.setStyle(Paint.Style.FILL);
  }
 
+ private void openingDirection(Canvas canvas, boolean leftHinge, float left, float top, float right, float bottom) {
+  float inset = Math.min(right - left, bottom - top) * .08f;
+  float tip = leftHinge ? left + inset : right - inset;
+  float base = leftHinge ? right - inset : left + inset;
+  paint.setColor(0xeef0faff);
+  paint.setStrokeWidth(annotationDensity);
+  canvas.drawLine(base, top + inset, tip, (top + bottom) / 2, paint);
+  canvas.drawLine(tip, (top + bottom) / 2, base, bottom - inset, paint);
+ }
+
  private void hardware(Canvas c, boolean door, boolean leftHinge, float left, float top, float right,
                        float bottom, float face) {
   if (face < density || right - left < 20 * density || bottom - top < 22 * density) return;
@@ -220,7 +231,7 @@ final class TemaElevation {
   String name = series.nameOf(code);
   String width = face > 0 ? ShopDimensions.mm(face) + " mm" : "";
   String combined = width.isEmpty() ? name : name + " · " + width;
-  paint.setTextSize(10 * annotationDensity);
+  paint.setTextSize(8 * annotationDensity);
   if (paint.measureText(combined) <= (span - 8 * annotationDensity) / .8f) {
    drawProfileText(c, combined, combined, "", "", vertical, x, y, span, background);
   } else {
@@ -245,7 +256,7 @@ final class TemaElevation {
  private void drawProfileText(Canvas c, String text, String shortName, String detail, String shortDetail, boolean vertical,
                               float x, float y, float span, int background) {
   paint.setTextAlign(Paint.Align.CENTER);
-  paint.setTextSize(10 * annotationDensity);
+  paint.setTextSize(8 * annotationDensity);
   float max = span - 8 * annotationDensity;
   if (max <= 0) return;
   if (paint.measureText(text) > max / .8f) text = shortName;
@@ -259,7 +270,7 @@ final class TemaElevation {
   if (width <= 0) return;
   float sizeRatio = Math.min(1f, max / width);
   if (sizeRatio < .76f) return;
-  paint.setTextSize(10 * sizeRatio * annotationDensity);
+  paint.setTextSize(8 * sizeRatio * annotationDensity);
   float line = paint.descent() - paint.ascent();
   float halfHeight = (detail.isEmpty() ? .5f : 1f) * line + annotationDensity;
   float halfWidth = width * sizeRatio / 2 + 3 * annotationDensity;
