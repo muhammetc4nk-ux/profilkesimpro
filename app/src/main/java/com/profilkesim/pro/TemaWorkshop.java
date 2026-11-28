@@ -730,10 +730,9 @@ final class TemaWorkshop {
     }else activate.run();
    });
   }
-  for(int axisIndex=0;axisIndex<2;axisIndex++){
-   final int axis=axisIndex;
-   Button equal=new Button(app);equal.setAllCaps(false);equal.setText(axis==0?"Kapı/kanat hariç dik boşlukları eşitle":"Kapı/kanat hariç yatay boşlukları eşitle");panel.addView(equal);
-   equal.setOnClickListener(v->{
+  java.util.function.IntConsumer equalize = option -> {
+   final int axis=option/2;
+   final boolean protectDoors=option%2==1;
     if(!frameAdded[0]){toast("Önce kasa ekleyin.");return;}
     Runnable restore=snapshot.get();
     try{
@@ -742,7 +741,7 @@ final class TemaWorkshop {
      java.util.ArrayList<Integer> pts=new java.util.ArrayList<>(set);pts.add(0,0);pts.add(1000000);
      java.util.TreeSet<Integer> fixed=new java.util.TreeSet<>();fixed.add(0);fixed.add(1000000);
      java.util.ArrayList<int[]> cells=bays.get();
-     for(int i=0;i<cells.size();i++)if(openings.contains(i+1)||emptyCells.contains(i+1)){int[] protectedCell=cells.get(i);for(int p:pts)if(p>=protectedCell[axis]&&p<=protectedCell[axis+2])fixed.add(p);Integer lower=set.floor(protectedCell[axis]),upper=set.ceiling(protectedCell[axis+2]);if(lower!=null)fixed.add(lower);if(upper!=null)fixed.add(upper);}
+     for(int i=0;i<cells.size();i++)if(protectDoors&&(openings.contains(i+1)||emptyCells.contains(i+1))){int[] protectedCell=cells.get(i);for(int p:pts)if(p>=protectedCell[axis]&&p<=protectedCell[axis+2])fixed.add(p);Integer lower=set.floor(protectedCell[axis]),upper=set.ceiling(protectedCell[axis+2]);if(lower!=null)fixed.add(lower);if(upper!=null)fixed.add(upper);}
      int total=net.apply(cells.get(0))[axis+2];if(total<=0)throw new IllegalArgumentException("Kasa ölçüsünü kontrol edin.");
      String prefix=axis==0?"v":"h";
      java.util.HashMap<Integer,Integer> faces=new java.util.HashMap<>();
@@ -767,10 +766,9 @@ final class TemaWorkshop {
      for(int[] q:localLines){q[axis]=moves.getOrDefault(q[axis],q[axis]);q[axis+2]=moves.getOrDefault(q[axis+2],q[axis+2]);}
      if(bays.get().size()!=originalCount)throw new IllegalArgumentException("Kayıt bağlantıları korunamadı; işlem geri alındı.");
      for(int[] cell:bays.get()){int[] n=net.apply(cell);if(n[0]<=0||n[1]<=0)throw new IllegalArgumentException("Net boşluk yetersiz.");}
-     undo.push(restore);redo.clear();persistDrawing.run();board.invalidate();drawingStatus.setText("Net boşluklar eşitlendi; kapı ve kanatlar korundu.");
+     undo.push(restore);redo.clear();persistDrawing.run();board.invalidate();drawingStatus.setText(protectDoors?"Net boşluklar eşitlendi; kapı ve kanatlar korundu.":"Tüm net boşluklar eşitlendi.");
     }catch(RuntimeException ex){restore.run();board.invalidate();toast(ex.getMessage());}
-   });
-  }
+  };
   boolean[] framePickerPending={false};
   Runnable promptFrame=()->{
    if(frameAdded[0] || framePickerPending[0])return;
@@ -853,7 +851,7 @@ final class TemaWorkshop {
    }
   }
   LinearLayout dimensionTools = horizontal(workspace);
-  Button align = chooseButton(column(dimensionTools), "Kapı üstüne hizala", () -> {
+  Runnable alignDoor = () -> {
    try {
     TemaOpeningResize.Drawing drawing = resizeDrawing.get();
     TemaLayout layout = resizeLayout.layout(drawing);
@@ -887,6 +885,10 @@ final class TemaWorkshop {
    } catch (IllegalArgumentException error) {
     toast(error.getMessage());
    }
+  };
+  Button align = chooseButton(column(dimensionTools), "↔ Hizalama Sistemi", () -> {
+   String[] options={"Tüm dik orta kayıtları eşitle","Kapı/kanat hariç dik orta kayıtları eşitle","Tüm yatay orta kayıtları eşitle","Kapı/kanat hariç yatay orta kayıtları eşitle","Yatay kayıtları kapı üstüne hizala"};
+   new AlertDialog.Builder(app).setTitle("Hizalama Sistemi").setItems(options,(dialog,index)->{if(index==4)alignDoor.run();else equalize.accept(index);}).setNegativeButton("Vazgeç",null).show();
   });
   align.setTextSize(13);
   Button openingsButton = chooseButton(column(dimensionTools), "Bölme iç ölçüleri", () -> {
