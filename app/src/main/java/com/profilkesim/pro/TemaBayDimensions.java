@@ -36,25 +36,14 @@ final class TemaBayDimensions {
    chip(canvas, width, height, x, y, unit, paint.measureText(first) + 6 * unit <= width ? first : badge);
    return;
   }
-  if (width >= 110 * unit && height >= 90 * unit) guidelines(canvas, bounds, unit);
-  if (height >= 31 * unit && fits(inside, width, unit)) {
-   String title = fits(first, width, unit) ? first : "Bölme " + number;
-   String glass = glassSize == null ? "" : "Cam " + glassSize;
-   if (height >= 58 * unit && !glass.isEmpty() && fits(glass, width, unit)) {
-    chip(canvas, width, height, x, y, unit, title, inside, glass);
-   } else {
-    chip(canvas, width, height, x, y, unit, title, inside);
-   }
-   return;
-  }
-  String en = "En " + ShopDimensions.mm(bay.width());
-  String boy = "Boy " + ShopDimensions.mm(bay.height());
-  if (height >= 43 * unit && fits(en, width, unit) && fits(boy, width, unit)) {
-   chip(canvas, width, height, x, y, unit, "B" + badge + " · mm", en, boy);
-  } else if (height >= 19 * unit && fits(inside, width, unit)) {
-   chip(canvas, width, height, x, y, unit, inside);
+  if (width >= 70 * unit && height >= 55 * unit) guidelines(canvas, bounds, unit);
+  String en = "En " + ShopDimensions.mm(bay.width()) + " mm";
+  String boy = "Boy " + ShopDimensions.mm(bay.height()) + " mm";
+  paint.setTextSize(9 * unit);
+  if (height >= 38 * unit && width >= 48 * unit) {
+   chip(canvas, width, height, x, y, unit, "B" + badge + " · " + kind, en, boy);
   } else {
-   chip(canvas, width, height, x, y, unit, badge);
+   chip(canvas, width, height, x, y, unit, ShopDimensions.mm(bay.width()) + " × " + ShopDimensions.mm(bay.height()));
   }
  }
 
@@ -66,7 +55,7 @@ final class TemaBayDimensions {
   float gap = 3 * unit;
   float lineHeight = paint.descent() - paint.ascent();
   float scale = Math.min(1f, Math.min((width - 2 * gap) / max, (height - 2 * gap) / (lineHeight * lines.length)));
-  if (scale <= .3f) return;
+  if (scale <= .15f) return;
   paint.setTextSize(paint.getTextSize() * scale);
   lineHeight = paint.descent() - paint.ascent();
   float w = max * scale / 2 + gap;
