@@ -122,7 +122,16 @@ final class TemaLayout {
    gaps.add(new Span(l, r));
   }
   rails = bottomRails(width, gaps);
-  bottomFace = rails.isEmpty() ? 0 : frame.bottom.face;
+  // The vertical datum must depend on the actual bottom cells, not on
+  // the length of the remaining rail pieces (which include joint geometry).
+  boolean hasBottomFrame = false;
+  for (int i = 0; i < cells.size(); i++) {
+   if (cells.get(i)[BOTTOM] == scale && !floorDoors.contains(i + 1)) {
+    hasBottomFrame = true;
+    break;
+   }
+  }
+  bottomFace = hasBottomFrame ? frame.bottom.face : 0;
   innerHeight = height - frame.top.face - bottomFace;
   if (innerHeight <= 0) throw new IllegalArgumentException("Profil payları dış ölçüyü aşıyor.");
   for (int i = 0; i < cells.size(); i++) {
