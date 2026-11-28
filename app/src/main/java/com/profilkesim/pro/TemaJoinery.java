@@ -13,6 +13,8 @@ import java.util.Set;
 final class TemaJoinery {
  static final int SASH_GAP = 5 * ShopDimensions.PER_MM;
  static final int GLASS_DEDUCTION = 10 * ShopDimensions.PER_MM;
+ private static final int ALDOKS_SASH_CHEEK = 595;
+ private static final int ALDOKS_BEAD_END = 17 * ShopDimensions.PER_MM;
 
  enum Corner { MITER, VERTICAL_FULL, HORIZONTAL_FULL }
  enum Continuous { VERTICAL, HORIZONTAL }
@@ -22,7 +24,7 @@ final class TemaJoinery {
   TemaLayout layout;
   Map<Integer,TemaLayout.Section> sashProfiles = Collections.emptyMap();
   boolean removeDoorSills;
-  boolean aldoksDrawing;
+  boolean aldoksDrawing, aldoksBeads;
   int width, height, quantity;
   String frameCode, mullionCode, sashCode;
   int frameFace, mullionFace, sashFace;
@@ -214,6 +216,7 @@ final class TemaJoinery {
    TemaLayout.Opening bay = plan.layout.bays.get(index);
    addPaneDimensions(o, plan, number, bay, o.openingSashes.contains(number));
   }
+  if (o.aldoksBeads) plan.cuts.sort((a, b) -> Integer.compare(beadCutSequence(a), beadCutSequence(b)));
   return plan;
  }
 
@@ -338,6 +341,7 @@ final class TemaJoinery {
   int width = bay.width(), height = bay.height();
   TemaLayout.Section sash = null;
   Bead bead = opening ? o.sashBead : o.fixedBead;
+  int beadWidth = width, beadHeight = height;
   if (opening) {
    if (o.adapterCode != null) {
     if (bay.door) {
@@ -355,6 +359,8 @@ final class TemaJoinery {
     throw new IllegalArgumentException(number + ". hücrede kanat profili cam açıklığına sığmıyor.");
    }
    addRectangle(plan, sash.code, "Kanat", cutWidth, cutHeight, sash.face, o.sashCorner, o.quantity);
+   beadWidth = horizontalLength(cutWidth, sash.face, o.sashCorner) - 2 * ALDOKS_SASH_CHEEK;
+   beadHeight = verticalLength(cutHeight, sash.face, o.sashCorner) - 2 * ALDOKS_SASH_CHEEK;
    int left = bay.left + SASH_GAP, top = bay.top + SASH_GAP;
    int halfFace = sash.face / 2;
    int horizontal = horizontalLength(width, sash.face, o.sashCorner);
@@ -374,9 +380,27 @@ final class TemaJoinery {
   if (pane.width <= 0 || pane.height <= 0) {
    throw new IllegalArgumentException(number + ". bölmede cam için iç en ve boydan 10 mm düşülemiyor.");
   }
-  addBead(plan, bead, opening ? "Kanat cam çıtası" : "Sabit cam çıtası", width, height, o.quantity);
+  String beadRole = opening ? "Kanat cam çıtası" : "Sabit cam çıtası";
+  if (o.aldoksBeads) addAldoksBead(plan, bead, beadRole, beadWidth, beadHeight, o.quantity);
+  else addBead(plan, bead, beadRole, width, height, o.quantity);
   plan.panes.add(pane);
   plan.glassArea = plan.glassArea.add(ShopDimensions.area(pane.width, pane.height, o.quantity));
+ }
+
+ private static int beadCutSequence(Cut cut) {
+  if (cut.role.endsWith("cam çıtası yatay")) return 1;
+  if (cut.role.endsWith("cam çıtası dikey")) return 2;
+  return 0;
+ }
+
+ private static void addAldoksBead(Plan plan, Bead bead, String role, int width, int height, int quantity) {
+  if (bead == null) return;
+  int side = height - 2 * ALDOKS_BEAD_END;
+  if (width <= 0 || side <= 0) {
+   throw new IllegalArgumentException(role + " seçilen açıklığa sığmıyor.");
+  }
+  plan.addCut(bead.code, role + " yatay", width, 90, 2 * quantity);
+  plan.addCut(bead.code, role + " dikey", side, 90, 2 * quantity);
  }
 
  private static void addBead(Plan plan, Bead bead, String role, int width, int height, int quantity) {

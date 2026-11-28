@@ -35,6 +35,36 @@ public final class TemaJoineryTest {
   assertEquals(8405, plan.panes.get(0).insideWidth);
  }
 
+ @Test public void aldoksBeadsUseNetFixedOpeningsAndActualSashCuts() {
+  TemaJoinery.Order order = order(22000, 19000, 250);
+  order.quantity = 2;
+  order.vertical = 1;
+  order.mullionCode = "T.3006";
+  order.mullionFace = 430;
+  order.sashCode = "T.3005";
+  order.sashFace = 765;
+  order.sashCorner = TemaJoinery.Corner.HORIZONTAL_FULL;
+  order.openingSashes = Collections.singleton(2);
+  order.aldoksDrawing = true;
+  order.aldoksBeads = true;
+  order.fixedBead = new TemaJoinery.Bead("T.3020", 170, 0, TemaJoinery.Corner.MITER);
+  order.sashBead = new TemaJoinery.Bead("T.3021", 170, 0, TemaJoinery.Corner.MITER);
+
+  TemaJoinery.Plan plan = TemaJoinery.calculate(order);
+  TemaLayout.Opening fixed = plan.layout.bays.get(0);
+  assertCut(plan, "T.3020", "Sabit cam çıtası yatay", fixed.width(), 90, 4);
+  assertCut(plan, "T.3020", "Sabit cam çıtası dikey", fixed.height() - 340, 90, 4);
+  TemaLayout.Opening opening = plan.layout.bays.get(1);
+  int sashWidth = opening.width() + 140;
+  int sashHeight = opening.height() - 80 - 1530;
+  assertCut(plan, "T.3005", "Kanat yatay", sashWidth, 90, 4);
+  assertCut(plan, "T.3005", "Kanat dikey", sashHeight, 90, 4);
+  assertCut(plan, "T.3021", "Kanat cam çıtası yatay", sashWidth - 1190, 90, 4);
+  assertCut(plan, "T.3021", "Kanat cam çıtası dikey", sashHeight - 1530, 90, 4);
+  assertEquals("Sabit cam çıtası yatay", plan.cuts.get(plan.cuts.size() - 4).role);
+  assertEquals("Kanat cam çıtası yatay", plan.cuts.get(plan.cuts.size() - 3).role);
+ }
+
  @Test public void c60FrameAndContinuousRecordsProduceGlassCutSizes() {
   TemaJoinery.Order order = order(20000, 15000, 490);
   order.quantity = 2;

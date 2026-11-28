@@ -169,6 +169,10 @@ final class TemaWorkshop {
   choiceControl(panel, "Kanat köşesi", corners, sashCorner, i -> sashCorner = i);
   choiceControl(panel, "Kayıt birleşimi", new String[]{"Dikey kayıtlar sürekli", "Yatay kayıtlar sürekli"},
    continuous, i -> continuous = i);
+  if (series == TemaCatalog.Series.ALDOKS) {
+   chooseBead(panel, 3, "Sabit cam çıtası");
+   chooseBead(panel, 4, "Kanat cam çıtası");
+  }
   if (series == TemaCatalog.Series.C60) {
    adapter = new CheckBox(app);
    adapter.setText(TemaCatalog.C60_ADAPTER.label());
@@ -179,6 +183,12 @@ final class TemaWorkshop {
   EditText extra = field(panel, "extraCuts", "Ek kesimler · kod;ölçü;adet;açı", "", InputType.TYPE_CLASS_TEXT);
   extra.setSingleLine(false);
   extra.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+ }
+
+ private void chooseBead(LinearLayout panel, int role, String label) {
+  String[] choices = new String[series.beads.length];
+  for (int i = 0; i < choices.length; i++) choices[i] = series.beads[i].label();
+  choiceControl(panel, label, choices, profileIndices[role], index -> profileIndices[role] = index);
  }
 
  private void choiceControl(LinearLayout parent, String name, String[] choices, int initial, Option selected) {
@@ -1489,7 +1499,14 @@ final class TemaWorkshop {
   if (order.vertical < 0 || order.horizontal < 0) throw new IllegalArgumentException("Kayıt adetlerini 0–12 arasında girin.");
   order.continuous = TemaJoinery.Continuous.values()[continuous];
   boolean regional = !value("regionalBays").isEmpty();
-  order.aldoksDrawing = regional && series == TemaCatalog.Series.ALDOKS;
+  order.aldoksBeads = series == TemaCatalog.Series.ALDOKS;
+  order.aldoksDrawing = regional && order.aldoksBeads;
+  if (order.aldoksBeads) {
+   TemaCatalog.Profile fixed = series.beads[profileIndices[3]];
+   TemaCatalog.Profile sash = series.beads[profileIndices[4]];
+   order.fixedBead = new TemaJoinery.Bead(fixed.code, fixed.face, 0, TemaJoinery.Corner.HORIZONTAL_FULL);
+   order.sashBead = new TemaJoinery.Bead(sash.code, sash.face, 0, TemaJoinery.Corner.HORIZONTAL_FULL);
+  }
   boolean hasRecords = order.vertical + order.horizontal > 0 || !value("regionalRecords").isEmpty();
   if (hasRecords) {
    order.mullionCode = profileCode(1);
@@ -1581,7 +1598,7 @@ final class TemaWorkshop {
  private TemaJoinery.Plan buildPlan(TemaJoinery.Order order) {
   TemaJoinery.Plan plan = TemaJoinery.calculate(order);
   TemaJoinery.addManualCuts(plan, value("extraCuts"));
-  plan.cuts.removeIf(cut -> series.isBead(cut.code));
+  if (!order.aldoksBeads) plan.cuts.removeIf(cut -> series.isBead(cut.code));
   return plan;
  }
 
@@ -1606,7 +1623,7 @@ final class TemaWorkshop {
   if (!position.source.isEmpty()) app.note(position.source);
   addOptimizationLink(section("Birleşik stok planı"), position);
   for (TemaCutBatch.Line line : position.cuts) {
-   if (series.isBead(line.key, line.label)) continue;
+   if (series != TemaCatalog.Series.ALDOKS && series.isBead(line.key, line.label)) continue;
    LinearLayout row = section(cutTitle(line.key, line.label));
    app.planLabel(row, mm(line.length) + " mm × " + line.quantity + " adet", 15, Color.WHITE);
   }
@@ -1622,7 +1639,7 @@ final class TemaWorkshop {
    for (MainActivity.CutRow row : photo.getValue()) {
     String code = TemaCatalog.normalizeCode(row.code);
     String name = row.name.trim();
-    if (series.isBead(code, name)) continue;
+    if (series != TemaCatalog.Series.ALDOKS && series.isBead(code, name)) continue;
     String label = (code + " " + name).trim();
     String context = position.source + " · " + label;
     int length = ShopDimensions.tenths(row.draft[0], context + " kesim ölçüsü");
@@ -1648,7 +1665,7 @@ final class TemaWorkshop {
   Map<String, List<TemaCutBatch.Line>> ready = new LinkedHashMap<>();
   for (TemaPosition position : positions) {
    List<TemaCutBatch.Line> visible = new ArrayList<>();
-   for (TemaCutBatch.Line line : position.cuts) if (!series.isBead(line.key, line.label)) visible.add(line);
+   for (TemaCutBatch.Line line : position.cuts) if (series == TemaCatalog.Series.ALDOKS || !series.isBead(line.key, line.label)) visible.add(line);
    if (!visible.isEmpty()) ready.put(position.name, visible);
   }
   return ready;
@@ -1817,6 +1834,7 @@ final class TemaWorkshop {
  private void showCuts(LinearLayout parent, TemaJoinery.Plan plan) {
   int index = 0;
   for (Map.Entry<String, List<TemaJoinery.Cut>> group : plan.cutsByProfile().entrySet()) {
+   if (series == TemaCatalog.Series.ALDOKS && series.isBead(group.getKey())) continue;
    LinearLayout card = app.planCard(parent, 0xff172b3c, 0xff224655, series.accent);
    TemaCatalog.Profile item = series.find(group.getKey());
    android.graphics.Bitmap bitmap = item == null ? null : BitmapFactory.decodeResource(app.getResources(), item.image);
@@ -1827,6 +1845,13 @@ final class TemaWorkshop {
     app.planLabel(card, cut.role + "\n" + mm(cut.length) + " mm × " + cut.quantity + " adet  ·  " + angle, 15, Color.WHITE);
    }
    app.reveal(card, Math.min(160, index++ * 35));
+  }
+  LinearLayout beads = null;
+  if (series == TemaCatalog.Series.ALDOKS) for (TemaJoinery.Cut cut : plan.cuts) {
+   if (!series.isBead(cut.code)) continue;
+   if (beads == null) beads = section("Cam çıtası kesimleri · Önce yataylar");
+   app.planLabel(beads, series.displayOf(cut.code) + " · " + cut.role + "\n"
+    + mm(cut.length) + " mm × " + cut.quantity + " adet · " + cut.angle + "°", 15, Color.WHITE);
   }
  }
 

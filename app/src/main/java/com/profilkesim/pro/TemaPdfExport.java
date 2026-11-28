@@ -49,16 +49,22 @@ final class TemaPdfExport {
 
    pages.next("Profil kesim listesi");
    pages.cutHeader();
+   List<TemaJoinery.Cut> cuts = new ArrayList<>();
    for (Map.Entry<String, List<TemaJoinery.Cut>> group : plan.cutsByProfile().entrySet()) {
-    TemaCatalog.Profile profile = series.find(group.getKey());
+    if (!order.aldoksBeads || !series.isBead(group.getKey())) cuts.addAll(group.getValue());
+   }
+   if (order.aldoksBeads) {
+    for (TemaJoinery.Cut cut : plan.cuts) if (series.isBead(cut.code)) cuts.add(cut);
+   }
+   for (TemaJoinery.Cut cut : cuts) {
+    TemaCatalog.Profile profile = series.find(cut.code);
     Bitmap symbol = null;
     if (profile != null) {
      if (!sections.containsKey(profile.image)) sections.put(profile.image, BitmapFactory.decodeResource(resources, profile.image));
      symbol = sections.get(profile.image);
      if (symbol != null) usedSections.add(profile);
     }
-    String profileName = series.displayOf(group.getKey());
-    for (TemaJoinery.Cut cut : group.getValue()) pages.cutRow(profileName, cut, symbol);
+    pages.cutRow(series.displayOf(cut.code), cut, symbol);
    }
 
    if (!usedSections.isEmpty()) pages.gallery(usedSections, sections);
