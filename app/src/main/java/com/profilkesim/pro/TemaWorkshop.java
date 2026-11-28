@@ -948,6 +948,16 @@ final class TemaWorkshop {
   AlertDialog dialog = new AlertDialog.Builder(app).setTitle(editingPosition.name + " · " + series.label)
    .setView(workspace).setNegativeButton("Taslağı kaydet", null)
    .setPositiveButton("Kesim listesi oluştur", null).create();
+  LinearLayout confirmation = horizontal(workspace);
+  chooseButton(column(confirmation), "Tamam · Kaydet", () -> {
+   saveDraft.run();
+   handled[0] = true;
+   saveOpenEditor = null;
+   dialog.dismiss();
+   open();
+  });
+  chooseButton(column(confirmation), "Kesim listesi", () ->
+   dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick());
   positionsButton.setOnClickListener(v -> {
    saveDraft.run();
    handled[0] = true;
@@ -1218,7 +1228,7 @@ final class TemaWorkshop {
   name.setText(initial);
   name.setSelectAllOnFocus(true);
   AlertDialog dialog = new AlertDialog.Builder(app).setTitle(title).setView(name)
-   .setNegativeButton("Vazgeç", null).setPositiveButton("Devam", null).create();
+   .setNegativeButton("Vazgeç", null).setPositiveButton("Tamam", null).create();
   dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
    String value = name.getText().toString().trim();
    if (value.isEmpty() || value.length() > 32) {
