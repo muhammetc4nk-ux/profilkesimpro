@@ -1458,6 +1458,7 @@ final class TemaWorkshop {
   if (order.vertical < 0 || order.horizontal < 0) throw new IllegalArgumentException("Kayıt adetlerini 0–12 arasında girin.");
   order.continuous = TemaJoinery.Continuous.values()[continuous];
   boolean regional = !value("regionalBays").isEmpty();
+  order.aldoksDrawing = regional && series == TemaCatalog.Series.ALDOKS;
   boolean hasRecords = order.vertical + order.horizontal > 0 || !value("regionalRecords").isEmpty();
   if (hasRecords) {
    order.mullionCode = profileCode(1);
